@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "railphysics"
+version = "0.1.0"
+description = "Torch-based rail longitudinal dynamics physics core (single loco, extensible to multi-vehicle)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "torch>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+plot = [
+    "matplotlib>=3.5",
+]
+
+[tool.setuptools.packages.find]
+where = ["core"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["core"]

@@ -1,0 +1,415 @@
+\chapter{Problem Formulation}
+\label{ch:problem}
+
+\section{Forecasting problem, classical dynamics, and tensorized formulation}
+\label{sec:forecasting_tensor}
+
+This chapter specifies the prediction problem addressed in the thesis and the mathematical objects on which it rests.
+The physical model is classical longitudinal train dynamics: a chain of coupled vehicles moving along a route, with traction, braking, resistance, grade, and coupler mechanics entering a force balance for each vehicle.
+What is distinctive in the present work is not a claim that the rail-dynamics literature is historically cast in tensor form, but that \emph{we recast} the same coupled-vehicle system into a structured tensor representation so that simulation outputs, learning targets, and sequence-based surrogate models share a common layout.
+The following subsections state the operational prediction task, summarize the classical equations, introduce the node and edge tensors used throughout later chapters, and connect them to the forecasting and operator-learning viewpoint.
+The detailed stage-by-stage reference simulator is then documented in \cref{sec:ltd_buildup}; readers may consult it for sign conventions, nonlinear coupler laws, and the extended actuator model.
+
+\subsection{Physical setting and prediction task}
+\label{sec:prediction_task}
+
+Consider a freight train moving longitudinally along a prescribed path.
+Operational planning and safety assessment require predicting how the consist responds to the route, its makeup, and the control actions applied over a horizon.
+Concretely, one specifies a \emph{route profile} (geometry and constraints along track), a \emph{consist configuration} (ordered vehicles, masses, resistance parameters, coupler data), and a \emph{control or operating plan} (traction and braking commands, possibly in feedback with a driver or automation model).
+Given these inputs, the quantities of interest include, among others:
+\begin{itemize}
+    \item \textbf{Longitudinal motion:} positions and velocities of each vehicle, and derived accelerations where needed.
+    \item \textbf{In-train forces:} coupler forces and related deformation measures between adjacent vehicles, which govern draft and buff loading.
+    \item \textbf{Energy and propulsion:} work, power, or fuel-related summaries integrated along the run.
+    \item \textbf{Schedule and performance:} trip time, arrival time at milestones, or delay relative to a target.
+    \item \textbf{Risk and margins:} exceedance of force or speed limits, or other constraint margins, especially when predictions are probabilistic.
+\end{itemize}
+The thesis treats the simulator that maps these inputs to trajectories and summaries as a deterministic \emph{reference} when parameters are fixed, and augments that view with uncertainty in parameters and environment when forecasting is required to be uncertainty-aware (\cref{sec:uncertainty_sources}).
+
+\subsection{Classical longitudinal dynamics formulation}
+\label{sec:classical_ltd_compact}
+
+Classical longitudinal modeling represents the train as a chain of $N$ vehicles indexed $i=0,\ldots,N-1$ from lead to tail, connected by $N-1$ couplers.
+Let $x_i(t)$ and $v_i(t)=\dot{x}_i$ denote the longitudinal position and velocity of vehicle $i$ along the route, and let $m_i$ denote its mass.
+Between vehicles $i$ and $i+1$, coupler $i$ is associated with a kinematic extension $\delta_i$ (relative displacement from nominal spacing, positive in draft in the convention used below) and a coupler force $F_i$ transmitted to the trailing vehicle in the pair.
+Resistance, grade, and optional curvature terms enter as external longitudinal forces on each vehicle; traction and braking appear as controlled inputs, possibly after actuator dynamics.
+Summarizing the external and control contributions on vehicle $i$ by $F_{\mathrm{ext},i}(t)$ and the coupler incidence by the force on the rear of $i$ minus the force on the front, the translational dynamics take the familiar form
+\begin{equation}
+    \dot{x}_i = v_i, \qquad
+    m_i \dot{v}_i = F_{\mathrm{ext},i}(t) + F_{i-1}(t) - F_i(t),
+    \label{eq:classical_ltd_compact}
+\end{equation}
+with $F_{-1}=F_{N-1}=0$ when end forces are absent.
+The coupler forces $F_i$ are determined by constitutive laws $F_i = \phi_i(\delta_i,\dot{\delta}_i,\ldots)$ linking kinematics to internal forces; slack, asymmetric buff and draft stiffness, and damping enter here (\cref{sec:ltd_buildup}).
+When actuator lag or power limits are modeled, \cref{eq:classical_ltd_compact} is augmented by additional state variables per vehicle (for example brake and traction command states) driven by exogenous commands.
+This stacked system is the physical foundation: it is standard in multi-body longitudinal modeling and does not depend on the tensor notation introduced next.
+
+\subsection{Tensorized state representation}
+\label{sec:tensor_state_rep}
+
+For learning and for software that must handle variable train length and rich per-vehicle features, it is convenient to organize the same physics into two matrices that make the vehicle--coupler graph explicit.
+In this thesis, a \emph{node} (vehicle) tensor $\mathbf{H}(t) \in \mathbb{R}^{N \times d_n}$ collects $d_n$ channels associated with each vehicle at time $t$.
+Typical channels include longitudinal position and velocity, internal actuator or command states when those are part of the dynamic model, and static attributes replicated on each row (mass, Davis coefficients, traction capability flags, force limits, and similar parameters) so that a single array suffices for batched computation and for graph- or attention-style models that read local vehicle features.
+An \emph{edge} (coupler) tensor $\mathbf{E}(t) \in \mathbb{R}^{(N-1) \times d_e}$ holds $d_e$ channels per coupler, such as extension $\delta_i$, relative speed $\dot{\delta}_i$, algebraic coupler force $F_i$, nominal spacing, slack half-width, and stiffness and damping parameters for buff and draft segments.
+The assignment of channels is fixed in the reference implementation; the important point is the separation between vehicle-centered quantities in $\mathbf{H}$ and coupler-centered quantities in $\mathbf{E}$.
+
+Along a discrete time grid $t_0,\ldots,t_{T-1}$, simulated trajectories can be stored as a \emph{rollout tensor} $\mathbf{X} \in \mathbb{R}^{T \times N \times d}$, whose time slice $\mathbf{X}_{k,:,:}$ is the node feature matrix at $t_k$ (so one may take $d=d_n$ and identify $\mathbf{X}_{k,:,:}$ with $\mathbf{H}(t_k)$ after any bookkeeping for channels).
+Coupler histories are stored analogously as $\mathbf{E}_{\mathrm{hist}} \in \mathbb{R}^{T \times (N-1) \times d_e}$.
+This layout preserves the sparsity and locality of longitudinal coupling: each coupler row depends only on two adjacent vehicle rows, matching the chain topology of \cref{eq:classical_ltd_compact}.
+It also supports variable $N$ by padding and masking in learning pipelines, and it aligns naturally with transformer and other sequence models that expect token sequences with consistent feature dimension.
+
+\subsection{Dynamics in tensor-oriented form}
+\label{sec:tensor_dynamics_form}
+
+The tensor view is a reorganization of state and parameters, not a change to the underlying force balances.
+Let $\mathbf{H}_{\mathrm{dyn}}(t)$ denote the dynamic channels within $\mathbf{H}(t)$ (for example positions, velocities, and actuator states in the extended reference model), and let $\mathbf{p}$ collect fixed parameters, including static columns of $\mathbf{H}$ and of $\mathbf{E}$ where those encode coupler constants.
+The differential part of the evolution can be written compactly as
+\begin{equation}
+    \frac{\mathrm{d}}{\mathrm{d}t}\,\mathrm{vec}\!\left(\mathbf{H}_{\mathrm{dyn}}(t)\right)
+    = \mathcal{F}_n\bigl(\mathbf{H}(t), \mathbf{E}(t), \mathcal{U}(t), \mathcal{R}; t\bigr),
+    \label{eq:tensor_node_evolution}
+\end{equation}
+where $\mathcal{U}$ denotes the control input signals, $\mathcal{R}$ the route profile, and $\mathcal{F}_n$ the assembled right-hand side obtained from \cref{eq:classical_ltd_compact} and the actuator relations.
+Coupler kinematics link $\mathbf{H}_{\mathrm{dyn}}$ to the extension and rate channels in $\mathbf{E}(t)$; constitutive laws determine the force channels.
+In the reference integrator used for data generation in this thesis, several edge channels (including $\delta_i$, $\dot{\delta}_i$, and $F_i$) are \emph{reconstructed algebraically} at each evaluation from vehicle positions and velocities and from coupler parameters, rather than integrated as separate states.
+Thus the edge tensor is in part an explicit bookkeeping of quantities that satisfy relations of the form
+\begin{equation}
+    \mathbf{E}(t) = \mathcal{G}_e\bigl(\mathbf{H}(t), \mathbf{p}\bigr),
+    \label{eq:tensor_edge_map}
+\end{equation}
+for the algebraic channels, while \cref{eq:tensor_node_evolution} carries the true differential degrees of freedom.
+If additional internal coupler or draft-gear states were introduced in future work, \cref{eq:tensor_edge_map} would be supplemented by differential equations for the corresponding rows of $\mathbf{E}(t)$, i.e.\ a nontrivial $\mathcal{F}_e$ on those components alongside $\mathcal{F}_n$.
+The present wording is general enough to cover both cases without overstating what the current code integrates.
+
+\subsection{Forecasting objective and simulator operator}
+\label{sec:forecasting_objective}
+
+The learning problem is to predict, under computation and uncertainty constraints, the outputs described in \cref{sec:prediction_task} from the structured inputs $(\mathcal{R}, \mathcal{C}, \mathcal{U})$.
+The reference physics implements a deterministic operator
+\begin{equation}
+    F : (\mathcal{R}, \mathcal{C}, \mathcal{U}) \mapsto \mathbf{y},
+    \label{eq:simulator_operator}
+\end{equation}
+where $\mathbf{y}$ collects trajectories (for example stacks of $\mathbf{H}(t_k)$ and $\mathbf{E}(t_k)$), scalar summaries such as energy and trip time, and any derived risk indicators.
+The triple $(\mathcal{R}, \mathcal{C}, \mathcal{U})$ denotes the same structured inputs as the route profile $\route$, consist $\consist$, and control plan $\controlplan$ detailed in \cref{sec:input_definitions}.
+When uncertain parameters and environment are modeled by a random vector $\xi \sim p(\xi)$, the same operator is written $F(\mathcal{R}, \mathcal{C}, \mathcal{U}; \xi)$ and outputs become random (\cref{sec:uncertainty_sources}).
+The goal pursued in this thesis is not only pointwise trajectory accuracy but, where relevant, \emph{calibrated} probabilistic forecasts over operationally meaningful quantities (forces, times, margins), so that exceedance statements and intervals can be trusted at stated levels.
+The surrogate architecture introduced later approximates $F$ (and its predictive distributions) using a hybrid physics-aware, sequence-based model whose inputs and outputs are aligned with the tensor layout above.
+
+\section{Reference longitudinal train dynamics model}
+\label{sec:ltd_buildup}
+
+The preceding section fixed the prediction problem and the tensorized packaging of state used in this work; here we summarize a transparent \emph{reference} longitudinal train dynamics (LTD) model that was implemented incrementally for pedagogy and validation.
+The development follows a Jupyter notebook that constructs the simulator stage by stage using only NumPy, SciPy's \texttt{solve\_ivp}, and Matplotlib: each stage adds a small number of physical effects while preserving a clear force-balance and sign convention.
+The same model is mirrored in a structured Python package that exposes node and edge tensors alongside the classical flat state for integration.
+Parameters (masses, Davis coefficients, coupler stiffness, and traction limits) are illustrative rather than calibrated to a particular operator or vehicle test programme; the purpose is to obtain a reproducible intermediate-fidelity integrator whose structure matches the multi-body, route-coupled problem stated above.
+Time integration uses adaptive Runge--Kutta or implicit methods as needed when stiff coupler dynamics appear.
+The figures in this section are exported directly from that notebook at representative numerical settings.
+
+\subsection{Stage 1: single powered vehicle}
+
+The starting point is a single point mass $m$ with longitudinal position $x(t)$ and velocity $v(t)=\dot{x}$. The equation of motion aggregates traction, braking, Davis running resistance, grade, and an optional curvature proxy into a single scalar force balance:
+\begin{equation}
+    m\dot{v} = F_{\mathrm{trac}}(t) - F_{\mathrm{brk}}(t) - R(v) - G(x) - C(x,v),
+    \label{eq:ltd_stage1}
+\end{equation}
+with $\dot{x}=v$. Davis resistance is implemented in the usual magnitude--direction form,
+\begin{equation}
+    R(v) = \bigl(A + B|v| + C v^2\bigr)\,\mathrm{sgn}(v),
+    \label{eq:ltd_davis}
+\end{equation}
+with $\mathrm{sgn}(v)$ set to zero at $|v|<\varepsilon$ to avoid chatter at standstill. Grade enters through $G(x)=mg\sin\theta(x)$ with $\theta$ the local track inclination. The optional term $C$ is a simple longitudinal curvature proxy proportional to $m v^2 |\kappa(x)|$ with tunable scale, disabled in the earliest runs. Traction and brake commands may be specified as arbitrary functions of time; the first stage uses a smooth ``ramp'' in time so that $F_{\mathrm{trac}}$ rises continuously from zero after a delay, rather than stepping instantaneously, which eases numerical stiffness and mirrors the later actuator-lag extension. \Cref{fig:ltd_stage01} shows position, speed, and the plotted residual $F_{\mathrm{trac}}-R(v)$ on level track with braking and curvature removed, confirming that the integrator and force signs behave as intended before couplers are introduced.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{../notebooks/notebook_images/ltd_stage01_single_loco_traction_ramp_position_speed_netforce.png}
+    \caption{Stage~1 reference run: single vehicle on level track with a smooth traction ramp. Top to bottom: position, speed, and net longitudinal force $F_{\mathrm{trac}}-R(v)$ versus time.}
+    \label{fig:ltd_stage01}
+\end{figure}
+
+\subsection{Stage 2: locomotive and one car with a linear coupler}
+
+A second mass $m_1$ is attached behind the lead vehicle $m_0$. Nominal centre-to-centre spacing is $L_0$. Coupler extension (positive in draft) is
+\begin{equation}
+    \delta = (x_0 - x_1) - L_0, \qquad \dot{\delta} = v_0 - v_1.
+    \label{eq:ltd_delta}
+\end{equation}
+A linear spring--damper coupler exerts force $F = k\delta + c\dot{\delta}$ on the rear car along the direction of travel; the lead feels $-F$. With $G_i$ and $R_i$ evaluated per vehicle,
+\begin{align}
+    m_0 \dot{v}_0 &= F_{\mathrm{trac}} - F_{\mathrm{brk},0} - R_0(v_0) - G_0(x_0) - F, \\
+    m_1 \dot{v}_1 &= -F_{\mathrm{brk},1} - R_1(v_1) - G_1(x_1) + F.
+    \label{eq:ltd_stage2}
+\end{align}
+The state vector is $(x_0,x_1,v_0,v_1)$. For stiff $(k,c)$ the two speeds track almost identically on a speed--time plot even though the coupler force and extension carry the load path; \cref{fig:ltd_stage02} shows the characteristic transient in $F$ and $\delta$ as slack is taken up and the train settles into quasi-uniform acceleration under traction.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{../notebooks/notebook_images/ltd_stage02_loco_car_speeds_coupler_force_extension.png}
+    \caption{Stage~2: two-body train with linear coupler. Speeds of lead and trailing vehicle (overlapping at this scale), coupler force on the rear car, and extension $\delta$.}
+    \label{fig:ltd_stage02}
+\end{figure}
+
+\subsection{Stage 3: nonlinear coupler with slack and asymmetric buff/draft}
+
+The linear model is retained for comparison, but the simulated dynamics replace $F$ by a piecewise law with slack half-width $s$. For $|\delta|\le s$ the coupler force is zero; for $\delta>s$ (draft) stiffness and damping $(k_{\mathrm{d}},c_{\mathrm{d}})$ apply to the over-travel $\delta-s$, and for $\delta<-s$ (buff) a possibly different pair $(k_{\mathrm{b}},c_{\mathrm{b}})$ applies to $\delta+s$. The same two-body equations \cref{eq:ltd_stage2} hold with this $F(\delta,\dot{\delta})$. \Cref{fig:ltd_stage03} overlays the \emph{linear} force $k\delta+c\dot{\delta}$ that would correspond to Stage~2 parameters against the \emph{actual} nonlinear force along the trajectory, together with $\delta$ and $v_0-v_1$. The deadband produces intervals of near-zero force and sharper loading when contact engages, which motivates slack-aware modelling for impact-style longitudinal loads.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{../notebooks/notebook_images/ltd_stage03_slack_coupler_linear_vs_nonlinear_force_delta_speeddiff.png}
+    \caption{Stage~3: comparison of linear spring--damper force (Stage~2 parameters) versus nonlinear slack coupler force along the same trajectory, with extension and relative speed.}
+    \label{fig:ltd_stage03}
+\end{figure}
+
+\subsection{Stage 4: three bodies and sequential coupler forces}
+
+With vehicles indexed $0,1,2$ front to rear, coupler $j\in\{0,1\}$ connects $j$ to $j+1$ and $F_j$ denotes the force on the \emph{rear} vehicle in that pair. The recursions generalise naturally:
+\begin{align}
+    m_0 \dot{v}_0 &= F_{\mathrm{trac}} - R_0 - G_0 - F_0, \\
+    m_1 \dot{v}_1 &= -R_1 - G_1 + F_0 - F_1, \\
+    m_2 \dot{v}_2 &= -R_2 - G_2 + F_1,
+    \label{eq:ltd_stage4}
+\end{align}
+with each $F_j$ obtained from the nonlinear coupler law applied to $(\delta_j,\dot{\delta}_j)$ where $\delta_j=(x_j-x_{j+1})-L_{0,j}$. End-to-end stretch relative to nominal spacing, $(x_0-x_2)-(L_{0,0}+L_{0,1})$, summarises how the consist elongates in draft. \Cref{fig:ltd_stage04} shows speeds, both coupler forces, and stretch for a traction-only run. An optional variant applies a time-localised service-brake force on the lead only while traction continues, illustrating redistribution of draft forces (\cref{fig:ltd_stage04b}).
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{../notebooks/notebook_images/ltd_stage04_three_body_speeds_coupler_forces_train_stretch.png}
+    \caption{Stage~4: three-body train with nonlinear couplers. Speeds, coupler forces $F_0$ and $F_1$, and end-to-end stretch versus time.}
+    \label{fig:ltd_stage04}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{../notebooks/notebook_images/ltd_stage04b_lead_brake_pulse_speeds_coupler_forces.png}
+    \caption{Stage~4 optional scenario: lead-only brake pulse; speeds and coupler forces.}
+    \label{fig:ltd_stage04b}
+\end{figure}
+
+\subsection{Stage 5: general $N$-vehicle assembly}
+
+The state is stacked as $\mathbf{y}=(x_0,\ldots,x_{N-1},v_0,\ldots,v_{N-1})^\top\in\mathbb{R}^{2N}$. For each coupler $j=0,\ldots,N-2$, $\delta_j$ and $\dot{\delta}_j$ are defined as in \cref{eq:ltd_delta} with vehicle $j$ ahead of $j+1$. The force $F_j$ on the rear vehicle follows the slack model with per-coupler parameters. The right-hand side for vehicle $i$ is
+\begin{equation}
+    m_i \dot{v}_i = F_{\mathrm{trac},i} - F_{\mathrm{brk},i} - R_i(v_i) - G_i(x_i) - C_i + F_{i-1}^{\mathrm{in}} - F_i^{\mathrm{out}},
+    \label{eq:ltd_stage5}
+\end{equation}
+with the convention $F_{-1}^{\mathrm{in}}=F_{N-1}^{\mathrm{out}}=0$, and with traction and braking possibly zero on unpowered cars. Data structures (vehicle and coupler parameter records, and a flat route profile) group masses, Davis triples, coupler geometry, and slack/stiffness data for reuse. \Cref{fig:ltd_stage05a} plots selected speeds and coupler forces for a consist with one powered lead and identical trailing cars; \cref{fig:ltd_stage05b} shows a space--time style heatmap of all coupler forces, illustrating the monotonic decay of steady draft force from head to tail when only the lead provides traction.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{../notebooks/notebook_images/ltd_stage05_N_vehicle_speeds_and_coupler_forces.png}
+    \caption{Stage~5: $N$-vehicle train; selected speeds and coupler forces versus time.}
+    \label{fig:ltd_stage05a}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{../notebooks/notebook_images/ltd_stage05_N_vehicle_coupler_force_heatmap.png}
+    \caption{Stage~5: coupler force heatmap (force versus time and coupler index).}
+    \label{fig:ltd_stage05b}
+\end{figure}
+
+\subsection{Stage 6: per-vehicle grade and curvature from a route profile}
+
+Grade and curvature are no longer evaluated at a single global $x$; each vehicle samples $\sin\theta(x_i)$ and optionally $\kappa(x_i)$ at its own position. The profile is stored as piecewise-linear nodes and interpolated (e.g.\ linearly in arc length). Then $G_i=m_i g\sin\theta(x_i)$ and the same curvature proxy as before applies per vehicle. This introduces spatial dispersion along the train: the head and tail can experience different grades simultaneously, which excites relative motion and coupler cycling even when speed traces remain nearly overlaid. \Cref{fig:ltd_stage06} shows the prescribed $\sin\theta$ along route distance in the top panel and the time evolution of lead and rear speed and selected coupler forces below; the horizontal axes of the lower panels are simulation time, not chainage, so the spatial profile should be read as a fixed map through which the train moves.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{../notebooks/notebook_images/ltd_stage06_grade_profile_lead_rear_speeds_coupler_forces.png}
+    \caption{Stage~6: interpolated grade profile $\sin\theta$ versus route position, with lead and rear speeds and coupler forces versus simulation time.}
+    \label{fig:ltd_stage06}
+\end{figure}
+
+\subsection{Stage 7: actuator dynamics and power-limited traction}
+
+The state is augmented by first-order lag variables for commanded brake level $z_{\mathrm{brk},i}$ and commanded traction level $z_{\mathrm{trac},i}$ on each vehicle, driven by exogenous commands $u_{\mathrm{brk},i}(t)$ and $u_{\mathrm{trac},i}(t)$:
+\begin{equation}
+    \dot{z}_{\mathrm{brk},i} = \frac{u_{\mathrm{brk},i} - z_{\mathrm{brk},i}}{\tau_b}, \qquad
+    \dot{z}_{\mathrm{trac},i} = \frac{u_{\mathrm{trac},i} - z_{\mathrm{trac},i}}{\tau_t}.
+    \label{eq:ltd_actuator_lag}
+\end{equation}
+Achieved brake force is capped by a vehicle limit, $F_{\mathrm{brk},i}=\min(\max(z_{\mathrm{brk},i},0),F_{\mathrm{brk},\max,i})$. For powered vehicles, achieved traction is the continuous power cap
+\begin{equation}
+    F_{\mathrm{trac},i} = \min\!\left(\max(z_{\mathrm{trac},i},0),\,\frac{P_{\max}}{\max(|v_i|,\varepsilon)}\right),
+    \label{eq:ltd_power_cap}
+\end{equation}
+with $P_{\max}$ an illustrative constant power ceiling and $\varepsilon$ a small speed regulariser. These substitutes replace instantaneous step forces in \cref{eq:ltd_stage5}. \Cref{fig:ltd_stage07} shows lead speed together with the lead's $z_{\mathrm{brk}}$ and $z_{\mathrm{trac}}$ for a scenario that overlaps traction command with braking command; the plotted states should not be confused with achieved $F_{\mathrm{trac},i}$ and $F_{\mathrm{brk},i}$, which also reflect \cref{eq:ltd_power_cap} and the brake saturation. The notebook uses this stage to motivate realistic control shaping; a full driver model or anti-slip logic is outside the present scope.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.92\textwidth]{../notebooks/notebook_images/ltd_stage07_brake_buildup_power_limited_traction_states.png}
+    \caption{Stage~7: lead speed with brake-command onset marker; first-order lag states $z_{\mathrm{brk}}$ and $z_{\mathrm{trac}}$ on the lead versus time.}
+    \label{fig:ltd_stage07}
+\end{figure}
+
+\subsection{Stage 8: scope relative to industrial high fidelity}
+
+The notebook closes the incremental build with a structured discussion of effects commonly associated with ``high fidelity'' in operational or research simulators: hysteretic draft gear, pneumatic brake pipe dynamics, distributed traction and adhesion limits, stochastic parameters, and calibration to field data. Those modules are not embedded in the reference code path summarised here; they delimit the boundary between the intermediate simulator used for learning experiments and a fully industrial toolchain. Packaging the working right-hand side behind a small simulation API (subsequent notebook stage) is deferred to the architecture chapter where the surrogate is coupled to experiments.
+
+\section{Input definitions}
+\label{sec:input_definitions}
+
+\subsection{Route profile}
+
+A route profile $\route$ defines the track geometry along the path from origin to destination. We represent $\route$ as a sequence of segments $\segments = \{s_1, s_2, \ldots, s_n\}$, where each segment $s_j$ is characterized by:
+\begin{itemize}
+    \item Grade $\grade{j}$: elevation change per unit distance (\si{\percent})
+    \item Curvature $\curvature{j}$: track curvature (\si{\per\meter})
+    \item Speed limit $\speedlimit{j}$: maximum allowed speed (\si{\meter\per\second})
+    \item Segment length $\Delta s_j$: distance covered (\si{\meter})
+\end{itemize}
+
+% TODO: Add figure showing example route profile with grade and curvature
+
+\subsection{Consist configuration}
+
+A consist $\consist = \{c_1, c_2, \ldots, c_m\}$ is an ordered set of vehicles, where $c_1$ is the lead locomotive and $c_i$ for $i > 1$ are trailing cars. Each vehicle $c_i$ has properties:
+\begin{itemize}
+    \item Mass $m_i$ (\si{\kilogram})
+    \item Length $L_i$ (\si{\meter})
+    \item Resistance coefficients (Davis equation parameters)
+    \item Coupler type and capacity
+\end{itemize}
+
+\subsection{Control plan}
+
+A control plan $\controlplan$ specifies the traction/braking commands as a function of time or position. We represent $\controlplan$ as a sequence $\controlvec = [\control{t_1}, \control{t_2}, \ldots, \control{t_T}]$, where $\control{t}$ is the net force command at time $t$ (normalized to $[-1, 1]$ for full braking to full traction).
+
+% TODO: Add figure showing example control plan over route
+
+\section{Output definitions}
+
+We distinguish three categories of outputs: trajectory-level quantities (how the train state evolves over time), aggregate quantities (single numbers summarizing the run), and risk metrics (probabilistic safety measures).
+
+\subsection{Trajectory-level outputs}
+
+The simulator produces time histories of longitudinal state and internal forces.
+In classical form, one may write a stacked trajectory $\statetime{t}$ over $t \in [0, T]$; in the tensorized layout of \cref{sec:tensor_state_rep}, the same information is represented by $\mathbf{H}(t)$ and $\mathbf{E}(t)$, or by discrete rollouts $\mathbf{X}_{k,:,:}$ and $\mathbf{E}_{\mathrm{hist},k,:,:}$ at sample times $t_k$.
+Positions, velocities, actuator states, and static attributes appear in $\mathbf{H}$; coupler extensions, relative speeds, forces, and coupler parameters appear in $\mathbf{E}$.
+Accelerations follow by differentiation or from the force balance if needed for post-processing.
+The coupler force in the $i$th interface (force on the rear vehicle of the pair) is one channel of $\mathbf{E}(t)$ and can also be written as a functional of the full state,
+\begin{equation}
+    \couplerforce{i}(t) = f_i(\route, \consist, \controlplan, t),
+    \label{eq:coupler_force}
+\end{equation}
+where $f_i$ denotes the map implied by the physics and constitutive laws (\cref{sec:ltd_buildup}).
+
+\subsection{Aggregate outputs}
+
+Given inputs $(\route, \consist, \controlplan)$, the simulator also produces scalar summaries:
+\begin{align}
+    \energy &= \int_0^T P(t) \, dt \label{eq:energy} \\
+    \arrivaltime &= T \label{eq:arrival_time}
+\end{align}
+where $P(t)$ is instantaneous power consumption.
+
+\subsection{Risk metrics}
+
+Beyond point values, we care about the probability that safety constraints are violated. For a threshold $\tau$ (e.g., coupler capacity), we define the exceedance probability:
+\begin{equation}
+    \exceedprob{\couplerforce{i}(t)}{\tau} = \mathbb{P}(\couplerforce{i}(t) > \tau)
+    \label{eq:exceedance_prob}
+\end{equation}
+We also predict quantiles $\quantile{p}$ such that $\mathbb{P}(Y \leq \quantile{p}) = p$ for $p \in \{0.05, 0.25, 0.50, 0.75, 0.95\}$.
+
+% TODO: Add figure showing quantile predictions vs ground truth
+
+\section{Uncertainty sources}
+\label{sec:uncertainty_sources}
+
+Uncertainty in train dynamics predictions arises from:
+\begin{enumerate}
+    \item \textbf{Model uncertainty}: Incomplete physics (simplified resistance models, unknown friction coefficients)
+    \item \textbf{Parameter uncertainty}: Mass estimates, coupler stiffness, brake effectiveness
+    \item \textbf{Environmental uncertainty}: Wind, temperature effects on adhesion
+    \item \textbf{Operational uncertainty}: Driver behavior, signal delays
+\end{enumerate}
+
+% TODO: Quantify typical uncertainty ranges from literature/sensitivity analysis
+
+\subsection{Formal Treatment of Uncertainty}
+
+To make the probabilistic formulation rigorous, we introduce a random vector $\xi$ representing all uncertain factors (mass errors, friction variation, environmental conditions, etc.). We write $\xi \sim p(\xi)$ to denote that $\xi$ is drawn from a distribution $p$. The simulator output then depends on $\xi$:
+\begin{equation}
+    \mathbf{y} = F(\route, \consist, \controlplan; \xi),
+    \label{eq:probabilistic_simulator}
+\end{equation}
+consistent with the deterministic output $\mathbf{y}$ in \cref{eq:simulator_operator}.
+For fixed inputs $(\route, \consist, \controlplan)$, different realizations of $\xi$ yield different outputs. The exceedance probability is now defined precisely as the probability over $\xi$:
+\begin{equation}
+    \mathbb{P}_{\xi}(\couplerforce{i}(t) > \tau) = \int_{\{\xi : \couplerforce{i}(t;\xi) > \tau\}} p(\xi) \, d\xi
+    \label{eq:exceedance_prob_formal}
+\end{equation}
+
+\section{Supervised Learning Objective}
+
+Given a dataset $\mathcal{D} = \{(\route^{(k)}, \consist^{(k)}, \controlplan^{(k)}, \mathbf{y}^{(k)})\}_{k=1}^N$ where $\mathbf{y}^{(k)}$ contains ground truth outputs from high-fidelity simulation, we seek a surrogate model $f_\theta$ that minimizes:
+\begin{equation}
+    \mathcal{L}(\theta) = \sum_{k=1}^N \left[ \mathcal{L}_{\text{quantile}}(\theta; \mathbf{y}^{(k)}) + \lambda_{\text{cal}} \mathcal{L}_{\text{cal}}(\theta; \mathbf{y}^{(k)}) + \lambda_{\text{phys}} \mathcal{L}_{\text{phys}}(\theta) \right]
+    \label{eq:training_loss}
+\end{equation}
+where $\mathcal{L}_{\text{quantile}}$ is the quantile regression loss, $\mathcal{L}_{\text{cal}}$ encourages calibration, and $\mathcal{L}_{\text{phys}}$ enforces physics consistency.
+
+\subsection{Loss Term Definitions}
+
+\textbf{Quantile regression loss.} For a target variable $Y$ and predicted quantile $\hat{Q}_p$ at probability $p$, the pinball (quantile) loss is
+\begin{equation}
+    \rho_p(y, \hat{q}) = 
+    \begin{cases}
+        p (y - \hat{q}) & \text{if } y \geq \hat{q} \\
+        (1-p) (\hat{q} - y) & \text{if } y < \hat{q}
+    \end{cases}
+    \label{eq:pinball_loss}
+\end{equation}
+The quantile loss $\mathcal{L}_{\text{quantile}}$ sums $\rho_p$ over all quantile levels and output variables.
+
+\textbf{Calibration loss.} A model is \emph{calibrated} if, among predictions with nominal confidence $p$, the true fraction of outcomes falling within the predicted interval is approximately $p$. $\mathcal{L}_{\text{cal}}$ penalizes deviations from this property.
+
+\textbf{Physics regularization.} $\mathcal{L}_{\text{phys}}$ encourages the surrogate to satisfy known physical constraints (e.g., energy balance, force equilibrium).
+
+% TODO: Define specific loss formulations in Chapter 5
+
+\section{Conceptual Pipeline}
+
+The overall workflow can be summarized as a pipeline:
+
+\begin{enumerate}
+    \item \textbf{Inputs}: Route, consist, and control plan are specified.
+    \item \textbf{High-fidelity simulation}: The deterministic operator $F$ (or its probabilistic counterpart with $\xi$) is evaluated to produce outputs.
+    \item \textbf{Dataset}: Many such runs are collected, forming $\mathcal{D}$.
+    \item \textbf{Surrogate operator}: A neural network $f_\theta$ is trained to approximate $F$ (and its probabilistic outputs).
+    \item \textbf{Probabilistic outputs}: At inference time, the surrogate produces quantiles, exceedance probabilities, and point predictions without running the expensive simulator.
+\end{enumerate}
+
+\begin{figure}[h]
+\centering
+% TODO: insert system diagram
+\caption{Conceptual pipeline from structured inputs to probabilistic outputs via high-fidelity simulation and surrogate modeling.}
+\label{fig:problem_pipeline}
+\end{figure}
+
+\section{Evaluation Targets}
+
+We evaluate the surrogate model on four dimensions:
+
+\textbf{Accuracy.} Mean absolute error (MAE) and root mean squared error (RMSE) for deterministic outputs (energy, arrival time).
+
+\textbf{Calibration.} Expected calibration error (ECE), reliability diagrams. A model is well-calibrated if stated confidence intervals match empirical coverage.
+
+\textbf{Safety.} Constraint violation rates; alignment of exceedance probabilities with empirical rates.
+
+\textbf{Efficiency.} Inference time compared to high-fidelity simulation, measured as speedup factor.
+
+% TODO: Reference evaluation chapter for detailed metrics
+
+\section{Chapter summary}
+
+This chapter formulated the freight-train forecasting problem and the operator-learning setting built on top of it.
+Classical longitudinal dynamics provides the physical foundation (\cref{eq:classical_ltd_compact}); in this thesis the same system is recast into node and edge tensors $\mathbf{H}(t)$ and $\mathbf{E}(t)$ so that simulation rollouts align with structured sequence models and with probabilistic learning targets (\cref{sec:tensor_state_rep,sec:tensor_dynamics_form}).
+The simulator $F$ maps structured inputs $(\route, \consist, \controlplan)$ to structured outputs $\mathbf{y}$: trajectory-level tensors (or equivalent stacked states and coupler forces), aggregate quantities such as energy and trip time, and risk metrics including exceedance probabilities and quantiles (\cref{eq:simulator_operator}).
+We distinguished deterministic outputs under fixed parameters from outputs under random $\xi$ (\cref{eq:probabilistic_simulator}).
+
+The learning task is difficult because (1)~the input space is high-dimensional and structured, (2)~outputs span multiple scales and types, (3)~uncertainty quantification is required for safety-relevant decisions, and (4)~physical consistency must be preserved.
+Uncertainty is handled by modeling $\xi \sim p(\xi)$ and training the surrogate to predict quantiles and exceedance probabilities with calibration.
+
+A reference LTD model documented stage by stage in \cref{sec:ltd_buildup} supplies reproducible ground truth for experiments.
+The next chapter introduces the framework architecture: a hybrid physics-aware sequence model that approximates $F$ while respecting constraints and providing calibrated probabilistic outputs compatible with the tensorized state layout.

@@ -1,0 +1,130 @@
+\chapter{Evaluation and Validation}
+\label{ch:eval}
+
+\section{Baselines}
+
+\subsection{Physics-Only Baseline}
+
+The reduced-order physics model serves as a baseline, providing deterministic predictions without ML enhancement. This baseline represents the state-of-the-art for fast simulation in many rail applications.
+
+% TODO: Report physics baseline metrics (MAE, RMSE, calibration)
+
+\subsection{Non-Transformer Surrogate (Optional)}
+
+For comparison, we also train a feedforward neural network surrogate that does not use transformer architecture. This baseline helps isolate the contribution of attention mechanisms.
+
+% TODO: If implemented, report comparison metrics
+
+\section{Metrics}
+
+\subsection{Accuracy Metrics}
+
+For deterministic outputs (energy, arrival time):
+\begin{itemize}
+    \item Mean Absolute Error (MAE): $\text{MAE} = \frac{1}{N} \sum_{i=1}^N |y_i - \hat{y}_i|$
+    \item Root Mean Squared Error (RMSE): $\text{RMSE} = \sqrt{\frac{1}{N} \sum_{i=1}^N (y_i - \hat{y}_i)^2}$
+    \item Mean Absolute Percentage Error (MAPE): $\text{MAPE} = \frac{100}{N} \sum_{i=1}^N \left|\frac{y_i - \hat{y}_i}{y_i}\right|$
+\end{itemize}
+
+% TODO: Report metrics in results table
+
+\subsection{Calibration Metrics}
+
+For probabilistic outputs:
+\begin{itemize}
+    \item Expected Calibration Error (ECE): Measures deviation from perfect calibration
+    \item Reliability diagrams: Visualize predicted vs empirical quantile coverage
+    \item Sharpness: Width of prediction intervals (tighter is better if calibrated)
+\end{itemize}
+
+% TODO: Add reliability diagram figure
+% TODO: Report ECE values for each quantile level
+
+\subsection{Constraint Violation Rates}
+
+For safety-critical outputs (coupler forces), we measure:
+\begin{itemize}
+    \item False negative rate: Fraction of exceedances that were not predicted
+    \item False positive rate: Fraction of predicted exceedances that did not occur
+    \item Coverage at threshold: Fraction of true exceedances captured by $95\%$ prediction interval
+\end{itemize}
+
+% TODO: Report violation rates in table
+% TODO: Discuss implications for safety margins
+
+\section{Stress Tests}
+
+\subsection{Steep Grades}
+
+We evaluate performance on routes with grades exceeding \SI{2}{\percent}, where coupler forces are most critical. The model should maintain accuracy and calibration even under extreme conditions.
+
+% TODO: Report metrics on steep grade subset
+% TODO: Add figure showing coupler force predictions on steep grade
+
+\subsection{Long and Heavy Consists}
+
+Consists with 150+ cars or total mass exceeding \SI{10000}{\tonne} test the model's ability to handle force propagation through long chains. Attention mechanisms should enable modeling long-range dependencies.
+
+% TODO: Report performance vs consist length
+% TODO: Analyze attention patterns for long consists
+
+\subsection{Low Adhesion Conditions}
+
+Low adhesion scenarios (friction coefficient $< 0.15$) are safety-critical as they can lead to wheel slip and coupler overload. The model must provide conservative uncertainty estimates to avoid underestimating risk.
+
+% TODO: Report calibration under low adhesion
+% TODO: Compare predicted vs actual exceedance rates
+
+\section{Ablation Studies}
+
+\subsection{Without Physics Residual}
+
+We train a variant that predicts outputs directly rather than as residuals to the physics layer. This ablation quantifies the benefit of physics integration.
+
+% TODO: Report comparison: residual vs direct prediction
+% TODO: Add table showing ablation results
+
+\subsection{Without Factorized Attention}
+
+We compare factorized attention to full attention (when computationally feasible) to assess the trade-off between expressiveness and efficiency.
+
+% TODO: Report accuracy vs computational cost trade-off
+
+\subsection{Without Calibration Term}
+
+Removing the calibration loss term tests whether explicit calibration is necessary or if quantile regression alone provides sufficient calibration.
+
+% TODO: Report ECE with/without calibration loss
+% TODO: Add reliability diagrams for both variants
+
+\section{Results Summary}
+
+% TODO: Create comprehensive results table comparing all methods
+% TODO: Include figures:
+%   - Prediction accuracy plots (scatter, time series)
+%   - Calibration diagrams
+%   - Attention visualization
+%   - Ablation comparison charts
+
+Table~\ref{tab:main_results} summarizes the main evaluation results. Figure~\ref{fig:calibration} shows reliability diagrams for quantile predictions.
+
+\begin{table}[h]
+    \centering
+    \caption{Main evaluation results comparing hybrid framework to baselines}
+    \label{tab:main_results}
+    \begin{tabular}{lccc}
+        \toprule
+        Method & Energy MAE (\si{\kilo\watt\hour}) & Arrival Time MAE (\si{\second}) & Coupler Force ECE \\
+        \midrule
+        Physics-only & TODO & TODO & TODO \\
+        Hybrid (ours) & TODO & TODO & TODO \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/calibration_diagram.pdf}
+    \caption{Reliability diagrams showing calibration of quantile predictions}
+    \label{fig:calibration}
+\end{figure}

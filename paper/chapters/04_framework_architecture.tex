@@ -1,0 +1,107 @@
+\chapter{Framework Architecture}
+\label{ch:framework}
+
+\section{Design Principles}
+
+The framework is designed around four key principles:
+
+\begin{enumerate}
+    \item \textbf{Modularity}: Physics and ML components are decoupled, enabling independent development and ablation studies
+    \item \textbf{Physical plausibility}: The model should respect known physical constraints (energy conservation, force balance)
+    \item \textbf{Uncertainty quantification}: Probabilistic outputs with calibrated confidence intervals
+    \item \textbf{Efficiency}: Inference time orders of magnitude faster than high-fidelity simulation
+\end{enumerate}
+
+% TODO: Add architecture diagram showing component interactions
+
+\section{Baseline Physics Layer}
+
+The physics layer implements a reduced-order model that approximates train dynamics using simplified force balance equations. For each car $i$:
+\begin{equation}
+    m_i \ddot{x}_i = F_{\text{trac},i} - F_{\text{res},i} - F_{\text{c},i-1} + F_{\text{c},i}
+    \label{eq:physics_force_balance}
+\end{equation}
+where $F_{\text{trac},i}$ is traction/braking, $F_{\text{res},i}$ is resistance (Davis equation), and $F_{\text{c},i}$ is coupler force.
+
+The physics layer serves two roles:
+\begin{itemize}
+    \item \textbf{Reference prediction}: Provides a baseline that the transformer can improve upon
+    \item \textbf{Feature generation}: Computes intermediate quantities (forces, accelerations) that serve as input features to the transformer
+\end{itemize}
+
+% TODO: Detail the specific reduced-order model implementation
+% TODO: Add table comparing physics layer accuracy vs full simulator
+
+\section{Transformer Surrogate}
+
+\subsection{Tokenization Scheme}
+
+The transformer operates on a sequence of tokens representing:
+\begin{itemize}
+    \item \textbf{Route tokens}: One per segment, encoding grade, curvature, speed limit
+    \item \textbf{Vehicle tokens}: One per car, encoding mass, length, position in consist
+    \item \textbf{Control tokens}: One per time step, encoding traction/braking commands
+    \item \textbf{Physics feature tokens}: Intermediate quantities from the physics layer
+\end{itemize}
+
+% TODO: Detail embedding dimensions and positional encoding
+
+\subsection{Attention Factorization}
+
+To manage computational complexity, we use factorized attention patterns:
+\begin{itemize}
+    \item \textbf{Temporal attention}: Models dependencies across time steps within the same car
+    \item \textbf{Inter-car attention}: Models force propagation along the consist
+    \item \textbf{Cross-attention}: Allows vehicles to attend to relevant route segments
+\end{itemize}
+
+This factorization reduces complexity from $O(n^2 m^2 T^2)$ to $O(n^2 + m^2 + T^2)$ where $n$ is segments, $m$ is cars, and $T$ is time steps.
+
+% TODO: Add figure showing attention patterns
+% TODO: Compare factorized vs full attention in ablation
+
+\subsection{Output Heads}
+
+The transformer decoder produces outputs through specialized heads:
+\begin{itemize}
+    \item \textbf{Quantile head}: Predicts $\quantile{0.05}, \quantile{0.25}, \quantile{0.50}, \quantile{0.75}, \quantile{0.95}$ for each output variable
+    \item \textbf{Exceedance classifier}: Binary classifier for $\exceedprob{\couplerforce{i}(t)}{\tau}$ with threshold $\tau$
+    \item \textbf{Deterministic head}: Point predictions for energy and arrival time
+\end{itemize}
+
+% TODO: Detail network architecture (layers, dimensions, activation functions)
+
+\section{Hybrid Integration}
+
+\subsection{Residual Learning}
+
+The transformer predicts residuals relative to the physics layer:
+\begin{equation}
+    \hat{y} = y_{\text{phys}} + \Delta y_{\text{transformer}}
+    \label{eq:residual_learning}
+\end{equation}
+This approach leverages the physics baseline while allowing the transformer to correct systematic errors.
+
+\subsection{Physics Consistency Penalties}
+
+To ensure physical plausibility, we add penalty terms:
+\begin{itemize}
+    \item \textbf{Energy conservation}: Predicted energy should match work done by forces
+    \item \textbf{Force balance}: Sum of forces on each car should equal mass times acceleration
+    \item \textbf{Bound constraints}: Coupler forces must be within physical limits
+\end{itemize}
+
+% TODO: Define penalty formulations mathematically
+% TODO: Ablation study: with vs without physics penalties
+
+\section{Inference Modes}
+
+The framework supports two inference modes:
+
+\begin{enumerate}
+    \item \textbf{Single rollout}: Predict trajectory for one $(\route, \consist, \controlplan)$ tuple
+    \item \textbf{Batch scenario sweeps}: Efficiently evaluate multiple scenarios for sensitivity analysis or optimization
+\end{enumerate}
+
+% TODO: Benchmark inference times for both modes
+% TODO: Compare to high-fidelity simulation speedup

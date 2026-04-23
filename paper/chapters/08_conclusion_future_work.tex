@@ -1,0 +1,94 @@
+\chapter{Conclusions and Future Work}
+\label{ch:conclusion}
+
+\section{Summary of Contributions}
+
+This thesis presented a hybrid physics-transformer surrogate modeling framework for train system dynamics. The key contributions are:
+
+\begin{enumerate}
+    \item A modular architecture combining reduced-order physics models with transformer-based neural networks, enabling efficient probabilistic forecasting while maintaining physical plausibility
+    \item A probabilistic output formulation supporting quantile regression and exceedance probability estimation for safety-critical applications
+    \item Comprehensive validation demonstrating improved accuracy and calibration compared to physics-only baselines across diverse scenarios
+    \item Ablation studies quantifying the contributions of physics integration, attention factorization, and calibration losses
+\end{enumerate}
+
+The framework achieves orders-of-magnitude speedup over high-fidelity simulation while providing calibrated uncertainty estimates essential for risk-aware decision making in railway operations.
+
+% TODO: Refine summary based on final results
+% TODO: Add quantitative summary of improvements
+
+\section{Future Work}
+
+\subsection{Real-World Calibration and Validation}
+
+A critical next step is validating the framework on operational data from real train systems. This includes:
+\begin{itemize}
+    \item Collecting field data on energy consumption, arrival times, and coupler forces
+    \item Assessing model accuracy and calibration on real-world scenarios
+    \item Identifying and addressing domain gaps between simulation and reality
+\end{itemize}
+
+% TODO: Discuss data collection challenges
+% TODO: Propose validation methodology
+
+\subsection{Distributed Power Systems}
+
+Current work focuses on single-locomotive consists. Extending to distributed power (multiple locomotives at different positions) requires:
+\begin{itemize}
+    \item Modeling coordination between locomotives
+    \item Handling variable consist topology (locomotives can be anywhere)
+    \item Accounting for communication delays in distributed control
+\end{itemize}
+
+% TODO: Reference distributed power literature
+% TODO: Discuss architectural modifications needed
+
+\subsection{Tighter Safety Constraints}
+
+Integrating regulatory safety requirements directly into the model could enable:
+\begin{itemize}
+    \item Hard constraints on coupler forces (never exceed thresholds)
+    \item Speed limit compliance guarantees
+    \item Integration with positive train control (PTC) systems
+\end{itemize}
+
+This may require constrained optimization formulations or safe learning approaches.
+
+% TODO: Review safe learning literature
+% TODO: Propose constraint integration methods
+
+\subsection{Integration with Optimization and Model Predictive Control}
+
+The surrogate model could be embedded in optimization loops for:
+\begin{itemize}
+    \item Optimal control plan generation (minimize energy subject to safety constraints)
+    \item Real-time model predictive control (MPC) for train operation
+    \item Scenario-based optimization under uncertainty
+\end{itemize}
+
+This requires differentiable models and efficient gradient computation.
+
+% TODO: Discuss differentiable physics-ML hybrids
+% TODO: Reference MPC literature for train systems
+
+\subsection{Productization Considerations}
+
+While this thesis focuses on the internal modeling framework and validation methodology, productization represents a parallel engineering outcome. Key considerations include:
+\begin{itemize}
+    \item \textbf{Software engineering}: Robust APIs, error handling, logging
+    \item \textbf{Deployment}: Integration with existing rail lab infrastructure
+    \item \textbf{Maintenance}: Model versioning, monitoring, retraining pipelines
+    \item \textbf{User experience}: Intuitive interfaces for scenario definition and result visualization
+\end{itemize}
+
+These aspects are important for practical adoption but are outside the scope of this research-focused thesis.
+
+% TODO: Keep this section brief as requested (1 short section only)
+
+\section{Concluding Remarks}
+
+The hybrid physics-transformer framework demonstrates the potential of combining physical knowledge with modern deep learning for efficient, accurate, and uncertainty-aware train dynamics modeling. While challenges remain in generalization, calibration, and real-world validation, the approach provides a foundation for next-generation decision support tools in railway operations.
+
+The integration of physics and ML, probabilistic outputs, and attention-based sequence modeling offers a path toward faster-than-real-time simulation with reliable uncertainty quantification—capabilities essential for both safety analysis and operational optimization in the rail industry.
+
+% TODO: Refine concluding remarks based on final results

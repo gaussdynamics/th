@@ -1,0 +1,114 @@
+\chapter{Data Generation and Training Methodology}
+\label{ch:training}
+
+\section{Simulation Data Factory}
+
+\subsection{Scenario Generation}
+
+We generate diverse training scenarios by sampling:
+\begin{itemize}
+    \item \textbf{Routes}: Varying length (50--500 km), grade profiles (flat to \SI{2}{\percent}), curvature (straight to tight curves)
+    \item \textbf{Consists}: Varying length (10--150 cars), mass distribution, car types
+    \item \textbf{Control plans}: Different strategies (constant speed, coasting, aggressive acceleration/braking)
+\end{itemize}
+
+% TODO: Add table showing scenario distribution statistics
+% TODO: Include figure showing example route/consist/control combinations
+
+\subsection{Domain Randomization}
+
+To improve generalization, we apply domain randomization:
+\begin{itemize}
+    \item Mass uncertainty: $\pm 5\%$ variation in car masses
+    \item Resistance coefficients: $\pm 10\%$ variation in Davis equation parameters
+    \item Adhesion: Varying friction coefficients (dry, wet, low adhesion)
+    \item Initial conditions: Random initial speeds and positions
+\end{itemize}
+
+% TODO: Quantify impact of domain randomization on OOD performance
+
+\section{Dataset Splits and Out-of-Distribution Tests}
+
+The dataset is split into:
+\begin{itemize}
+    \item \textbf{Train} (70\%): Standard scenarios for model learning
+    \item \textbf{Validation} (15\%): Held-out scenarios for hyperparameter tuning
+    \item \textbf{Test} (15\%): Final evaluation on in-distribution data
+\end{itemize}
+
+Additionally, we define OOD test sets:
+\begin{itemize}
+    \item \textbf{Long consists}: 150+ cars (beyond training range)
+    \item \textbf{Steep grades}: \SI{>2.5}{\percent} (extreme conditions)
+    \item \textbf{Low adhesion}: Friction coefficient $< 0.15$ (safety-critical)
+\end{itemize}
+
+% TODO: Report performance degradation on OOD sets
+% TODO: Add table comparing in-distribution vs OOD metrics
+
+\section{Training Losses}
+
+\subsection{Quantile Loss}
+
+For quantile regression, we use the pinball loss:
+\begin{equation}
+    \mathcal{L}_{\text{quantile}}(y, \hat{q}_p) = \max(p(y - \hat{q}_p), (p-1)(y - \hat{q}_p))
+    \label{eq:pinball_loss}
+\end{equation}
+where $\hat{q}_p$ is the predicted $p$-quantile.
+
+\subsection{Calibration Loss}
+
+To encourage calibration, we minimize the difference between predicted and empirical quantile coverage:
+\begin{equation}
+    \mathcal{L}_{\text{cal}} = \sum_p \left| \frac{1}{N} \sum_{i=1}^N \mathbf{1}(y_i \leq \hat{q}_{p,i}) - p \right|
+    \label{eq:calibration_loss}
+\end{equation}
+
+\subsection{Physics Consistency Loss}
+
+Physics penalties are implemented as soft constraints:
+\begin{equation}
+    \mathcal{L}_{\text{phys}} = \lambda_{\text{energy}} \mathcal{L}_{\text{energy}} + \lambda_{\text{force}} \mathcal{L}_{\text{force}} + \lambda_{\text{bounds}} \mathcal{L}_{\text{bounds}}
+    \label{eq:physics_loss}
+\end{equation}
+
+% TODO: Detail each physics penalty term
+% TODO: Report hyperparameter values ($\lambda$ coefficients)
+
+\section{Implementation Details}
+
+\subsection{Model Architecture}
+
+\begin{itemize}
+    \item Transformer: 6 encoder layers, 8 attention heads, hidden dimension 512
+    \item Physics layer: Reduced-order model with 5 state variables per car
+    \item Total parameters: $\sim 15$M
+\end{itemize}
+
+% TODO: Add architecture diagram with layer details
+% TODO: Ablation on model size (4 vs 6 vs 8 layers)
+
+\subsection{Training Procedure}
+
+\begin{itemize}
+    \item Optimizer: AdamW with learning rate $10^{-4}$, weight decay $10^{-5}$
+    \item Batch size: 32 scenarios per batch
+    \item Training duration: 50 epochs (early stopping on validation loss)
+    \item Hardware: 4x NVIDIA A100 GPUs, training time $\sim 12$ hours
+\end{itemize}
+
+% TODO: Learning rate schedule details
+% TODO: Report convergence curves
+
+\subsection{Training Stability}
+
+We employ several techniques to stabilize training:
+\begin{itemize}
+    \item Gradient clipping (max norm 1.0)
+    \item Learning rate warmup (1000 steps)
+    \item Mixed precision training (FP16)
+    \item Physics loss annealing (start with small $\lambda$, increase gradually)
+\end{itemize}
+
+% TODO: Compare training curves with/without stability techniques

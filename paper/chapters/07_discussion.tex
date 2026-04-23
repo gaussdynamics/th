@@ -1,0 +1,97 @@
+\chapter{Discussion}
+\label{ch:discussion}
+
+\section{Interpretation of Results}
+
+\subsection{Where the Model Succeeds}
+
+The hybrid framework demonstrates significant improvements over physics-only baselines in several areas:
+\begin{itemize}
+    \item \textbf{Accuracy}: Reduced error in energy and arrival time predictions, particularly for complex control strategies
+    \item \textbf{Calibration}: Better-calibrated uncertainty estimates, enabling reliable risk assessment
+    \item \textbf{Long-range dependencies}: Attention mechanisms successfully model force propagation through long consists
+\end{itemize}
+
+% TODO: Provide specific examples from results
+% TODO: Discuss which scenarios show largest improvements
+
+\subsection{Where the Model Fails}
+
+Limitations observed in evaluation include:
+\begin{itemize}
+    \item \textbf{Extreme OOD scenarios}: Performance degrades on very long consists (200+ cars) or extreme grades (\SI{>3}{\percent})
+    \item \textbf{Rare events}: Underestimation of tail probabilities for very high coupler forces
+    \item \textbf{Computational cost}: While faster than high-fidelity simulation, transformer inference is still slower than pure physics models
+\end{itemize}
+
+% TODO: Quantify failure modes with examples
+% TODO: Discuss potential mitigations
+
+\section{Implications for Rail Labs and Planning Workflows}
+
+\subsection{Decision Support Framing}
+
+The framework enables rapid scenario exploration for:
+\begin{itemize}
+    \item \textbf{Energy planning}: Evaluating fuel consumption across different routes and control strategies
+    \item \textbf{Safety analysis}: Identifying scenarios with high coupler force risk
+    \item \textbf{Consist optimization}: Testing different car orderings and lengths
+\end{itemize}
+
+Probabilistic outputs support risk-aware decision making, allowing planners to choose strategies that balance efficiency and safety.
+
+% TODO: Provide workflow examples
+% TODO: Discuss integration with existing tools
+
+\subsection{Uncertainty-Aware Planning}
+
+The calibrated uncertainty estimates enable:
+\begin{itemize}
+    \item Setting appropriate safety margins based on predicted exceedance probabilities
+    \item Identifying scenarios requiring high-fidelity simulation for validation
+    \item Optimizing control plans while respecting probabilistic constraints
+\end{itemize}
+
+% TODO: Example of uncertainty-aware optimization
+% TODO: Compare to deterministic planning approaches
+
+\section{Limitations and Risk Management}
+
+\subsection{Out-of-Distribution Generalization}
+
+The model's performance degrades on scenarios far outside the training distribution. This limitation must be managed through:
+\begin{itemize}
+    \item \textbf{Domain awareness}: Identifying when inputs fall outside training distribution
+    \item \textbf{Fallback strategies}: Using high-fidelity simulation for flagged scenarios
+    \item \textbf{Active learning}: Expanding training data based on model uncertainty
+\end{itemize}
+
+% TODO: Discuss OOD detection methods
+% TODO: Propose active learning framework
+
+\subsection{Uncertainty Misuse}
+
+There is a risk that users may misinterpret uncertainty estimates or use them inappropriately:
+\begin{itemize}
+    \item \textbf{Overconfidence}: Treating predictions as ground truth without considering uncertainty
+    \item \textbf{Underconfidence}: Being overly conservative due to wide prediction intervals
+    \item \textbf{Calibration drift}: Model calibration may degrade over time as operating conditions change
+\end{itemize}
+
+Mitigation requires clear documentation, user training, and periodic recalibration.
+
+% TODO: Propose guidelines for uncertainty interpretation
+% TODO: Discuss recalibration strategies
+
+\section{Future Research Directions}
+
+Several research directions could address current limitations:
+\begin{itemize}
+    \item \textbf{Real-world calibration}: Validating and improving calibration on operational data
+    \item \textbf{Distributed power}: Extending to consists with multiple locomotives
+    \item \textbf{Tighter safety constraints}: Incorporating regulatory requirements directly into the model
+    \item \textbf{Integration with optimization}: End-to-end learning for control plan optimization
+\end{itemize}
+
+% TODO: Expand on each research direction
+% TODO: Reference related work that could be built upon

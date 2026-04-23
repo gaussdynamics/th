@@ -1,0 +1,55 @@
+\chapter{Introduction and Problem Motivation}
+\label{ch:intro}
+
+\section{Background: Longitudinal Train Dynamics}
+
+Longitudinal train dynamics (LTD) concern the motion and force distribution through the length of a train. A freight train is a distributed mechanical system, often consisting of tens to hundreds of individual coupled masses. The system involves complex and highly non-linear interactions between locomotives, freight cars, and the track profile. Modern simulations of these system interactions rely on detailed physical models which require solving differential equations for each vehicle, resulting in high computational cost. Rapid scenario exploration can be impossible due to the computational resource demand.
+
+\begin{table}[h]
+    \centering
+    \label{tab:computational_cost}
+    \begin{tabular}{lS[table-format=6.0]l}
+        \toprule
+        Model Type & {CPU-hours} & Source \\
+        \midrule
+        Reduced / Lumped Models & 0.05 & \cite{perez2016reduced} \\
+        High-Fidelity Train Longitudinal Dynamics & 50 & \cite{wu2019highfidelity} \\
+        High-Fidelity Multibody / Vehicle Dynamics & 500 & \cite{shabana_multibody} \\
+        Transient CFD (Engineering Scale) & 50000 & \cite{versteeg2007introduction} \\
+        Extreme CFD / HPC Simulation & 275000 & \cite{nrel2019cfd} \\
+        \bottomrule
+    \end{tabular}
+    \caption{Representative computational cost of physics-based simulations}
+\end{table}
+
+% TODO: Include figure showing typical train consist and force diagram
+
+\section{Surrogate Modeling}
+
+High-fidelity physics simulators are essential for understanding complex physical systems, however the computational expense of using such simulators can put serious speed limits on evaluation. This is the case especially in modern analysis or control problems, where complex simulations can require hundreds to thousands of hours of CPU time to simulate multi-body systems. These models are invaluable for theory validation, but they are completely impractical when there exists a need for rapidly repeated scenario evaluation. 
+
+Surrogate modeling addresses this problem by learning an approximate mapping of the inputs and system response outputs. This learned model retains the underlying physics at an approximated level, but more importantly can reduce evaluation cost by several orders of magnitude. Trained surrogate models can typically output an accurate prediction in milliseconds or less. This enables rapid simulation of a complex system that would normally consume many CPU hours. 
+
+Surrogate models do not replace deterministic physics models, but rather complement them. High-fidelity simulations allow for the data generation needed to build a surrogate model, and also serve as the physical grounding which couples with the surrogate to produce a rapid yet physically informed simulation environment.
+
+
+
+% TODO: Add discussion of decision support use cases (energy planning, safety margins)
+% TODO: Reference figure showing uncertainty bands in coupler force predictions
+
+\section{Thesis Objective and Contributions}
+
+This thesis presents a physics-transformer hybrid architecture that combines deterministic, reduced-order physics models of the longitudinal train dynamics with a data-driven transformer model. This architecture will enable rapid scenario evaluation while retaining physical constraints.
+
+\begin{enumerate}
+    \item A modular schema that integrates physics-based feature generation with transformer-based scenario modeling
+    \item Probabilistic output formulation representing quantile regression and exceedance probability estimation
+    \item Validation methodology demonstrating improved accuracy and reduced computation load compared to physics-only baselines
+    \item Ablation studies analyzing the contribution of physics integration and attention factorization
+\end{enumerate}
+
+% TODO: Refine contribution list based on final results
+
+\section{Organization of Thesis}
+
+This thesis is organized as follows. \Cref{ch:related} reviews related work in train dynamics, surrogate modeling, and transformer architectures. \Cref{ch:problem} formulates the problem mathematically, defining inputs, outputs, and uncertainty sources. \Cref{ch:framework} presents the framework architecture, including the physics layer, transformer surrogate, and hybrid integration strategy. \Cref{ch:training} describes data generation and training methodology. \Cref{ch:eval} presents evaluation results and validation studies. \Cref{ch:discussion} discusses implications and limitations. \Cref{ch:conclusion} concludes with future work directions.

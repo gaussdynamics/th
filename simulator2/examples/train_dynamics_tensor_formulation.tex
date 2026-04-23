@@ -1,0 +1,113 @@
+% Two-panel figure: extended train dynamics (left) vs tensorized formulation (right).
+% Compile:
+%   pdflatex train_dynamics_tensor_formulation.tex
+%
+\documentclass[11pt]{article}
+\usepackage[margin=0.7in]{geometry}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{microtype}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+
+\begin{document}
+
+\begin{figure}[t]
+  \centering
+  \caption{Train dynamics and tensorized state (\texttt{simulator2}: extended ODE and \texttt{train\_rhs\_tensorized}).}
+  \label{fig:train-dynamics-tensor}
+
+  \footnotesize\raggedright
+  \begin{minipage}[t]{0.47\textwidth}
+    \textbf{Left: Extended ODE (vector state)}\\[0.25em]
+    \textbf{State.}
+    \begin{equation*}
+      \bm{y} =
+      \begin{bmatrix}
+        \bm{x}^\top\ \bm{v}^\top\ \bm{z}_B^\top\ \bm{z}_T^\top
+      \end{bmatrix}^{\!\top}
+      \in \mathbb{R}^{4N}
+    \end{equation*}
+
+    \textbf{Coupler kinematics} (edge $j=1,\ldots,N-1$).
+    \begin{align*}
+      \delta_j &= (x_j - x_{j+1}) - L_{0,j}, &
+      \dot{\delta}_j &= v_j - v_{j+1}.
+    \end{align*}
+    \vspace{-0.35em}
+    \begin{equation*}
+      F_{\mathrm{cpl},j} =
+      f_{\mathrm{slack}}\bigl(\delta_j,\dot{\delta}_j;\,
+      s_j,\, k^d_j,c^d_j,\, k^b_j,c^b_j\bigr).
+    \end{equation*}
+
+    \textbf{Longitudinal motion} (vehicle $i$).
+    \begin{align*}
+      \dot{x}_i &= v_i, \\
+      m_i\,\dot{v}_i
+      &= F_{T,i} - F_{B,i} - R_i(v_i) - G_i(x_i) - F_{\kappa,i}(x_i,v_i) \\
+      &\quad{}+ F_{\mathrm{cpl},i-1} - F_{\mathrm{cpl},i},
+    \end{align*}
+    with $F_{\mathrm{cpl},0}=F_{\mathrm{cpl},N}=0$,
+    \begin{align*}
+      R_i(v_i) &= A_i + B_i\lvert v_i\rvert + C_i v_i^2 && \text{(Davis)} \\
+      G_i(x_i) &= m_i g\,\sin\theta\bigl(x_i\bigr). &&
+    \end{align*}
+
+    \textbf{Actuators} (first-order lags; $u_{B,i},u_{T,i}$ commands).
+    \begin{align*}
+      \dot{z}_{B,i} &= \tau_B^{-1}\bigl(u_{B,i}(t) - z_{B,i}\bigr), &
+      \dot{z}_{T,i} &= \tau_T^{-1}\bigl(u_{T,i}(t) - z_{T,i}\bigr).
+    \end{align*}
+    \begin{equation*}
+      F_{B,i} = \min\bigl(\max(z_{B,i},0),\, F_{B,i}^{\max}\bigr).
+    \end{equation*}
+    \begin{equation*}
+      F_{T,i} =
+      \begin{cases}
+        0, & \text{no traction}, \\[0.2em]
+        \displaystyle
+        \min\!\Bigl(\max(z_{T,i},0),\,\frac{P_{\max}}{\max(\lvert v_i\rvert,\varepsilon)}\Bigr),
+        & \text{traction vehicle}.
+      \end{cases}
+    \end{equation*}
+  \end{minipage}%
+  \hfill
+  \begin{minipage}[t]{0.47\textwidth}
+    \textbf{Right: Tensorized formulation ($\bm{H}$, $\bm{E}$)}\\[0.25em]
+    \textbf{Node tensor} (vehicle $i$; static parameters as extra columns).
+    \begin{equation*}
+      \bm{H} \in \mathbb{R}^{N \times d_{\mathrm{node}}},
+      \qquad d_{\mathrm{node}} = 11.
+    \end{equation*}
+    Dynamic: $(x_i,\, v_i,\, z_{B,i},\, z_{T,i})$.
+    Static: $(m_i,\, A_i,B_i,C_i)$, traction flag, $(F_T^{\max},\, F_B^{\max})$.
+
+    \textbf{Edge tensor} (coupler $j$; recomputed from $\bm{H}$ each RHS eval.).
+    \begin{equation*}
+      \bm{E} \in \mathbb{R}^{(N-1) \times d_{\mathrm{edge}}},
+      \qquad d_{\mathrm{edge}} = 9.
+    \end{equation*}
+    Columns: $\delta_j$; $\dot{\delta}_j$; $F_{\mathrm{cpl},j}$; $L_{0,j}$; $s_j$;
+    $k^d_j,c^d_j$; $k^b_j,c^b_j$.
+
+    \textbf{Pack / unpack} (same $\bm{y}$ as left).
+    \begin{align*}
+      \bm{y} &\mapsto \bm{H} = \mathcal{P}_H(\bm{y}), &
+      \bm{E} &= \mathcal{E}(\bm{H}).
+    \end{align*}
+    \begin{equation*}
+      \dot{\bm{y}} = \mathcal{F}_{\mathrm{tensor}}(t,\bm{H},\bm{E};\, \bm{u},\,\text{route}).
+    \end{equation*}
+
+    \textbf{Equivalence.}
+    \texttt{train\_rhs\_tensorized} unpacks $\bm{y}\!\to\!\bm{H}$, builds $\bm{E}$ from
+    positions and velocities, reads $(x_i,v_i,z_{B,i},z_{T,i})$ and $F_{\mathrm{cpl},j}$
+    from $(\bm{H},\bm{E})$, evaluates the same derivatives as the extended vector RHS, and
+    returns $\dot{\bm{y}}\in\mathbb{R}^{4N}$.
+  \end{minipage}
+\end{figure}
+
+\end{document}

@@ -1,0 +1,46 @@
+% Table: LTD simulation tools comparison
+% Requires: textcomp (in preamble, for \texttrademark)
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Representative longitudinal train dynamics (LTD) simulation tools}
+\label{tab:ltd_tools_comparison}
+\renewcommand{\arraystretch}{1.1}
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}p{2.5cm}p{3.5cm}p{5.5cm}p{2.5cm}@{}}
+\toprule
+\textbf{Tool} & \textbf{Origin} & \textbf{Scope} & \textbf{Availability} \\
+\midrule
+\textbf{TrainDy} \cite{Cantone2008TrainDy} &
+UIC-oriented (academic/industry consortium) &
+Freight LTD for operations and safety analysis &
+Specialized / consortium \\
+
+\textbf{TOES\texttrademark} \cite{WheelRail2018TOES} &
+Developed for AAR-member railroads &
+Comprehensive train dynamics for operating scenarios &
+Commercial / licensed \\
+
+\textbf{TEDS} \cite{FRA2019TEDSProject,FRA2015TEDSValidation} &
+U.S. FRA-sponsored (contractors) &
+Safety/risk evaluation, incident investigation, operations LTD &
+Publicly documented \\
+
+\textbf{UM Train} \cite{UMTrainPlugin} &
+Universal Mechanism suite &
+Train longitudinal dynamics within multibody ecosystem &
+Commercial \\
+
+\textbf{TDEAS} \cite{Wei2014TDEAS} &
+Developed in China (research/industry) &
+LTD + energy analysis &
+Research / institutional \\
+
+\textbf{CRE-LTS} \cite{Spiryagin2017BenchmarkQuestions} &
+Centre for Railway Engineering (CQU) &
+Benchmarking-ready research LTD simulator &
+Research / in-house \\
+\bottomrule
+\end{tabular}
+\end{table*}

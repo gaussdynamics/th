@@ -1,0 +1,109 @@
+% Preamble: packages, macros, and configuration
+
+% ============================================================================
+% Packages
+% ============================================================================
+
+\usepackage{tabularx}
+\usepackage{textcomp}
+% Core math packages
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{textcomp}
+
+% Graphics and tables
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{siunitx}
+
+% Physics notation (optional but useful)
+\usepackage{physics}
+
+% Hyperlinks and cross-references
+\usepackage[colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue]{hyperref}
+\usepackage{cleveref}
+
+% Colors
+\usepackage{xcolor}
+
+% Page geometry
+\usepackage[margin=1in]{geometry}
+
+% Bibliography
+\usepackage[style=numeric-comp, sorting=none, backend=biber]{biblatex}
+\addbibresource{refs/references.bib}
+
+% Continuous page numbering: prevent \mainmatter from resetting the page counter
+\usepackage{etoolbox}
+\newcounter{savedpage}
+\patchcmd{\mainmatter}{\pagenumbering{arabic}}{%
+  \setcounter{savedpage}{\value{page}}%
+  \pagenumbering{arabic}%
+  \setcounter{page}{\value{savedpage}}%
+}{}{}
+
+% ============================================================================
+% Theorem Environments
+% ============================================================================
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[chapter]
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{lemma}{Lemma}[chapter]
+\newtheorem{proposition}{Proposition}[chapter]
+
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}[chapter]
+
+% ============================================================================
+% Notation Macros
+% ============================================================================
+
+% Route profile
+\newcommand{\route}{\mathcal{R}}                    % Route profile
+\newcommand{\segments}{\mathcal{S}}                 % Route segments
+\newcommand{\grade}[1]{g_{#1}}                      % Grade at segment/position
+\newcommand{\curvature}[1]{\kappa_{#1}}             % Curvature
+\newcommand{\speedlimit}[1]{v_{\text{lim},#1}}     % Speed limit
+
+% Consist
+\newcommand{\consist}{\mathcal{C}}                  % Consist (ordered set of vehicles)
+\newcommand{\caridx}{i}                            % Car index
+\newcommand{\car}[1]{\text{car}_{#1}}              % Car identifier
+
+% Control plan
+\newcommand{\controlplan}{\mathcal{U}}             % Control plan
+\newcommand{\control}[1]{u(#1)}                    % Control at time/position
+\newcommand{\controlvec}{\mathbf{u}}               % Control vector
+
+% State and outputs
+\newcommand{\state}[1]{x_{#1}}                     % State at time t
+\newcommand{\statetime}[1]{x(#1)}                  % State at continuous time
+\newcommand{\energy}{E}                            % Energy/fuel consumption
+\newcommand{\arrivaltime}{T}                       % Arrival time
+\newcommand{\couplerforce}[1]{F_{\text{c},#1}}     % Coupler force at car i
+\newcommand{\constraintmargin}[1]{m_{#1}}          % Constraint margin
+
+% Probabilistic outputs
+\newcommand{\quantile}[1]{Q_{#1}}                  % Quantile at probability p
+\newcommand{\exceedprob}[2]{\mathbb{P}(#1 > #2)}   % Exceedance probability
+
+% Common mathematical notation
+\newcommand{\expect}[1]{\mathbb{E}[#1]}            % Expectation
+\newcommand{\variance}[1]{\text{Var}(#1)}          % Variance
+\newcommand{\normaldist}[2]{\mathcal{N}(#1, #2)}   % Normal distribution
+
+% ============================================================================
+% Labeling Conventions
+% ============================================================================
+% Use prefixes: fig:, tab:, eq:, sec:, ch: for consistent referencing
+
+% ============================================================================
+% SI Units Configuration
+% ============================================================================
+
+\sisetup{
+    per-mode = symbol,
+    inter-unit-product = \ensuremath{{}\cdot{}}
+}

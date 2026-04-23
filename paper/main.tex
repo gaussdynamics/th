@@ -1,0 +1,75 @@
+\documentclass[12pt]{book}
+
+% Load metadata and preamble
+\input{metadata}
+\input{preamble}
+
+\begin{document}
+
+% ============================================================================
+% Front Matter
+% ============================================================================
+
+% Title page
+\begin{titlepage}
+    \centering
+    {\Large \thesisuniversity \par}
+    \vspace{1cm}
+    {\Large \thesisdepartment \par}
+    \vspace{2cm}
+    {\huge \bfseries \thesistitle \par}
+    \vspace{2cm}
+    {\Large \thesisauthor \par}
+    \vspace{2cm}
+    {\large \thesisdate \par}
+\end{titlepage}
+
+% Abstract
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+This thesis presents a hybrid physics-transformer surrogate modeling framework for train system dynamics. The framework combines reduced-order physics models with transformer-based neural networks to enable efficient probabilistic forecasting of energy consumption, arrival times, and safety-critical outputs such as coupler forces. The approach addresses the computational limitations of high-fidelity simulation while maintaining physical plausibility and providing calibrated uncertainty estimates. Validation demonstrates improved accuracy and calibration compared to physics-only baselines across diverse route profiles, consist configurations, and control strategies.
+
+% TODO: Expand abstract with key results and contributions
+
+% Acknowledgments (optional)
+\chapter*{Acknowledgments}
+\addcontentsline{toc}{chapter}{Acknowledgments}
+
+% TODO: Add acknowledgments
+
+% Table of contents
+\tableofcontents
+
+% List of figures
+\listoffigures
+
+% List of tables
+\listoftables
+
+% ============================================================================
+% Main Matter
+% ============================================================================
+
+\mainmatter
+
+% Chapters
+\input{chapters/01_introduction}
+\input{chapters/02_related_work}
+\input{chapters/03_problem_formulation}
+%\input{chapters/04_framework_architecture}
+%\input{chapters/05_data_and_training}
+%\input{chapters/06_evaluation_and_validation}
+%\input{chapters/07_discussion}
+%\input{chapters/08_conclusion_future_work}
+
+% ============================================================================
+% Back Matter
+% ============================================================================
+
+%\backmatter
+
+% Bibliography
+%\printbibliography
+
+\end{document}
