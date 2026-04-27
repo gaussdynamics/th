@@ -250,156 +250,175 @@ The notebook closes the incremental build with a structured discussion of effect
 
 \subsection{Route profile}
 
-A route profile $\route$ defines the track geometry along the path from origin to destination. We represent $\route$ as a sequence of segments $\segments = \{s_1, s_2, \ldots, s_n\}$, where each segment $s_j$ is characterized by:
+A route profile $\route$ provides the exogenous fields sampled by each vehicle as it moves along the track.
+In the reference simulator, $\route$ is a piecewise representation over distance $s$ that supports interpolation of grade, curvature, and speed constraints:
 \begin{itemize}
-    \item Grade $\grade{j}$: elevation change per unit distance (\si{\percent})
-    \item Curvature $\curvature{j}$: track curvature (\si{\per\meter})
-    \item Speed limit $\speedlimit{j}$: maximum allowed speed (\si{\meter\per\second})
-    \item Segment length $\Delta s_j$: distance covered (\si{\meter})
+    \item grade field $\theta(s)$ (or $\sin\theta(s)$ in implementation),
+    \item curvature proxy $\kappa(s)$ when enabled,
+    \item operational constraints such as speed limits $v_{\max}(s)$.
 \end{itemize}
-
-% TODO: Add figure showing example route profile with grade and curvature
+Given vehicle positions $x_i(t)$ from the node tensor, route-dependent forces are evaluated per vehicle at $s=x_i(t)$.
+This keeps the forcing consistent with the tensorized state layout while preserving the classical physics of \cref{sec:classical_ltd_compact,sec:ltd_buildup}.
 
 \subsection{Consist configuration}
 
-A consist $\consist = \{c_1, c_2, \ldots, c_m\}$ is an ordered set of vehicles, where $c_1$ is the lead locomotive and $c_i$ for $i > 1$ are trailing cars. Each vehicle $c_i$ has properties:
+A consist configuration $\consist$ defines the ordered vehicle chain and coupler parameters.
+It is represented as two aligned tables that map directly to tensor channels:
 \begin{itemize}
-    \item Mass $m_i$ (\si{\kilogram})
-    \item Length $L_i$ (\si{\meter})
-    \item Resistance coefficients (Davis equation parameters)
-    \item Coupler type and capacity
+    \item \textbf{Vehicle attributes} for $i=0,\ldots,N-1$: mass, Davis coefficients, traction/brake limits, and actuator constants.
+    \item \textbf{Coupler attributes} for $j=0,\ldots,N-2$: nominal spacing, slack half-width, buff/draft stiffness, and damping parameters.
 \end{itemize}
+Static vehicle attributes are stored as fixed channels of the node tensor $\mathbf{H}$, and static coupler attributes as fixed channels of the edge tensor $\mathbf{E}$.
+This organization is exactly the data schema used by the simulator and by later sequence models.
 
 \subsection{Control plan}
 
-A control plan $\controlplan$ specifies the traction/braking commands as a function of time or position. We represent $\controlplan$ as a sequence $\controlvec = [\control{t_1}, \control{t_2}, \ldots, \control{t_T}]$, where $\control{t}$ is the net force command at time $t$ (normalized to $[-1, 1]$ for full braking to full traction).
-
-% TODO: Add figure showing example control plan over route
+A control plan $\controlplan$ specifies exogenous command signals over time (or equivalent distance-indexed schedules mapped to time during simulation).
+For each powered or braked vehicle, commands are represented as channels $u_{\mathrm{trac},i}(t)$ and $u_{\mathrm{brk},i}(t)$ driving the actuator dynamics in \cref{eq:ltd_actuator_lag}.
+The simulator therefore receives structured inputs as the triplet $(\route,\consist,\controlplan)$ introduced in \cref{eq:simulator_operator}, and produces tensorized trajectories and derived summaries.
 
 \section{Output definitions}
 
-We distinguish three categories of outputs: trajectory-level quantities (how the train state evolves over time), aggregate quantities (single numbers summarizing the run), and risk metrics (probabilistic safety measures).
+The output of one simulation run is a structured object
+\begin{equation}
+    \mathbf{y} = \Bigl(\mathbf{X},\,\mathbf{E}_{\mathrm{hist}},\,\mathbf{s},\,\mathbf{r}\Bigr),
+\end{equation}
+where $\mathbf{X}$ and $\mathbf{E}_{\mathrm{hist}}$ are rollout tensors, $\mathbf{s}$ contains scalar summaries, and $\mathbf{r}$ contains risk-oriented statistics.
 
 \subsection{Trajectory-level outputs}
 
-The simulator produces time histories of longitudinal state and internal forces.
-In classical form, one may write a stacked trajectory $\statetime{t}$ over $t \in [0, T]$; in the tensorized layout of \cref{sec:tensor_state_rep}, the same information is represented by $\mathbf{H}(t)$ and $\mathbf{E}(t)$, or by discrete rollouts $\mathbf{X}_{k,:,:}$ and $\mathbf{E}_{\mathrm{hist},k,:,:}$ at sample times $t_k$.
-Positions, velocities, actuator states, and static attributes appear in $\mathbf{H}$; coupler extensions, relative speeds, forces, and coupler parameters appear in $\mathbf{E}$.
-Accelerations follow by differentiation or from the force balance if needed for post-processing.
-The coupler force in the $i$th interface (force on the rear vehicle of the pair) is one channel of $\mathbf{E}(t)$ and can also be written as a functional of the full state,
+At discrete times $t_k$, the node rollout is $\mathbf{X}_{k,:,:}\in\mathbb{R}^{N\times d_n}$ and the edge rollout is $\mathbf{E}_{\mathrm{hist},k,:,:}\in\mathbb{R}^{(N-1)\times d_e}$.
+These tensors contain the channels defined in \cref{sec:tensor_state_rep}: per-vehicle motion and actuator states in $\mathbf{X}$, and per-coupler extension, relative speed, and force channels in $\mathbf{E}_{\mathrm{hist}}$.
+Classical quantities are recovered directly from selected channels, e.g.\ $x_i(t_k)$, $v_i(t_k)$, and coupler force $F_j(t_k)$.
+For notation, the coupler force channel may be written as
 \begin{equation}
-    \couplerforce{i}(t) = f_i(\route, \consist, \controlplan, t),
+    F_j(t) = f_j\!\bigl(\route,\consist,\controlplan,t\bigr),
     \label{eq:coupler_force}
 \end{equation}
-where $f_i$ denotes the map implied by the physics and constitutive laws (\cref{sec:ltd_buildup}).
+where $f_j$ is induced by the simulator dynamics and constitutive laws.
 
 \subsection{Aggregate outputs}
 
-Given inputs $(\route, \consist, \controlplan)$, the simulator also produces scalar summaries:
+Aggregate outputs are deterministic functionals of rollout tensors for fixed parameters.
+Typical summaries used throughout this thesis include
 \begin{align}
-    \energy &= \int_0^T P(t) \, dt \label{eq:energy} \\
-    \arrivaltime &= T \label{eq:arrival_time}
+    E_{\mathrm{trip}} &= \int_0^{T} P_{\mathrm{trac}}(t)\,\mathrm{d}t, \label{eq:energy} \\
+    T_{\mathrm{arr}} &= \inf\{t:\;x_{\mathrm{lead}}(t)\ge s_{\mathrm{target}}\}, \label{eq:arrival_time} \\
+    F_{\max} &= \max_{t,j}\,|F_j(t)|.
 \end{align}
-where $P(t)$ is instantaneous power consumption.
+All such metrics are post-processing maps on $(\mathbf{X},\mathbf{E}_{\mathrm{hist}})$ and therefore remain consistent with the tensorized representation.
 
 \subsection{Risk metrics}
 
-Beyond point values, we care about the probability that safety constraints are violated. For a threshold $\tau$ (e.g., coupler capacity), we define the exceedance probability:
+For uncertainty-aware forecasting, risk is expressed as probabilities and quantiles of tensor-derived observables.
+For threshold $\tau$ and quantity $Z$ (for example $F_{\max}$ or $|F_j(t)|$), the exceedance probability is
 \begin{equation}
-    \exceedprob{\couplerforce{i}(t)}{\tau} = \mathbb{P}(\couplerforce{i}(t) > \tau)
+    \mathbb{P}(Z>\tau).
     \label{eq:exceedance_prob}
 \end{equation}
-We also predict quantiles $\quantile{p}$ such that $\mathbb{P}(Y \leq \quantile{p}) = p$ for $p \in \{0.05, 0.25, 0.50, 0.75, 0.95\}$.
-
-% TODO: Add figure showing quantile predictions vs ground truth
+Likewise, predictive quantiles satisfy $\mathbb{P}(Y\le Q_p)=p$ for selected levels $p$.
+Both quantities are evaluated on variables computed from node/edge rollouts, so no separate non-tensor output definition is required.
 
 \section{Uncertainty sources}
 \label{sec:uncertainty_sources}
 
-Uncertainty in train dynamics predictions arises from:
+Uncertainty is introduced through a random vector $\xi$ that perturbs physically meaningful components of the structured input and model:
 \begin{enumerate}
-    \item \textbf{Model uncertainty}: Incomplete physics (simplified resistance models, unknown friction coefficients)
-    \item \textbf{Parameter uncertainty}: Mass estimates, coupler stiffness, brake effectiveness
-    \item \textbf{Environmental uncertainty}: Wind, temperature effects on adhesion
-    \item \textbf{Operational uncertainty}: Driver behavior, signal delays
+    \item \textbf{Vehicle and coupler parameters:} mass, resistance coefficients, slack and stiffness values, brake/traction effectiveness.
+    \item \textbf{Route and environment:} grade/curvature profile errors, adhesion-related effects, and external disturbances.
+    \item \textbf{Operational realization:} command timing and execution variability.
+    \item \textbf{Model discrepancy:} residual mismatch between reference simulator and real operations.
 \end{enumerate}
-
-% TODO: Quantify typical uncertainty ranges from literature/sensitivity analysis
 
 \subsection{Formal Treatment of Uncertainty}
 
-To make the probabilistic formulation rigorous, we introduce a random vector $\xi$ representing all uncertain factors (mass errors, friction variation, environmental conditions, etc.). We write $\xi \sim p(\xi)$ to denote that $\xi$ is drawn from a distribution $p$. The simulator output then depends on $\xi$:
+Let $\xi\sim p(\xi)$ denote the joint uncertainty law.
+Then the simulator operator from \cref{eq:simulator_operator} becomes
 \begin{equation}
-    \mathbf{y} = F(\route, \consist, \controlplan; \xi),
+    \mathbf{y}(\xi)=F(\route,\consist,\controlplan;\xi),
     \label{eq:probabilistic_simulator}
 \end{equation}
-consistent with the deterministic output $\mathbf{y}$ in \cref{eq:simulator_operator}.
-For fixed inputs $(\route, \consist, \controlplan)$, different realizations of $\xi$ yield different outputs. The exceedance probability is now defined precisely as the probability over $\xi$:
+and every tensor channel and derived metric becomes a random variable.
+For example, the formal exceedance probability for coupler interface $j$ is
 \begin{equation}
-    \mathbb{P}_{\xi}(\couplerforce{i}(t) > \tau) = \int_{\{\xi : \couplerforce{i}(t;\xi) > \tau\}} p(\xi) \, d\xi
+    \mathbb{P}_{\xi}\!\bigl(F_j(t;\xi)>\tau\bigr)
+    =\int_{\{\xi:\,F_j(t;\xi)>\tau\}}p(\xi)\,\mathrm{d}\xi.
     \label{eq:exceedance_prob_formal}
 \end{equation}
+In practice, these probabilities are approximated by Monte Carlo simulation or by probabilistic surrogates trained on ensembles generated from the same tensorized simulator.
 
 \section{Supervised Learning Objective}
 
-Given a dataset $\mathcal{D} = \{(\route^{(k)}, \consist^{(k)}, \controlplan^{(k)}, \mathbf{y}^{(k)})\}_{k=1}^N$ where $\mathbf{y}^{(k)}$ contains ground truth outputs from high-fidelity simulation, we seek a surrogate model $f_\theta$ that minimizes:
+Training data are generated by the reference simulator in \cref{sec:ltd_buildup}:
 \begin{equation}
-    \mathcal{L}(\theta) = \sum_{k=1}^N \left[ \mathcal{L}_{\text{quantile}}(\theta; \mathbf{y}^{(k)}) + \lambda_{\text{cal}} \mathcal{L}_{\text{cal}}(\theta; \mathbf{y}^{(k)}) + \lambda_{\text{phys}} \mathcal{L}_{\text{phys}}(\theta) \right]
+    \mathcal{D}=\left\{
+    \bigl(\route^{(k)},\consist^{(k)},\controlplan^{(k)},\mathbf{X}^{(k)},\mathbf{E}_{\mathrm{hist}}^{(k)},\mathbf{s}^{(k)}\bigr)
+    \right\}_{k=1}^{M}.
+\end{equation}
+The surrogate $f_\theta$ maps structured inputs to trajectory and summary predictions in the same tensor layout.
+A generic training objective is
+\begin{equation}
+    \mathcal{L}(\theta)=
+    \lambda_X \mathcal{L}_X +
+    \lambda_E \mathcal{L}_E +
+    \lambda_S \mathcal{L}_S +
+    \lambda_Q \mathcal{L}_{Q} +
+    \lambda_P \mathcal{L}_{P},
     \label{eq:training_loss}
 \end{equation}
-where $\mathcal{L}_{\text{quantile}}$ is the quantile regression loss, $\mathcal{L}_{\text{cal}}$ encourages calibration, and $\mathcal{L}_{\text{phys}}$ enforces physics consistency.
+with rollout losses on node and edge tensors, summary losses, probabilistic losses (when quantiles are predicted), and optional physics regularization.
 
 \subsection{Loss Term Definitions}
 
-\textbf{Quantile regression loss.} For a target variable $Y$ and predicted quantile $\hat{Q}_p$ at probability $p$, the pinball (quantile) loss is
+\textbf{Rollout losses.} $\mathcal{L}_X$ and $\mathcal{L}_E$ compare predicted and reference tensor channels over time, vehicle/coupler index, and feature channels (with masking for variable train length where needed).
+
+\textbf{Summary loss.} $\mathcal{L}_S$ penalizes errors on scalar outputs such as trip energy, arrival time, or peak coupler force.
+
+\textbf{Quantile loss.} For target $y$ and predicted quantile $\hat q_p$, the pinball loss is
 \begin{equation}
-    \rho_p(y, \hat{q}) = 
+    \rho_p(y,\hat q_p)=
     \begin{cases}
-        p (y - \hat{q}) & \text{if } y \geq \hat{q} \\
-        (1-p) (\hat{q} - y) & \text{if } y < \hat{q}
+        p(y-\hat q_p), & y\ge \hat q_p,\\
+        (1-p)(\hat q_p-y), & y<\hat q_p,
     \end{cases}
     \label{eq:pinball_loss}
 \end{equation}
-The quantile loss $\mathcal{L}_{\text{quantile}}$ sums $\rho_p$ over all quantile levels and output variables.
+and $\mathcal{L}_{Q}$ aggregates $\rho_p$ over selected quantile levels and predicted variables.
 
-\textbf{Calibration loss.} A model is \emph{calibrated} if, among predictions with nominal confidence $p$, the true fraction of outcomes falling within the predicted interval is approximately $p$. $\mathcal{L}_{\text{cal}}$ penalizes deviations from this property.
+\textbf{Physics regularization.} $\mathcal{L}_{P}$ is optional and penalizes violations of known structural constraints (for example inconsistency between predicted coupler-force channels and adjacent vehicle dynamics), encouraging physically plausible trajectories.
 
-\textbf{Physics regularization.} $\mathcal{L}_{\text{phys}}$ encourages the surrogate to satisfy known physical constraints (e.g., energy balance, force equilibrium).
-
-% TODO: Define specific loss formulations in Chapter 5
+\textbf{Remark.} Chapter~5 instantiates these terms for the specific architecture and training regime.
 
 \section{Conceptual Pipeline}
 
-The overall workflow can be summarized as a pipeline:
+The end-to-end workflow follows the same tensorized objects from simulation to learning:
 
 \begin{enumerate}
-    \item \textbf{Inputs}: Route, consist, and control plan are specified.
-    \item \textbf{High-fidelity simulation}: The deterministic operator $F$ (or its probabilistic counterpart with $\xi$) is evaluated to produce outputs.
-    \item \textbf{Dataset}: Many such runs are collected, forming $\mathcal{D}$.
-    \item \textbf{Surrogate operator}: A neural network $f_\theta$ is trained to approximate $F$ (and its probabilistic outputs).
-    \item \textbf{Probabilistic outputs}: At inference time, the surrogate produces quantiles, exceedance probabilities, and point predictions without running the expensive simulator.
+    \item \textbf{Structured inputs}: Specify $(\route,\consist,\controlplan)$ and, for uncertainty studies, sample $\xi$.
+    \item \textbf{Reference simulation}: Run the tensorized LTD simulator to obtain $(\mathbf{X},\mathbf{E}_{\mathrm{hist}},\mathbf{s})$.
+    \item \textbf{Dataset assembly}: Store many such runs as supervised pairs for training and validation.
+    \item \textbf{Surrogate training}: Fit $f_\theta$ to predict rollout tensors and derived summaries (and quantiles when probabilistic outputs are required).
+    \item \textbf{Forecasting}: Use $f_\theta$ for fast scenario evaluation and risk estimation in the same output space as the simulator.
 \end{enumerate}
 
 \begin{figure}[h]
 \centering
-% TODO: insert system diagram
-\caption{Conceptual pipeline from structured inputs to probabilistic outputs via high-fidelity simulation and surrogate modeling.}
+\caption{Conceptual pipeline from structured inputs to tensorized simulator outputs and surrogate forecasting.}
 \label{fig:problem_pipeline}
 \end{figure}
 
 \section{Evaluation Targets}
 
-We evaluate the surrogate model on four dimensions:
+Evaluation is defined on the same outputs as the training objective:
 
-\textbf{Accuracy.} Mean absolute error (MAE) and root mean squared error (RMSE) for deterministic outputs (energy, arrival time).
+\textbf{Trajectory fidelity.} Channel-wise rollout errors on $\mathbf{X}$ and $\mathbf{E}_{\mathrm{hist}}$ (for example MAE/RMSE on velocity and coupler-force channels).
 
-\textbf{Calibration.} Expected calibration error (ECE), reliability diagrams. A model is well-calibrated if stated confidence intervals match empirical coverage.
+\textbf{Summary accuracy.} Errors on trip-level metrics such as energy, arrival time, and peak in-train force.
 
-\textbf{Safety.} Constraint violation rates; alignment of exceedance probabilities with empirical rates.
+\textbf{Probabilistic quality.} Coverage and calibration of predicted quantiles and exceedance probabilities for safety-relevant variables.
 
-\textbf{Efficiency.} Inference time compared to high-fidelity simulation, measured as speedup factor.
+\textbf{Operational utility.} Inference-time speedup relative to the reference simulator and robustness across varied consist lengths and route conditions.
 
-% TODO: Reference evaluation chapter for detailed metrics
 
 \section{Chapter summary}
 
