@@ -1,0 +1,320 @@
+{
+  "schema_version": 1,
+  "name": "Generated mixed_manifest 0259",
+  "description": "Procedurally generated (train): 49 cars, 3 loco(s), ~4062 t total.",
+  "cars": [
+    {
+      "car_type_id": "loco_gp38",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "loco_gp38",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "loco_gp38",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 46263.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 92005.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 85982.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 90984.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 88710.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 74546.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 74489.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 36011.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 40416.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 77038.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 79019.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 75993.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 35742.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 79966.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 74427.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 42727.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 24084.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 33490.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 21452.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 53257.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 24571.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 60780.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 66671.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 62601.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 68545.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    }
+  ]
+}

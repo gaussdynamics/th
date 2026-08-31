@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "name": "Generated unit_water 0417",
+  "description": "Procedurally generated (train): 15 cars, 1 loco(s), ~1261 t total.",
+  "cars": [
+    {
+      "car_type_id": "loco_gp38",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 69992.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 27409.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 72013.7
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 78496.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 77292.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 68632.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 68336.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 44093.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 75901.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 71852.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "tank_car_water",
+      "overrides": {
+        "mass_lading_kg": 72370.0
+      },
+      "label": ""
+    }
+  ]
+}

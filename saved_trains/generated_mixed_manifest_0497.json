@@ -1,0 +1,499 @@
+{
+  "schema_version": 1,
+  "name": "Generated mixed_manifest 0497",
+  "description": "Procedurally generated (train): 76 cars, 3 loco(s), ~6680 t total.",
+  "cars": [
+    {
+      "car_type_id": "loco_sd70",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "loco_sd70",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "loco_sd70",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 61551.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 56025.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 34681.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 48453.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 87629.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 84518.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 87479.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 86521.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 56675.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 86203.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "grain_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 80652.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 20314.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 54270.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 53056.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 47212.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 50224.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 52865.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 54542.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 52036.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 54809.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 49320.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "boxcar_manifest_loaded",
+      "overrides": {
+        "mass_lading_kg": 19451.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 47006.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 43859.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 28207.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 42667.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "ballast_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 68267.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "ballast_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 95886.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "ballast_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 99303.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "ballast_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 90984.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "freight_car_generic",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 80792.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 46732.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 83790.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 87412.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 81230.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 81923.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 88833.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 87362.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 63210.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 87665.7
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 89704.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 90290.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 83312.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "gondola_scrap_loaded",
+      "overrides": {
+        "mass_lading_kg": 87630.9
+      },
+      "label": ""
+    }
+  ]
+}

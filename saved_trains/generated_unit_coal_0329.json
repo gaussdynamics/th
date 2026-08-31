@@ -1,0 +1,374 @@
+{
+  "schema_version": 1,
+  "name": "Generated unit_coal 0329",
+  "description": "Procedurally generated (train): 53 cars, 2 loco(s), ~4028 t total.",
+  "cars": [
+    {
+      "car_type_id": "loco_sd70",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "loco_sd70",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 64540.7
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 68172.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 60163.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 47483.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 66559.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 62317.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 60670.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 60620.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 33725.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 61270.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 64424.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 69101.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 69971.7
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 36805.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 44489.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 63039.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 62299.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 33358.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 62642.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 67196.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 60419.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 68970.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 24691.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 27699.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 66763.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 48835.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 63226.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 34454.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 60313.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 63632.4
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 69170.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 68825.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 30683.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 26510.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 65730.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 63874.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 64955.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 68735.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 38184.7
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "coal_hopper_loaded",
+      "overrides": {
+        "mass_lading_kg": 63201.5
+      },
+      "label": ""
+    }
+  ]
+}

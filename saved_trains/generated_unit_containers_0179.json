@@ -1,0 +1,271 @@
+{
+  "schema_version": 1,
+  "name": "Generated unit_containers 0179",
+  "description": "Procedurally generated (train): 38 cars, 1 loco(s), ~2599 t total.",
+  "cars": [
+    {
+      "car_type_id": "loco_sd70",
+      "overrides": {},
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 28621.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 44378.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 25813.1
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 43033.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 29167.7
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 45489.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 44973.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 42784.7
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 44259.5
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 45352.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 43426.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 30576.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 14681.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 47845.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 41983.8
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 43852.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 41007.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 15149.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 45441.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 43826.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 46865.6
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 33114.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 45907.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 16132.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 45610.0
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 41450.9
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 32990.7
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 46560.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 46382.3
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 19839.2
+      },
+      "label": ""
+    },
+    {
+      "car_type_id": "intermodal_well_car_loaded",
+      "overrides": {
+        "mass_lading_kg": 0.0
+      },
+      "label": ""
+    }
+  ]
+}

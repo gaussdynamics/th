@@ -1,0 +1,18 @@
+{
+  "id": "loco_gp38",
+  "name": "Locomotive \u2014 GP38 (road switcher)",
+  "category": "locomotive",
+  "length_m": 18.6,
+  "mass_tare_kg": 115000.0,
+  "lading": "",
+  "mass_lading_kg": 0.0,
+  "davis_A": 750.0,
+  "davis_B": 14.0,
+  "davis_C": 0.75,
+  "can_traction": true,
+  "F_trac_max_N": 180000.0,
+  "F_brk_max_N": 220000.0,
+  "coupler_type": "standard_knuckle",
+  "notes": "Second, lower-power road unit for shorter/manifest trains.",
+  "schema_version": 1
+}

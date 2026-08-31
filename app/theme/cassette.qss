@@ -1,0 +1,168 @@
+/* ============================================================
+   RailLab — cassette-futurism theme
+   Amber-on-charcoal, molded-plastic bevels, mono type.
+   Tune freely; this is the skeleton baseline.
+   ============================================================ */
+
+* {
+    font-family: "VT323", "IBM Plex Mono", "DejaVu Sans Mono", monospace;
+    font-size: 15px;
+}
+
+QMainWindow,
+QWidget {
+    background: #1b1a17;
+    color: #e8c170;
+}
+
+/* ---------- left nav rail ---------- */
+QListWidget#navRail {
+    background: #141310;
+    border: none;
+    border-right: 2px solid #0d0c0a;
+    outline: 0;
+    padding-top: 10px;
+}
+QListWidget#navRail::item {
+    padding: 12px 18px;
+    margin: 2px 0;
+    color: #8a7d5a;
+    letter-spacing: 2px;
+    border-left: 3px solid transparent;
+}
+QListWidget#navRail::item:hover {
+    color: #e8c170;
+    background: #201e1a;
+}
+QListWidget#navRail::item:selected {
+    color: #9ef0a0;
+    background: #221f1a;
+    border-left: 3px solid #9ef0a0;
+}
+
+/* ---------- screen scaffolding ---------- */
+QStackedWidget#screenStack {
+    background: #1b1a17;
+}
+QLabel#screenTitle {
+    color: #e8c170;
+    font-size: 28px;
+    letter-spacing: 4px;
+}
+QLabel#screenSubtitle {
+    color: #8a7d5a;
+    font-size: 15px;
+}
+
+/* ---------- molded panel ---------- */
+QGroupBox {
+    background: #2a2722;
+    border: 2px solid #0d0c0a;
+    border-top-color: #46413a;     /* raised: light top/left */
+    border-left-color: #46413a;
+    border-radius: 2px;
+    margin-top: 16px;
+    padding: 14px;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: #8a7d5a;
+    letter-spacing: 2px;
+}
+
+/* ---------- chunky buttons with travel ---------- */
+QPushButton {
+    background: #2f2b25;
+    color: #e8c170;
+    border: 2px solid #0d0c0a;
+    border-top-color: #514a40;
+    border-left-color: #514a40;
+    padding: 6px 16px;
+    letter-spacing: 1px;
+}
+QPushButton:hover {
+    background: #38332b;
+}
+QPushButton:pressed {
+    background: #221f1a;
+    border-top-color: #0d0c0a;
+    border-left-color: #0d0c0a;
+    border-bottom-color: #514a40;
+    border-right-color: #514a40;
+}
+QPushButton:disabled {
+    color: #5b5345;
+    background: #232019;
+    border-top-color: #322e27;
+    border-left-color: #322e27;
+}
+QPushButton#runButton {
+    color: #9ef0a0;
+    font-size: 18px;
+    padding: 8px 26px;
+}
+QPushButton#runButton:disabled {
+    color: #4a6b4c;
+}
+
+/* ---------- CRT-style readout ---------- */
+QLabel#readout {
+    background: #0b1a0b;
+    color: #6cff7a;
+    border: 2px solid #0d0c0a;
+    padding: 4px 8px;
+}
+
+/* ---------- status bar ---------- */
+QStatusBar#statusBar {
+    background: #141310;
+    border-top: 2px solid #0d0c0a;
+    color: #8a7d5a;
+}
+QStatusBar#statusBar QLabel {
+    color: #8a7d5a;
+}
+QLabel#statusText {
+    color: #9ef0a0;
+    letter-spacing: 2px;
+}
+QStatusBar::item {
+    border: none;
+}
+
+/* ---------- dials & sliders (used in later steps) ---------- */
+QDial {
+    background: #2a2722;
+}
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #0d0c0a;
+    border-radius: 2px;
+}
+QSlider::handle:horizontal {
+    width: 16px;
+    margin: -6px 0;
+    background: #e8c170;
+    border: 2px solid #0d0c0a;
+}
+
+/* ---------- scrollbars ---------- */
+QScrollBar:vertical {
+    background: #141310;
+    width: 12px;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background: #3a352d;
+    min-height: 24px;
+    border: 1px solid #0d0c0a;
+}
+QScrollBar::handle:vertical:hover {
+    background: #514a40;
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0;
+}

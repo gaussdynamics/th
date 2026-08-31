@@ -1,0 +1,18 @@
+{
+  "id": "grain_hopper_loaded",
+  "name": "Covered hopper \u2014 grain (loaded)",
+  "category": "hopper",
+  "length_m": 17.0,
+  "mass_tare_kg": 29000.0,
+  "lading": "grain",
+  "mass_lading_kg": 91000.0,
+  "davis_A": 620.0,
+  "davis_B": 12.5,
+  "davis_C": 0.72,
+  "can_traction": false,
+  "F_trac_max_N": 0.0,
+  "F_brk_max_N": 250000.0,
+  "coupler_type": "standard_knuckle",
+  "notes": "Covered hopper, grain unit-train car.",
+  "schema_version": 1
+}

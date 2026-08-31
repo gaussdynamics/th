@@ -67,3 +67,19 @@ Thumbs.db
 # Local latexmk outputs
 *.dvi
 *.ps
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+*.zip
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.toc
+paper/*.lof
+paper/*.lot
+paper/*.bcf
+paper/*.blg
+paper/*.fls
+paper/*.fdb_latexmk
+paper/*.run.xml

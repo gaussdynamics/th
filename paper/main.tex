@@ -28,9 +28,15 @@
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 
-This thesis presents a hybrid physics-transformer surrogate modeling framework for train system dynamics. The framework combines reduced-order physics models with transformer-based neural networks to enable efficient probabilistic forecasting of energy consumption, arrival times, and safety-critical outputs such as coupler forces. The approach addresses the computational limitations of high-fidelity simulation while maintaining physical plausibility and providing calibrated uncertainty estimates. Validation demonstrates improved accuracy and calibration compared to physics-only baselines across diverse route profiles, consist configurations, and control strategies.
+Freight-train longitudinal dynamics (LTD) simulators capture nonlinear slack couplers, per-vehicle grade and curvature, actuator lag, and power-limited traction with high fidelity, but their computational cost --- tens to hundreds of CPU-hours per scenario --- makes them impractical for the repeated evaluation that control design and operational planning require. This thesis develops a fast, train-agnostic surrogate of longitudinal train dynamics that serves as a differentiable simulation backbone for fuel-optimal control of freight consists.
 
-% TODO: Expand abstract with key results and contributions
+The consist is represented as a chain graph, with vehicles as nodes and couplers as edges, using a tensorized node/edge state ($\mathbf{H}$, $\mathbf{E}$) that generalizes across arbitrary train length without padding or masking. A message-passing graph neural network learns a physics-residual correction to a known force-balance right-hand side, integrated as a neural ODE, so predictions inherit the consist's chain topology and remain differentiable end to end for downstream control. This design targets structural generalization: models trained on one range of consist sizes and route conditions should extrapolate to unseen train lengths and corridors, rather than relying on the fixed-length token handling that sequence models require.
+
+Training data are produced by a reference LTD simulator, developed and validated stage by stage (single-vehicle traction, linear and nonlinear slack couplers, $N$-vehicle assemblies, per-vehicle route sampling, and actuator/power-limited traction), driven along real-terrain route profiles derived from elevation and alignment data. The surrogate is evaluated against physics-only and physics-residual MLP baselines, and against a transformer variant demoted to an ablation, on trajectory fidelity, trip-level summary accuracy (energy, arrival time, peak coupler force), and generalization across held-out consist sizes, grades, and corridors.
+
+The trained surrogate then serves as the world model for a fuel-optimal control demonstration: minimizing trip energy on held-out real routes subject to speed limits and coupler-force safety constraints, using model-predictive control that exploits the surrogate's analytic gradients. Throughout, we are explicit that simulator parameters are illustrative rather than calibrated to a specific real train, so the claims concern fidelity to the reference simulator, structural generalization across consist size and route, and control performance under that model --- not fidelity to real rolling stock.
+
+% TODO: Insert quantitative results (accuracy, speedup, generalization gaps, control energy savings) once Ch. 6-7 experiments are complete.
 
 % Acknowledgments (optional)
 \chapter*{Acknowledgments}
@@ -57,6 +63,9 @@ This thesis presents a hybrid physics-transformer surrogate modeling framework f
 \input{chapters/01_introduction}
 \input{chapters/02_related_work}
 \input{chapters/03_problem_formulation}
+\input{chapters/04_reference_simulator}
+\input{chapters/05_route_acquisition}
+\input{chapters/06_raillab}
 %\input{chapters/04_framework_architecture}
 %\input{chapters/05_data_and_training}
 %\input{chapters/06_evaluation_and_validation}

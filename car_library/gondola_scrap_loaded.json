@@ -1,0 +1,18 @@
+{
+  "id": "gondola_scrap_loaded",
+  "name": "Gondola \u2014 scrap steel (loaded)",
+  "category": "gondola",
+  "length_m": 16.0,
+  "mass_tare_kg": 27000.0,
+  "lading": "scrap steel",
+  "mass_lading_kg": 93000.0,
+  "davis_A": 610.0,
+  "davis_B": 12.0,
+  "davis_C": 0.6,
+  "can_traction": false,
+  "F_trac_max_N": 0.0,
+  "F_brk_max_N": 250000.0,
+  "coupler_type": "standard_knuckle",
+  "notes": "Open gondola, scrap/aggregate unit-train car.",
+  "schema_version": 1
+}

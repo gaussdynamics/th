@@ -1,0 +1,18 @@
+{
+  "id": "coal_hopper_loaded",
+  "name": "Hopper \u2014 coal (loaded)",
+  "category": "hopper",
+  "length_m": 12.0,
+  "mass_tare_kg": 30000.0,
+  "lading": "coal",
+  "mass_lading_kg": 70000.0,
+  "davis_A": 600.0,
+  "davis_B": 12.0,
+  "davis_C": 0.7,
+  "can_traction": false,
+  "F_trac_max_N": 0.0,
+  "F_brk_max_N": 250000.0,
+  "coupler_type": "standard_knuckle",
+  "notes": "Worked example of the tare+lading split.",
+  "schema_version": 1
+}

@@ -1,0 +1,330 @@
+/* ============================================================
+   RailLab — "Panel" theme
+   Gray windows, sunken inset panes (cells set into the window),
+   raised tactile beveled buttons. Minecraft / Windows-XP family.
+
+   Bevel convention:
+     RAISED  = light top/left, dark bottom/right   (buttons, window chrome)
+     SUNKEN  = dark top/left, light bottom/right    (panes, slots, inputs)
+   ============================================================ */
+
+* {
+    font-family: "Tahoma", "Segoe UI", "DejaVu Sans", sans-serif;
+    font-size: 13px;
+    color: #2b2b2b;
+}
+
+QMainWindow,
+QWidget {
+    background: #c6c6c6;
+}
+
+/* ---------- left nav rail: a column of tactile tabs ---------- */
+QListWidget#navRail {
+    background: #c6c6c6;
+    border: none;
+    border-right: 2px solid #8b8b8b;
+    outline: 0;
+    padding: 8px 6px;
+}
+QListWidget#navRail::item {
+    background: #c6c6c6;
+    color: #2b2b2b;
+    padding: 10px 12px;
+    margin: 4px 1px;
+    /* raised */
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #5a5a5a;
+    border-right: 2px solid #5a5a5a;
+}
+QListWidget#navRail::item:hover {
+    background: #d6d6d6;
+}
+QListWidget#navRail::item:selected {
+    background: #b6b6b6;
+    color: #1f3d1f;
+    /* pressed / sunken */
+    border-top: 2px solid #5a5a5a;
+    border-left: 2px solid #5a5a5a;
+    border-bottom: 2px solid #ffffff;
+    border-right: 2px solid #ffffff;
+}
+
+/* ---------- screen scaffolding ---------- */
+QStackedWidget#screenStack {
+    background: #c6c6c6;
+}
+
+/* route list: sunken inset panel */
+QListWidget#routeList {
+    background: #b0b0b0;
+    color: #1c1c1c;
+    outline: 0;
+    padding: 4px;
+    border-top: 2px solid #6e6e6e;
+    border-left: 2px solid #6e6e6e;
+    border-bottom: 2px solid #ededed;
+    border-right: 2px solid #ededed;
+}
+QListWidget#routeList::item {
+    padding: 7px 8px;
+    margin: 1px 0;
+}
+QListWidget#routeList::item:hover {
+    background: #bcbcbc;
+}
+QListWidget#routeList::item:selected {
+    background: #6aa84f;
+    color: #14240a;
+}
+
+/* info-panel key labels */
+QLabel#infoKey {
+    color: #3a3a3a;
+}
+QLabel#screenTitle {
+    color: #2b2b2b;
+    font-size: 22px;
+    font-weight: bold;
+}
+QLabel#screenSubtitle {
+    color: #4a4a4a;
+    font-size: 13px;
+}
+
+/* ---------- inset pane: the darker cell set into the window ---------- */
+QGroupBox {
+    background: #b8b8b8;
+    margin-top: 18px;
+    padding: 14px;
+    /* sunken */
+    border-top: 2px solid #6e6e6e;
+    border-left: 2px solid #6e6e6e;
+    border-bottom: 2px solid #ededed;
+    border-right: 2px solid #ededed;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 8px;
+    padding: 2px 8px;
+    color: #2b2b2b;
+    font-weight: bold;
+    /* a small raised tab carrying the label */
+    background: #c6c6c6;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #5a5a5a;
+    border-right: 2px solid #5a5a5a;
+}
+
+/* ---------- tactile buttons ---------- */
+QPushButton {
+    background: #c6c6c6;
+    color: #2b2b2b;
+    padding: 6px 16px;
+    min-height: 16px;
+    /* raised */
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #5a5a5a;
+    border-right: 2px solid #5a5a5a;
+}
+QPushButton:hover {
+    background: #d6d6d6;
+}
+QPushButton:pressed {
+    background: #b6b6b6;
+    /* sunken */
+    border-top: 2px solid #5a5a5a;
+    border-left: 2px solid #5a5a5a;
+    border-bottom: 2px solid #ffffff;
+    border-right: 2px solid #ffffff;
+}
+QPushButton:disabled {
+    color: #8a8a8a;
+    background: #c2c2c2;
+    border-top-color: #dedede;
+    border-left-color: #dedede;
+    border-bottom-color: #9a9a9a;
+    border-right-color: #9a9a9a;
+}
+/* primary action — soft Minecraft green */
+QPushButton#runButton {
+    background: #9cc47f;
+    color: #1f3010;
+    font-weight: bold;
+    padding: 8px 26px;
+    border-top: 2px solid #d6efc4;
+    border-left: 2px solid #d6efc4;
+    border-bottom: 2px solid #4f7a39;
+    border-right: 2px solid #4f7a39;
+}
+QPushButton#runButton:hover {
+    background: #a9d189;
+}
+QPushButton#runButton:pressed {
+    background: #88b06d;
+    border-top: 2px solid #4f7a39;
+    border-left: 2px solid #4f7a39;
+    border-bottom: 2px solid #d6efc4;
+    border-right: 2px solid #d6efc4;
+}
+QPushButton#runButton:disabled {
+    background: #b6c4ad;
+    color: #7c8a73;
+    border-top-color: #cdd6c6;
+    border-left-color: #cdd6c6;
+    border-bottom-color: #8a9a80;
+    border-right-color: #8a9a80;
+}
+
+/* ---------- inset display "slot" (readouts) ---------- */
+QLabel#readout {
+    background: #8b8b8b;
+    color: #161616;
+    padding: 4px 8px;
+    border-top: 2px solid #5a5a5a;
+    border-left: 2px solid #5a5a5a;
+    border-bottom: 2px solid #d2d2d2;
+    border-right: 2px solid #d2d2d2;
+}
+
+/* ---------- editable inputs (used in later steps): sunken ---------- */
+QLineEdit,
+QSpinBox,
+QDoubleSpinBox,
+QComboBox,
+QPlainTextEdit,
+QTextEdit {
+    background: #dcdcdc;
+    color: #1c1c1c;
+    selection-background-color: #6aa84f;
+    selection-color: #ffffff;
+    padding: 3px 5px;
+    border-top: 2px solid #5a5a5a;
+    border-left: 2px solid #5a5a5a;
+    border-bottom: 2px solid #ededed;
+    border-right: 2px solid #ededed;
+}
+QComboBox::drop-down {
+    width: 18px;
+    border-left: 2px solid #8b8b8b;
+}
+
+/* ---------- lists / tables (consist builder, route list): sunken ---------- */
+QTableView,
+QListView,
+QTreeView {
+    background: #b0b0b0;
+    alternate-background-color: #b8b8b8;
+    gridline-color: #8b8b8b;
+    color: #1c1c1c;
+    selection-background-color: #6aa84f;
+    selection-color: #14240a;
+    outline: 0;
+    border-top: 2px solid #6e6e6e;
+    border-left: 2px solid #6e6e6e;
+    border-bottom: 2px solid #ededed;
+    border-right: 2px solid #ededed;
+}
+QHeaderView::section {
+    background: #c6c6c6;
+    color: #2b2b2b;
+    padding: 4px 8px;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #5a5a5a;
+    border-right: 2px solid #5a5a5a;
+}
+
+/* ---------- status bar: raised strip ---------- */
+QStatusBar#statusBar {
+    background: #c6c6c6;
+    border-top: 2px solid #ffffff;
+    color: #2b2b2b;
+}
+QStatusBar#statusBar QLabel {
+    color: #2b2b2b;
+}
+QLabel#statusText {
+    color: #2f5d2f;
+    font-weight: bold;
+}
+QStatusBar::item {
+    border: none;
+}
+
+/* ---------- sliders & dials: sunken track, raised handle ---------- */
+QSlider::groove:horizontal {
+    height: 8px;
+    background: #8b8b8b;
+    border-top: 2px solid #5a5a5a;
+    border-left: 2px solid #5a5a5a;
+    border-bottom: 2px solid #d2d2d2;
+    border-right: 2px solid #d2d2d2;
+}
+QSlider::handle:horizontal {
+    width: 16px;
+    margin: -7px 0;
+    background: #c6c6c6;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #5a5a5a;
+    border-right: 2px solid #5a5a5a;
+}
+QDial {
+    background: #b8b8b8;
+}
+
+/* ---------- scrollbars: XP-style raised thumb on sunken track ---------- */
+QScrollBar:vertical {
+    background: #b0b0b0;
+    width: 16px;
+    margin: 0;
+    border-left: 2px solid #8b8b8b;
+}
+QScrollBar::handle:vertical {
+    background: #c6c6c6;
+    min-height: 28px;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #5a5a5a;
+    border-right: 2px solid #5a5a5a;
+}
+QScrollBar::handle:vertical:hover {
+    background: #d6d6d6;
+}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    background: #c6c6c6;
+    height: 16px;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #5a5a5a;
+    border-right: 2px solid #5a5a5a;
+}
+QScrollBar:horizontal {
+    background: #b0b0b0;
+    height: 16px;
+    margin: 0;
+    border-top: 2px solid #8b8b8b;
+}
+QScrollBar::handle:horizontal {
+    background: #c6c6c6;
+    min-width: 28px;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #5a5a5a;
+    border-right: 2px solid #5a5a5a;
+}
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {
+    background: #c6c6c6;
+    width: 16px;
+    border-top: 2px solid #ffffff;
+    border-left: 2px solid #ffffff;
+    border-bottom: 2px solid #5a5a5a;
+    border-right: 2px solid #5a5a5a;
+}

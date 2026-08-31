@@ -58,6 +58,23 @@ def simulate_train(
     return {"sol": sol, "F_coupler": fhist, "N": n}
 
 
+def materialize_commands(scenario: ExtendedTrainScenario, t: np.ndarray) -> "tuple[np.ndarray, np.ndarray]":
+    """Sample ``scenario.u_trac_cmd``/``u_brk_cmd`` onto a time grid.
+
+    The scenario stores commands as callables ``(t, i) -> force``; dataset
+    consumers need them materialized as dense arrays (DATA_SCHEMA.md §E).
+    """
+    n = len(scenario.vehicles)
+    u_trac = np.zeros((t.size, n), dtype=float)
+    u_brk = np.zeros((t.size, n), dtype=float)
+    for k in range(t.size):
+        tk = float(t[k])
+        for i in range(n):
+            u_trac[k, i] = scenario.u_trac_cmd(tk, i)
+            u_brk[k, i] = scenario.u_brk_cmd(tk, i)
+    return u_trac, u_brk
+
+
 def simulate_train_tensorized(
     scenario: ExtendedTrainScenario,
 ) -> TensorSimulationResult:
@@ -79,6 +96,7 @@ def simulate_train_tensorized(
             scenario.tau_brk_s,
             scenario.tau_trac_s,
             scenario.p_max_w,
+            brake_opposes_motion=scenario.brake_opposes_motion,
         )
 
     sol = solve_ivp(

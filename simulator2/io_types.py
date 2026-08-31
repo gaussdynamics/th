@@ -37,6 +37,10 @@ class ExtendedTrainScenario:
     tau_brk_s: float = 3.0
     tau_trac_s: float = 5.0
     p_max_w: float = 3.5e6
+    #: Make brake force oppose the direction of travel instead of always acting
+    #: in -x. See ``rhs.train_rhs_tensorized``; set False only to reproduce
+    #: results recorded before 2026-08-17.
+    brake_opposes_motion: bool = True
     t_span: Tuple[float, float] = (0.0, 120.0)
     t_eval: Optional[np.ndarray] = None
     rtol: float = 1e-6

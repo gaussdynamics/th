@@ -1,0 +1,18 @@
+{
+  "id": "freight_car_generic",
+  "name": "Freight car \u2014 generic",
+  "category": "boxcar",
+  "length_m": 15.0,
+  "mass_tare_kg": 100000.0,
+  "lading": "",
+  "mass_lading_kg": 0.0,
+  "davis_A": 600.0,
+  "davis_B": 12.0,
+  "davis_C": 0.7,
+  "can_traction": false,
+  "F_trac_max_N": 0.0,
+  "F_brk_max_N": 250000.0,
+  "coupler_type": "standard_knuckle",
+  "notes": "Default seed freight car (no tare/lading split).",
+  "schema_version": 1
+}

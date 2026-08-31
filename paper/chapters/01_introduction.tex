@@ -5,21 +5,30 @@
 
 Longitudinal train dynamics (LTD) concern the motion and force distribution through the length of a train. A freight train is a distributed mechanical system, often consisting of tens to hundreds of individual coupled masses. The system involves complex and highly non-linear interactions between locomotives, freight cars, and the track profile. Modern simulations of these system interactions rely on detailed physical models which require solving differential equations for each vehicle, resulting in high computational cost. Rapid scenario exploration can be impossible due to the computational resource demand.
 
+% ---------------------------------------------------------------------
+% NOTE (citation audit, Aug 2026): the previous version of this table
+% listed five CPU-hour figures (0.05 / 50 / 500 / 50,000 / 275,000)
+% attributed to perez2016reduced, wu2019highfidelity, shabana_multibody,
+% versteeg2007introduction and nrel2019cfd. None of those numbers appears
+% in any of those sources, and two of the five references did not exist
+% at all. The table below reports only figures stated directly in the
+% cited works. Verify each against the source before final submission.
+% ---------------------------------------------------------------------
 \begin{table}[h]
     \centering
-    \label{tab:computational_cost}
-    \begin{tabular}{lS[table-format=6.0]l}
+    \begin{tabular}{llc}
         \toprule
-        Model Type & {CPU-hours} & Source \\
+        Task & Reported cost & Source \\
         \midrule
-        Reduced / Lumped Models & 0.05 & \cite{perez2016reduced} \\
-        High-Fidelity Train Longitudinal Dynamics & 50 & \cite{wu2019highfidelity} \\
-        High-Fidelity Multibody / Vehicle Dynamics & 500 & \cite{shabana_multibody} \\
-        Transient CFD (Engineering Scale) & 50000 & \cite{versteeg2007introduction} \\
-        Extreme CFD / HPC Simulation & 275000 & \cite{nrel2019cfd} \\
+        Whole-trip LTD optimization study, sequential execution & $\sim$18 months & \cite{wu2019highfidelity} \\
+        Same study, parallel execution across multiple processors & 11 days & \cite{wu2019highfidelity} \\
+        Coupler-force evaluation, share of LTD solver runtime & $\sim$65\% & \cite{Wu2018ComputingSchemesLTD} \\
+        Multibody vehicle--track simulation of a 5\,km segment & $\sim$30 minutes & \cite{zhou_surrogate_integration} \\
+        Learned surrogate for the same 5\,km segment & $\sim$8 seconds & \cite{zhou_surrogate_integration} \\
         \bottomrule
     \end{tabular}
-    \caption{Representative computational cost of physics-based simulations}
+    \caption{Reported computational cost of physics-based rail simulation, and the reduction achieved by a learned surrogate. Figures are quoted as reported by the cited studies; they are not normalized to a common hardware baseline.}
+    \label{tab:computational_cost}
 \end{table}
 
 % TODO: Include figure showing typical train consist and force diagram

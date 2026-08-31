@@ -6,7 +6,7 @@ from typing import Callable, Sequence
 
 import numpy as np
 
-from .constants import DEFAULT_V_EPS
+from .constants import DEFAULT_V_BRAKE_EPS, DEFAULT_V_EPS
 from .forces import (
     coupler_force_slack_asymmetric,
     davis_resistance_longitudinal,
@@ -81,8 +81,14 @@ def train_rhs_extended(
     tau_trac: float,
     p_max_w: float,
     v_eps: float = DEFAULT_V_EPS,
+    brake_opposes_motion: bool = True,
+    v_brake_eps: float = DEFAULT_V_BRAKE_EPS,
 ) -> np.ndarray:
-    """Extended RHS with first-order traction/brake buildup and power cap (notebook)."""
+    """Extended RHS with first-order traction/brake buildup and power cap (notebook).
+
+    See :func:`train_rhs_tensorized` for ``brake_opposes_motion``. Both RHS
+    variants share the same default so they stay equivalent.
+    """
     n = len(vehicles)
     x = y[0:n]
     v = y[n : 2 * n]
@@ -129,6 +135,8 @@ def train_rhs_extended(
         if vp.can_traction:
             f_tr = min(zt, p_max_w / max(abs(float(v[i])), v_eps))
         f_br = min(zb, vp.F_brk_max_N)
+        if brake_opposes_motion:
+            f_br = f_br * float(np.tanh(float(v[i]) / max(v_brake_eps, 1e-12)))
         dv[i] = (f_tr - f_br - r - g - ccur + fi_in - fi_out) / vp.mass_kg
     return np.concatenate([dx, dv, dz_brk, dz_trac])
 
@@ -146,12 +154,28 @@ def train_rhs_tensorized(
     tau_trac: float,
     p_max_w: float,
     v_eps: float = DEFAULT_V_EPS,
+    brake_opposes_motion: bool = True,
+    v_brake_eps: float = DEFAULT_V_BRAKE_EPS,
 ) -> np.ndarray:
     """Same dynamics as ``train_rhs_extended``, expressed via ``H`` and ``E`` tensors.
 
     Steps: unpack ``y`` → ``TensorTrainState``; rebuild ``E`` from nodes; compute actuator
     derivatives; assemble per-vehicle forces using coupler forces from ``E``; pack
     derivatives of ``(x, v, z_brk, z_trac)``.
+
+    ``brake_opposes_motion`` (default ``True``) makes brake force act *against
+    the direction of travel* instead of always in the negative-x direction.
+    With it disabled, a consist braked to a standstill is accelerated backwards
+    without bound, because ``f_br`` keeps subtracting from ``dv`` at ``v = 0``.
+    That went unnoticed while every scenario started from rest and only ever
+    applied traction; the Chapter 4 Stage 7 figure was showing the lead vehicle
+    reversing to -99 km/h under braking as a result. The sign is blended with
+    ``tanh(v / v_brake_eps)`` rather than a hard ``sign(v)`` to keep the RHS
+    smooth for the solver -- and for autograd once this is ported to torch. At
+    operating speed the factor is unity to machine precision, so only runs that
+    approach standstill differ.
+
+    Set it to ``False`` only to reproduce results recorded before 2026-08-17.
     """
     state = unpack_to_tensor_state(y, vehicles, couplers)
     h = state.H
@@ -196,6 +220,8 @@ def train_rhs_tensorized(
         if vp.can_traction:
             f_tr = min(zt, p_max_w / max(abs(vi), v_eps))
         f_br = min(zb, vp.F_brk_max_N)
+        if brake_opposes_motion:
+            f_br = f_br * float(np.tanh(vi / max(v_brake_eps, 1e-12)))
         dv[i] = (f_tr - f_br - r - g - ccur + fi_in - fi_out) / vp.mass_kg
 
     dy_dyn = np.concatenate([dx, dv, dz_brk, dz_trac])

@@ -1,0 +1,18 @@
+{
+  "id": "ballast_hopper_loaded",
+  "name": "Open hopper \u2014 ballast (loaded)",
+  "category": "hopper",
+  "length_m": 11.0,
+  "mass_tare_kg": 26000.0,
+  "lading": "ballast",
+  "mass_lading_kg": 100000.0,
+  "davis_A": 600.0,
+  "davis_B": 12.0,
+  "davis_C": 0.65,
+  "can_traction": false,
+  "F_trac_max_N": 0.0,
+  "F_brk_max_N": 250000.0,
+  "coupler_type": "standard_knuckle",
+  "notes": "Open triple hopper, aggregate/ballast unit-train car.",
+  "schema_version": 1
+}

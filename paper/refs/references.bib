@@ -1,55 +1,47 @@
+% ======================================================================
+% Thesis bibliography
+%
+% CITATION AUDIT — August 17, 2026
+% Every entry below was verified against a primary source (publisher
+% record, Crossref/DOI resolution, arXiv, PMLR, or the book's own
+% front matter). Entries whose DOIs did not resolve, or whose author
+% lists / titles / venues could not be confirmed, were corrected or
+% removed. Metadata here is aligned with the audited bibliography of
+% the TRB conference paper (trb_paper/ltd_surrogate_trb.bib); citation
+% keys are kept identical between the two documents on purpose.
+%
+% Removed in this pass (fabricated, or cited for a claim they do not make):
+%   perez2016reduced         — no such MSSP 2016 article; ScienceDirect
+%                              PII S0888327016000126 is not recognised
+%   nrel2019cfd              — NREL/TP-73474 does not exist; the PDF at
+%                              that URL is NREL/CP-5000-73474, a wave
+%                              energy converter CFD preprint, unrelated
+%   versteeg2007introduction — real textbook, but it was cited for a
+%                              CPU-hour figure it does not contain
+%   placeholder_* (10 TODO stubs) — never cited
+% ======================================================================
 
-@article{perez2016reduced,
-    author = {Pérez, J. and others},
-    title = {Reduced-order and lumped-parameter models for train dynamics},
-    journal = {Mechanical Systems and Signal Processing},
-    year = {2016},
-    note = {Reduced-order models reported to run in milliseconds to seconds, suitable for control and optimization},
-    url = {https://www.sciencedirect.com/science/article/pii/S0888327016000126}
-}
 
-@article{wu2019highfidelity,
-    author = {Wu, Q. and others},
-    title = {High-fidelity train longitudinal dynamics simulation},
-    journal = {Vehicle System Dynamics},
-    year = {2019},
-    note = {Full-consist models with nonlinear couplers and braking dynamics; reported runtimes range from minutes to hours on multi-core CPUs},
-    url = {https://www.tandfonline.com/doi/abs/10.1080/00423114.2019.1589396}
-}
+% ----------------------------------------------------------------------
+% Classical longitudinal train dynamics
+% ----------------------------------------------------------------------
 
-@book{shabana_multibody,
-    author = {Shabana, Ahmed A.},
-    title = {Dynamics of Multibody Systems},
-    publisher = {Springer},
-    year = {2020},
-    edition = {4th},
-    note = {Large nonlinear multibody systems with contact and constraints; simulations commonly require hours to days on multi-core machines},
-    url = {https://link.springer.com/book/10.1007/978-3-030-36579-7}
-}
-
-@book{versteeg2007introduction,
-    author = {Versteeg, Henk Kaarle and Malalasekera, Weeratunge},
-    title = {An Introduction to Computational Fluid Dynamics: The Finite Volume Method},
-    publisher = {Pearson Education},
-    year = {2007},
-    edition = {2nd},
-    note = {Time-accurate Navier–Stokes simulations with fine meshes; typical engineering studies report 10^4–10^5 CPU-hours},
-    url = {https://www.pearson.com/en-us/subject-catalog/p/introduction-to-computational-fluid-dynamics/P200000003303/9780131274983}
-}
-
-@techreport{nrel2019cfd,
-    author = {{National Renewable Energy Laboratory}},
-    title = {High-Fidelity Computational Fluid Dynamics Simulation},
-    institution = {NREL},
-    year = {2019},
-    number = {NREL/TP-73474},
-    note = {Reported 17 days on 672 CPU cores (~2.7×10^5 CPU-hours) for a single high-fidelity transient CFD case},
-    url = {https://docs.nrel.gov/docs/fy19osti/73474.pdf}
+@incollection{Cole2006HandbookLTD,
+  author    = {Cole, Colin},
+  title     = {Longitudinal Train Dynamics},
+  booktitle = {Handbook of Railway Vehicle Dynamics},
+  editor    = {Iwnicki, Simon},
+  chapter   = {9},
+  publisher = {CRC Press},
+  address   = {Boca Raton, FL},
+  year      = {2006},
+  pages     = {239--278},
+  isbn      = {9780849333217}
 }
 
 @article{Wu2016OverviewLTD,
-  author  = {Wu, Q. and Spiryagin, M. and Cole, C.},
-  title   = {An overview of longitudinal train dynamics},
+  author  = {Wu, Qing and Spiryagin, Maksym and Cole, Colin},
+  title   = {Longitudinal train dynamics: an overview},
   journal = {Vehicle System Dynamics},
   volume  = {54},
   number  = {12},
@@ -58,38 +50,20 @@
   doi     = {10.1080/00423114.2016.1228988}
 }
 
-@article{Spiryagin2017BenchmarkQuestions,
-  author  = {Spiryagin, M. and Wu, Q. and Cole, C. and Sun, Y. Q. and McClanachan, M. and Nunez, A. and Burgelman, N.},
-  title   = {International benchmarking of longitudinal train dynamics simulators: benchmarking questions},
-  journal = {Vehicle System Dynamics},
-  volume  = {55},
-  number  = {8},
-  pages   = {1205--1227},
-  year    = {2017},
-  doi     = {10.1080/00423114.2017.1284327}
-}
-
+% NOTE: key retained as "Wu2018..." for consistency with the TRB paper,
+% but the real paper is Wu & Cole (2015) in ASME JCND. The previously
+% cited VSD 56(8):1237--1257 (2018) article does not exist and its DOI
+% (10.1080/00423114.2017.1415241) is unregistered.
+% This is the paper that reports the ~65% coupler-force runtime share.
 @article{Wu2018ComputingSchemesLTD,
-  author  = {Wu, Q. and Spiryagin, M. and Cole, C.},
-  title   = {Efficient computing schemes for longitudinal train dynamics},
-  journal = {Vehicle System Dynamics},
-  volume  = {56},
-  number  = {8},
-  pages   = {1237--1257},
-  year    = {2018},
-  doi     = {10.1080/00423114.2017.1415241}
-}
-
-@incollection{Cole2006HandbookLTD,
-  author    = {Cole, C.},
-  title     = {Longitudinal Train Dynamics},
-  booktitle = {Handbook of Railway Vehicle Dynamics},
-  editor    = {Iwnicki, S.},
-  publisher = {CRC Press},
-  address   = {Boca Raton, FL},
-  year      = {2006},
-  pages     = {239--278},
-  isbn      = {9780849333215}
+  author  = {Wu, Qing and Cole, Colin},
+  title   = {Computing Schemes for Longitudinal Train Dynamics: Sequential, Parallel and Hybrid},
+  journal = {Journal of Computational and Nonlinear Dynamics},
+  volume  = {10},
+  number  = {6},
+  pages   = {064502},
+  year    = {2015},
+  doi     = {10.1115/1.4029716}
 }
 
 @article{Spiryagin2017BenchmarkQuestions,
@@ -103,123 +77,214 @@
   doi     = {10.1080/00423114.2016.1270457}
 }
 
-@inproceedings{Cantone2008TrainDy,
-  author    = {Cantone, L. and M{\"u}ller, L. and Negretti, D. and Vullo, V.},
-  title     = {TrainDy: a new UIC simulator for the longitudinal dynamics of trains},
-  booktitle = {Proceedings of COMPRAIL 2008 (Computers in Railways X)},
-  year      = {2008},
-  publisher = {WIT Press},
-  doi       = {10.2495/CR080711}
+% NOTE: key retained as "wu2019highfidelity" for consistency with the TRB
+% paper. The real paper is Wu, Cole & Spiryagin (2016) in ASME JCND.
+% Reports linear speed-up cutting a whole-trip optimisation campaign
+% from ~18 months to 11 days via parallel computing.
+@article{wu2019highfidelity,
+  author  = {Wu, Qing and Cole, Colin and Spiryagin, Maksym},
+  title   = {Parallel Computing Enables Whole-Trip Train Dynamics Optimizations},
+  journal = {Journal of Computational and Nonlinear Dynamics},
+  volume  = {11},
+  number  = {4},
+  pages   = {044503},
+  year    = {2016},
+  doi     = {10.1115/1.4032075}
 }
 
+@book{shabana_multibody,
+  author    = {Shabana, Ahmed A.},
+  title     = {Dynamics of Multibody Systems},
+  edition   = {5th},
+  publisher = {Cambridge University Press},
+  address   = {Cambridge, UK},
+  year      = {2020},
+  isbn      = {9781108485647}
+}
+
+% ----------------------------------------------------------------------
+% Established LTD simulation tools
+% (cited from tables/ltd_tools_comparison.tex)
+% ----------------------------------------------------------------------
+
+@inproceedings{Cantone2008TrainDy,
+  author    = {Cantone, L. and M{\"u}ller, L. and Negretti, D. and Vullo, V.},
+  title     = {{TrainDy}, a new {UIC} simulator for the longitudinal dynamics of trains},
+  booktitle = {Computers in Railways XI: Computer System Design and Operation in the Railway and Other Transit Systems},
+  series    = {WIT Transactions on The Built Environment},
+  volume    = {103},
+  pages     = {735--744},
+  publisher = {WIT Press},
+  address   = {Southampton, UK},
+  year      = {2008},
+  isbn      = {9781845641269},
+  doi       = {10.2495/CR080711},
+  note      = {COMPRAIL 2008, Toledo, Spain, 15--17 September 2008}
+}
+
+% NOTE: previously attributed to a corporate author "{Wheel-Rail Interaction
+% Seminar}" that does not exist. The presentation is real; the presenter is
+% Ralph Schorr of Amsted Rail, session PC07 of the WRI '18 Principles Course.
 @misc{WheelRail2018TOES,
-  author       = {{Wheel-Rail Interaction Seminar}},
-  title        = {Vehicle-Track Modeling and Simulation (includes overview slide on Train Operations and Energy Simulator (TOES\texttrademark))},
+  author       = {Schorr, Ralph},
+  title        = {Vehicle-Track Modeling and Simulation},
+  howpublished = {Presentation PC07, Principles Course, Wheel/Rail Interaction Conference (WRI '18), Rosemont, IL},
+  organization = {Amsted Rail},
+  month        = may,
   year         = {2018},
-  howpublished = {PDF presentation},
   url          = {https://archive.wheel-rail-seminars.com/archives/2018/pc-papers/presentations/PC07.pdf},
-  note         = {Accessed 2026-02-02}
+  note         = {Accessed 2026-08-18}
+}
+
+@techreport{Anaya2023TOES,
+  author      = {Anaya, Rachel and Pate, Shad},
+  title       = {Fully Scalable Train Braking Simulation Environment},
+  institution = {U.S. Department of Transportation, Federal Railroad Administration},
+  number      = {DOT/FRA/ORD-23/19},
+  address     = {Washington, DC},
+  month       = jul,
+  year        = {2023},
+  note        = {Available from the FRA eLibrary; accessed 2026-08-18}
 }
 
 @misc{FRA2019TEDSProject,
-  author       = {{Federal Railroad Administration (FRA)}},
-  title        = {Train Energy and Dynamics Simulator (TEDS): Current Projects},
+  author       = {{Federal Railroad Administration}},
+  title        = {Train Energy and Dynamics Simulator ({TEDS})},
+  howpublished = {Web page, Research \& Development, Rolling Stock, Current Projects},
+  month        = oct,
   year         = {2019},
-  howpublished = {Web page},
   url          = {https://railroads.dot.gov/rolling-stock/current-projects/train-energy-and-dynamics-simulator-teds},
-  note         = {Accessed 2026-02-02}
+  note         = {Last updated 22 October 2019; accessed 2026-08-18}
 }
 
 @techreport{FRA2015TEDSValidation,
   author      = {{Sharma \& Associates, Inc.}},
-  title       = {Validation of the Train Energy and Dynamics Simulator (TEDS)},
-  institution = {{Federal Railroad Administration (FRA)}},
+  title       = {Validation of the Train Energy and Dynamics Simulator ({TEDS})},
+  institution = {U.S. Department of Transportation, Federal Railroad Administration, Office of Railroad Policy and Development},
+  number      = {DOT/FRA/ORD-15/01},
+  address     = {Washington, DC},
+  month       = jan,
   year        = {2015},
+  doi         = {10.21949/1503647},
   url         = {https://railroads.dot.gov/sites/fra.dot.gov/files/fra_net/14343/TEDS_Validation_final.pdf},
-  note        = {Accessed 2026-02-02}
+  note        = {Accessed 2026-08-18}
 }
 
 @misc{UMTrainPlugin,
   author       = {{Universal Mechanism}},
-  title        = {UM Train: module for train dynamics simulation},
-  year         = {n.d.},
-  howpublished = {Web page},
+  title        = {{UM Train}: Module for Train Dynamics Simulation},
+  howpublished = {Web page, Universal Mechanism module catalogue},
+  year         = {2024},
   url          = {https://www.universalmechanism.com/en/plugins/catalogue/index.php?id=3},
-  note         = {Accessed 2026-02-02}
+  note         = {Accessed 2026-08-18}
 }
 
+% NOTE: key retained as "Wei2014TDEAS" for consistency with the TRB paper.
+% The real paper is Wu, Luo & Cole (2014); its abstract introduces TDEAS
+% (train dynamics and energy analyser/train simulator), developed by the
+% State Key Laboratory of Traction Power in China.
 @article{Wei2014TDEAS,
-  author  = {Wei, W. and Hu, Y. and Wu, Q. and others},
-  title   = {Longitudinal dynamics and energy analysis for heavy haul trains based on train dynamics and energy analyser/simulator (TDEAS)},
-  journal = {Proceedings of the Institution of Mechanical Engineers, Part F: Journal of Rail and Rapid Transit},
+  author  = {Wu, Qing and Luo, Shihui and Cole, Colin},
+  title   = {Longitudinal dynamics and energy analysis for heavy haul trains},
+  journal = {Journal of Modern Transportation},
+  volume  = {22},
+  number  = {3},
+  pages   = {127--136},
   year    = {2014},
-  note    = {See tool overview and subsystem descriptions in the published article/PDF}
+  doi     = {10.1007/s40534-014-0055-x}
 }
+
+% ----------------------------------------------------------------------
+% Data-driven and hybrid modeling in rail
+% ----------------------------------------------------------------------
 
 @article{nie_data_driven_dynamics,
-  title   = {Data-Driven Dynamics Simulation for Railway Vehicles},
-  author  = {Nie, Hao and Li, Zili and Iwnicki, Simon and Liu, Xian},
+  author  = {Nie, Yinyu and Tang, Zhao and Liu, Fengjia and Chang, Jian and Zhang, Jian Jun},
+  title   = {A data-driven dynamics simulation framework for railway vehicles},
   journal = {Vehicle System Dynamics},
-  year    = {2021},
-  note    = {Data-driven surrogate elements integrated with multibody railway dynamics simulation},
+  volume  = {56},
+  number  = {3},
+  pages   = {406--427},
+  year    = {2018},
+  doi     = {10.1080/00423114.2017.1381981}
 }
 
-@article{zhou_surrogate_integration,
-  title   = {Machine Learning-Based Surrogate Submodel Integration for Railway Digital Twins},
-  author  = {Zhou, Yifan and Mei, Qiang and Bruni, Stefano},
-  journal = {Mechanical Systems and Signal Processing},
-  year    = {2022},
-  note    = {Surrogate modeling and FMI-based integration of railway vehicle dynamics},
+@inproceedings{zhou_surrogate_integration,
+  author    = {Zhou, Shiyang and Meierhofer, Alexander and Kugu, Ozan and Xia, Yuxi and Grafinger, Manfred},
+  title     = {A Machine-Learning-based Surrogate Modeling Methodology for Submodel Integration in the Holistic Railway Digital Twin Platform},
+  booktitle = {Procedia CIRP (33rd CIRP Design Conference)},
+  volume    = {119},
+  pages     = {345--350},
+  publisher = {Elsevier},
+  year      = {2023},
+  doi       = {10.1016/j.procir.2023.02.141}
 }
 
 @article{zhang_in_train_forces,
-  title   = {A Data-Driven Approach for Estimating In-Train Forces Using Automatic Train Operation Data},
-  author  = {Zhang, Rui and Sun, Yao and Cole, Colin and Spiryagin, Maksym},
-  journal = {IEEE Transactions on Intelligent Transportation Systems},
-  year    = {2020},
-  note    = {Self-attention and causal CNN approach for in-train force estimation},
+  author  = {Zhang, Sheng and Huang, Pu and Yan, Wenyi},
+  title   = {A data-driven approach for railway in-train forces monitoring},
+  journal = {Advanced Engineering Informatics},
+  volume  = {59},
+  pages   = {102258},
+  year    = {2024},
+  doi     = {10.1016/j.aei.2023.102258}
 }
 
 @article{intrainnet,
-  title   = {In-trainNet: A Data-Driven Framework for In-Train Force Estimation Across Multiple Train Configurations},
-  author  = {Zhang, Rui and Sun, Yao and Spiryagin, Maksym and Cole, Colin},
-  journal = {Proceedings of the Institution of Mechanical Engineers, Part F: Journal of Rail and Rapid Transit},
-  year    = {2021},
-  note    = {Multi-task and transfer learning for in-train force prediction},
+  author  = {Zhang, Sheng and Yan, Wenyi},
+  title   = {{In-trainNet}: A Two-Step Data-Driven Framework for Enhancing Railway In-Train Forces Monitoring},
+  journal = {Advanced Engineering Informatics},
+  volume  = {65},
+  pages   = {103352},
+  year    = {2025},
+  doi     = {10.1016/j.aei.2025.103352}
 }
 
 @article{liu_rescheduling_surrogate,
-  title   = {A Data-Driven Surrogate Modeling Approach for Train Rescheduling in High-Speed Railway Networks Under Wind-Caused Speed Restrictions},
-  author  = {Liu, Ziyang and Yang, Lixing and Gao, Ziyou},
-  journal = {Transportation Research Part C: Emerging Technologies},
-  year    = {2021},
-  note    = {Multi-surrogate and transfer learning for railway timetable rescheduling},
+  author  = {Liu, Ruiguang and Cui, Dongliang and Dai, Xuewu and Yue, Peng and Yuan, Zhiming},
+  title   = {A Data-Driven Surrogate Modeling for Train Rescheduling in High-Speed Railway Networks Under Wind-Caused Speed Restrictions},
+  journal = {IEEE Transactions on Automation Science and Engineering},
+  volume  = {21},
+  number  = {2},
+  pages   = {1107--1121},
+  year    = {2024},
+  doi     = {10.1109/TASE.2023.3338695}
 }
 
+% ----------------------------------------------------------------------
+% Transformers, neural operators, and sequence surrogates
+% ----------------------------------------------------------------------
+
 @inproceedings{vaswani2017attention,
-  title     = {Attention Is All You Need},
   author    = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N. and Kaiser, {\L}ukasz and Polosukhin, Illia},
-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  title     = {Attention Is All You Need},
+  booktitle = {Advances in Neural Information Processing Systems 30 (NeurIPS)},
+  pages     = {5998--6008},
   year      = {2017},
   eprint    = {1706.03762},
   archivePrefix = {arXiv},
   primaryClass  = {cs.CL}
 }
 
-@article{zhou2020informer,
-  title     = {Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting},
+@inproceedings{zhou2020informer,
   author    = {Zhou, Haoyi and Zhang, Shanghang and Peng, Jieqi and Zhang, Shuai and Li, Jianxin and Xiong, Hui and Zhang, Wancai},
-  journal   = {arXiv preprint},
-  year      = {2020},
+  title     = {{Informer}: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting},
+  booktitle = {Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume    = {35},
+  number    = {12},
+  pages     = {11106--11115},
+  year      = {2021},
+  doi       = {10.1609/aaai.v35i12.17325},
   eprint    = {2012.07436},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG}
 }
 
-@article{wu2021autoformer,
-  title     = {Autoformer: Decomposition Transformers with Auto-Correlation for Long-Term Series Forecasting},
+@inproceedings{wu2021autoformer,
   author    = {Wu, Haixu and Xu, Jiehui and Wang, Jianmin and Long, Mingsheng},
-  journal   = {arXiv preprint},
+  title     = {{Autoformer}: Decomposition Transformers with Auto-Correlation for Long-Term Series Forecasting},
+  booktitle = {Advances in Neural Information Processing Systems 34 (NeurIPS)},
+  pages     = {22419--22430},
   year      = {2021},
   eprint    = {2106.13008},
   archivePrefix = {arXiv},
@@ -227,18 +292,22 @@
 }
 
 @article{lim2019tft,
-  title     = {Temporal Fusion Transformers for Interpretable Multi-horizon Time Series Forecasting},
-  author    = {Lim, Bryan and Arik, Sercan O. and Loeff, Nicolas and Pfister, Tomas},
-  journal   = {arXiv preprint},
-  year      = {2019},
-  eprint    = {1912.09363},
+  author  = {Lim, Bryan and Ar{\i}k, Sercan {\"O}. and Loeff, Nicolas and Pfister, Tomas},
+  title   = {Temporal Fusion Transformers for Interpretable Multi-Horizon Time Series Forecasting},
+  journal = {International Journal of Forecasting},
+  volume  = {37},
+  number  = {4},
+  pages   = {1748--1764},
+  year    = {2021},
+  doi     = {10.1016/j.ijforecast.2021.03.012},
+  eprint  = {1912.09363},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG}
 }
 
 @inproceedings{li2021fno,
-  title     = {Fourier Neural Operator for Parametric Partial Differential Equations},
   author    = {Li, Zongyi and Kovachki, Nikola and Azizzadenesheli, Kamyar and Liu, Burigede and Bhattacharya, Kaushik and Stuart, Andrew and Anandkumar, Anima},
+  title     = {Fourier Neural Operator for Parametric Partial Differential Equations},
   booktitle = {International Conference on Learning Representations (ICLR)},
   year      = {2021},
   eprint    = {2010.08895},
@@ -247,19 +316,19 @@
 }
 
 @article{li2021pino,
-  title     = {Physics-Informed Neural Operator for Learning Partial Differential Equations},
-  author    = {Li, Zongyi and Zheng, Hongkai and Kovachki, Nikola and Jin, David and Chen, Haoxuan and Liu, Burigede and Azizzadenesheli, Kamyar and Anandkumar, Anima},
-  journal   = {arXiv preprint},
-  year      = {2021},
-  eprint    = {2111.03794},
+  author  = {Li, Zongyi and Zheng, Hongkai and Kovachki, Nikola and Jin, David and Chen, Haoxuan and Liu, Burigede and Azizzadenesheli, Kamyar and Anandkumar, Anima},
+  title   = {Physics-Informed Neural Operator for Learning Partial Differential Equations},
+  journal = {arXiv preprint arXiv:2111.03794},
+  year    = {2021},
+  eprint  = {2111.03794},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG}
 }
 
-@article{cao2021choose,
-  title     = {Choose a Transformer: Fourier or Galerkin},
+@inproceedings{cao2021choose,
   author    = {Cao, Shuhao},
-  journal   = {arXiv preprint},
+  title     = {Choose a Transformer: Fourier or Galerkin},
+  booktitle = {Advances in Neural Information Processing Systems 34 (NeurIPS)},
   year      = {2021},
   eprint    = {2105.14995},
   archivePrefix = {arXiv},
@@ -267,161 +336,116 @@
 }
 
 @article{li2023transformerpde,
-  title     = {Transformer for Partial Differential Equations' Operator Learning},
-  author    = {Li, Zijie and Meidani, Kazem and Barati Farimani, Amir},
-  journal   = {Transactions on Machine Learning Research},
-  year      = {2023},
-  eprint    = {2205.13671},
+  author  = {Li, Zijie and Meidani, Kazem and Barati Farimani, Amir},
+  title   = {Transformer for Partial Differential Equations' Operator Learning},
+  journal = {Transactions on Machine Learning Research},
+  year    = {2023},
+  eprint  = {2205.13671},
   archivePrefix = {arXiv},
   primaryClass  = {cs.LG}
 }
 
+% ----------------------------------------------------------------------
+% Uncertainty, calibration, and probabilistic evaluation
+% ----------------------------------------------------------------------
+
 @article{koenker1978regression,
-  title={Regression Quantiles},
-  author={Koenker, Roger and Bassett, Gilbert},
-  journal={Econometrica},
-  volume={46},
-  number={1},
-  pages={33--50},
-  year={1978},
-  publisher={The Econometric Society}
+  author    = {Koenker, Roger and Bassett, Gilbert},
+  title     = {Regression Quantiles},
+  journal   = {Econometrica},
+  volume    = {46},
+  number    = {1},
+  pages     = {33--50},
+  year      = {1978},
+  doi       = {10.2307/1913643},
+  publisher = {The Econometric Society}
 }
 
-@article{blundell2015weight,
-  title={Weight Uncertainty in Neural Networks},
-  author={Blundell, Charles and Cornebise, Julien and Kavukcuoglu, Koray and Wierstra, Daan},
-  journal={Proceedings of the 32nd International Conference on Machine Learning},
-  year={2015}
+@inproceedings{blundell2015weight,
+  author    = {Blundell, Charles and Cornebise, Julien and Kavukcuoglu, Koray and Wierstra, Daan},
+  title     = {Weight Uncertainty in Neural Networks},
+  booktitle = {Proceedings of the 32nd International Conference on Machine Learning},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {37},
+  pages     = {1613--1622},
+  publisher = {PMLR},
+  year      = {2015},
+  eprint    = {1505.05424},
+  archivePrefix = {arXiv},
+  primaryClass  = {stat.ML}
 }
 
-@article{gal2016dropout,
-  title={Dropout as a Bayesian Approximation: Representing Model Uncertainty in Deep Learning},
-  author={Gal, Yarin and Ghahramani, Zoubin},
-  journal={Proceedings of the 33rd International Conference on Machine Learning},
-  year={2016}
+@inproceedings{gal2016dropout,
+  author    = {Gal, Yarin and Ghahramani, Zoubin},
+  title     = {Dropout as a {B}ayesian Approximation: Representing Model Uncertainty in Deep Learning},
+  booktitle = {Proceedings of the 33rd International Conference on Machine Learning},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {48},
+  pages     = {1050--1059},
+  publisher = {PMLR},
+  year      = {2016},
+  eprint    = {1506.02142},
+  archivePrefix = {arXiv},
+  primaryClass  = {stat.ML}
 }
 
-@article{guo2017calibration,
-  title={On Calibration of Modern Neural Networks},
-  author={Guo, Chuan and Pleiss, Geoff and Sun, Yu and Weinberger, Kilian},
-  journal={Proceedings of the 34th International Conference on Machine Learning},
-  year={2017}
+@inproceedings{guo2017calibration,
+  author    = {Guo, Chuan and Pleiss, Geoff and Sun, Yu and Weinberger, Kilian Q.},
+  title     = {On Calibration of Modern Neural Networks},
+  booktitle = {Proceedings of the 34th International Conference on Machine Learning},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {70},
+  pages     = {1321--1330},
+  publisher = {PMLR},
+  year      = {2017},
+  eprint    = {1706.04599},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
 }
 
-@article{kuleshov2018accurate,
-  title={Accurate Uncertainties for Deep Learning Using Calibrated Regression},
-  author={Kuleshov, Volodymyr and Fenner, Nathan and Ermon, Stefano},
-  journal={Proceedings of the 35th International Conference on Machine Learning},
-  year={2018}
+@inproceedings{kuleshov2018accurate,
+  author    = {Kuleshov, Volodymyr and Fenner, Nathan and Ermon, Stefano},
+  title     = {Accurate Uncertainties for Deep Learning Using Calibrated Regression},
+  booktitle = {Proceedings of the 35th International Conference on Machine Learning},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {80},
+  pages     = {2796--2804},
+  publisher = {PMLR},
+  year      = {2018},
+  eprint    = {1807.00263},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG}
 }
 
 @article{shafer2008tutorial,
-  title={A Tutorial on Conformal Prediction},
-  author={Shafer, Glenn and Vovk, Vladimir},
-  journal={Journal of Machine Learning Research},
-  volume={9},
-  pages={371--421},
-  year={2008}
+  author  = {Shafer, Glenn and Vovk, Vladimir},
+  title   = {A Tutorial on Conformal Prediction},
+  journal = {Journal of Machine Learning Research},
+  volume  = {9},
+  number  = {12},
+  pages   = {371--421},
+  year    = {2008},
+  url     = {https://www.jmlr.org/papers/v9/shafer08a.html}
 }
 
-@article{romano2019conformalized,
-  title={Conformalized Quantile Regression},
-  author={Romano, Yaniv and Patterson, Evan and Cand{\`e}s, Emmanuel},
-  journal={Advances in Neural Information Processing Systems},
-  year={2019}
+@inproceedings{romano2019conformalized,
+  author    = {Romano, Yaniv and Patterson, Evan and Cand{\`e}s, Emmanuel J.},
+  title     = {Conformalized Quantile Regression},
+  booktitle = {Advances in Neural Information Processing Systems 32 (NeurIPS)},
+  pages     = {3538--3548},
+  year      = {2019},
+  eprint    = {1905.03222},
+  archivePrefix = {arXiv},
+  primaryClass  = {stat.ME}
 }
 
 @article{gneiting2007proper,
-  title={Strictly Proper Scoring Rules, Prediction, and Estimation},
-  author={Gneiting, Tilmann and Raftery, Adrian},
-  journal={Journal of the American Statistical Association},
-  volume={102},
-  number={477},
-  pages={359--378},
-  year={2007}
-}
-
-
-% Data-driven and hybrid modeling in rail
-@article{placeholder_nn_surrogate,
-    author = {TODO: Author},
-    title = {TODO: Neural Network Surrogates for Train Dynamics},
-    journal = {TODO: Journal},
-    year = {TODO: Year},
-    note = {TODO: Replace with citation on ML surrogates for train/rail systems}
-}
-
-@article{placeholder_hybrid_rail,
-    author = {TODO: Author},
-    title = {TODO: Hybrid Physics-ML Models for Railway Applications},
-    journal = {TODO: Journal},
-    year = {TODO: Year},
-    note = {TODO: Replace with citation on hybrid modeling in rail context}
-}
-
-% Transformers for dynamical systems
-@article{placeholder_transformer_forecasting,
-    author = {TODO: Author},
-    title = {TODO: Transformer Architectures for Time Series Forecasting},
-    journal = {TODO: Journal},
-    year = {TODO: Year},
-    note = {TODO: Replace with citation on transformers for forecasting (e.g., Temporal Fusion Transformer, Informer)}
-}
-
-@article{placeholder_spatiotemporal,
-    author = {TODO: Author},
-    title = {TODO: Transformers for Spatiotemporal Prediction},
-    journal = {TODO: Journal},
-    year = {TODO: Year},
-    note = {TODO: Replace with citation on spatiotemporal transformers}
-}
-
-@article{placeholder_factorized_attention,
-    author = {TODO: Author},
-    title = {TODO: Factorized Attention Patterns for Efficient Sequence Modeling},
-    journal = {TODO: Journal},
-    year = {TODO: Year},
-    note = {TODO: Replace with citation on factorized attention (e.g., Longformer, BigBird)}
-}
-
-% Probabilistic forecasting and calibration
-@article{placeholder_quantile_regression,
-    author = {TODO: Author},
-    title = {TODO: Quantile Regression for Probabilistic Forecasting},
-    journal = {TODO: Journal},
-    year = {TODO: Year},
-    note = {TODO: Replace with citation on quantile regression methods}
-}
-
-@article{placeholder_conformal,
-    author = {TODO: Author},
-    title = {TODO: Conformal Prediction for Uncertainty Quantification},
-    journal = {TODO: Journal},
-    year = {TODO: Year},
-    note = {TODO: Replace with citation on conformal prediction}
-}
-
-@article{placeholder_bayesian_nn,
-    author = {TODO: Author},
-    title = {TODO: Bayesian Neural Networks for Uncertainty Estimation},
-    journal = {TODO: Journal},
-    year = {TODO: Year},
-    note = {TODO: Replace with citation on Bayesian neural networks}
-}
-
-% Additional relevant citations
-@article{placeholder_energy_optimization,
-    author = {TODO: Author},
-    title = {TODO: Energy Optimization in Railway Operations},
-    journal = {TODO: Journal},
-    year = {TODO: Year},
-    note = {TODO: Replace with citation on train energy optimization}
-}
-
-@article{placeholder_safety_constraints,
-    author = {TODO: Author},
-    title = {TODO: Safety Constraints and Coupler Force Limits in Train Operations},
-    journal = {TODO: Journal},
-    year = {TODO: Year},
-    note = {TODO: Replace with citation on safety constraints and coupler forces}
+  author  = {Gneiting, Tilmann and Raftery, Adrian E.},
+  title   = {Strictly Proper Scoring Rules, Prediction, and Estimation},
+  journal = {Journal of the American Statistical Association},
+  volume  = {102},
+  number  = {477},
+  pages   = {359--378},
+  year    = {2007},
+  doi     = {10.1198/016214506000001437}
 }

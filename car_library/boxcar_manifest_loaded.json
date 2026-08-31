@@ -1,0 +1,18 @@
+{
+  "id": "boxcar_manifest_loaded",
+  "name": "Boxcar \u2014 mixed manifest freight (loaded)",
+  "category": "boxcar",
+  "length_m": 17.0,
+  "mass_tare_kg": 32000.0,
+  "lading": "mixed freight",
+  "mass_lading_kg": 55000.0,
+  "davis_A": 650.0,
+  "davis_B": 13.0,
+  "davis_C": 0.85,
+  "can_traction": false,
+  "F_trac_max_N": 0.0,
+  "F_brk_max_N": 250000.0,
+  "coupler_type": "standard_knuckle",
+  "notes": "General manifest boxcar.",
+  "schema_version": 1
+}

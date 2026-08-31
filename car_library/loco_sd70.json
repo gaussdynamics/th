@@ -1,0 +1,18 @@
+{
+  "id": "loco_sd70",
+  "name": "Locomotive \u2014 SD70",
+  "category": "locomotive",
+  "length_m": 22.0,
+  "mass_tare_kg": 130000.0,
+  "lading": "",
+  "mass_lading_kg": 0.0,
+  "davis_A": 800.0,
+  "davis_B": 15.0,
+  "davis_C": 0.8,
+  "can_traction": true,
+  "F_trac_max_N": 300000.0,
+  "F_brk_max_N": 250000.0,
+  "coupler_type": "standard_knuckle",
+  "notes": "Default seed locomotive.",
+  "schema_version": 1
+}

@@ -28,6 +28,12 @@ DEFAULT_TAU_TRAC_S = 5.0
 DEFAULT_P_MAX_W = 3.5e6
 DEFAULT_V_EPS = 1.0
 
+# Blend width [m/s] for the direction-of-travel sign applied to brake force
+# when ``brake_opposes_motion`` is enabled (see rhs.train_rhs_tensorized).
+# Small enough that it does not soften braking at operating speed, large enough
+# to keep the RHS smooth through v = 0.
+DEFAULT_V_BRAKE_EPS = 0.1
+
 # Default simulation tolerances (notebook TrainSimulationConfig)
 DEFAULT_RTOL = 1e-6
 DEFAULT_ATOL = 1e-8

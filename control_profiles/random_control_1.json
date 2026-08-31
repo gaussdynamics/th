@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "name": "Random control 1",
+  "description": "Randomized (seed=1, dpu_mode='synced')",
+  "duration_s": 120.0,
+  "brake": {
+    "knots": [
+      {
+        "t_s": 0.0,
+        "fraction": 0.457
+      },
+      {
+        "t_s": 46.045,
+        "fraction": 0.283
+      },
+      {
+        "t_s": 71.262,
+        "fraction": 0.228
+      },
+      {
+        "t_s": 120.0,
+        "fraction": 0.126
+      }
+    ]
+  },
+  "traction_head_end": {
+    "knots": [
+      {
+        "t_s": 0.0,
+        "fraction": 0.722
+      },
+      {
+        "t_s": 28.029,
+        "fraction": 0.229
+      },
+      {
+        "t_s": 47.193,
+        "fraction": 0.945
+      },
+      {
+        "t_s": 75.147,
+        "fraction": 0.901
+      },
+      {
+        "t_s": 90.025,
+        "fraction": 0.031
+      },
+      {
+        "t_s": 120.0,
+        "fraction": 0.025
+      }
+    ]
+  },
+  "traction_dpu_mid": {
+    "knots": [
+      {
+        "t_s": 3.0,
+        "fraction": 0.722
+      },
+      {
+        "t_s": 31.029,
+        "fraction": 0.229
+      },
+      {
+        "t_s": 50.193,
+        "fraction": 0.945
+      },
+      {
+        "t_s": 78.147,
+        "fraction": 0.901
+      },
+      {
+        "t_s": 93.025,
+        "fraction": 0.031
+      },
+      {
+        "t_s": 120.0,
+        "fraction": 0.025
+      }
+    ]
+  },
+  "traction_dpu_rear": {
+    "knots": [
+      {
+        "t_s": 6.0,
+        "fraction": 0.722
+      },
+      {
+        "t_s": 34.028999999999996,
+        "fraction": 0.229
+      },
+      {
+        "t_s": 53.193,
+        "fraction": 0.945
+      },
+      {
+        "t_s": 81.147,
+        "fraction": 0.901
+      },
+      {
+        "t_s": 96.025,
+        "fraction": 0.031
+      },
+      {
+        "t_s": 120.0,
+        "fraction": 0.025
+      }
+    ]
+  },
+  "seed": 1
+}

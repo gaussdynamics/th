@@ -1,0 +1,193 @@
+% ======================================================================
+% TRB Annual Meeting Paper (unofficial) — Example Manuscript
+% Repo: https://github.com/chiehrosswang/TRB_LaTeX_tex
+% ======================================================================
+
+\documentclass[numbered]{trbunofficial}
+
+\begin{document}
+
+% ---------- Title Page ----------
+% Place Title Page AFTER \begin{document} and BEFORE \maketitle 
+% to include the front matter in word count
+
+% Paper title
+\title{A Graph Neural Surrogate for Longitudinal Train Dynamics: Toward Fuel-Optimal Control of Freight Consists}
+
+% Add author(s) with: \TRBauthor[*]{Name}{Affiliation}{Email}[Address][ORCID]; Address and ORCID are optional
+\TRBauthor{George James}{Department of Engineering, Colorado State University Pueblo}{gl.james1@pack.csupueblo.edu}[Pueblo, Colorado, 81006][0000-XXXX-1234-5678]
+\TRBauthor{Trung Duong, PhD.}{Department of Engineering, Colorado State University Pueblo}{trung.duong@csupueblo.edu}[Pueblo, Colorado, 81006][0000-XXXX-1234-5678]
+
+% Short author line for the running header
+\AuthorHeaders{James and Trung}
+
+% Optional title-page disclaimer/copyright
+\TRBtitlefootnote{%
+  This \LaTeX\ template is unofficial and may not meet current TRB requirements. Please review the latest submission rules at \href{https://trb.secure-platform.com/a/page/TRBPaperReview}{TRB’s Instructions for Authors} and ensure your paper is compliant. Noncompliant papers may be rejected.  Report any issues to \url{https://github.com/chiehrosswang/TRB_LaTeX_tex}.
+}
+
+\maketitle
+
+% ---------- Abstract ----------
+\section{Abstract}
+\hl{High-fidelity simulation of longitudinal train dynamics (LTD) captures nonlinear slack couplers, per-vehicle grade and curvature, and power-limited traction, but its computational cost — often tens of CPU-hours per scenario — limits its use for control design and operational planning that require repeated evaluation. This paper presents a train-agnostic, differentiable surrogate model for LTD intended to serve as the simulation backbone for fuel-optimal control of freight consists. The train is represented as a chain graph, with vehicles as nodes and couplers as edges, using a tensorized state representation that generalizes to arbitrary consist length without padding. A message-passing graph neural network learns a physics-residual correction to a known force-balance right-hand side and is integrated as a neural ODE, preserving the chain topology of the consist and remaining differentiable end to end. Training data are generated from a reference LTD simulator driven along real-terrain route profiles derived from elevation and track alignment data, with additional scenarios produced by perturbing real baselines in grade, adhesion, and train makeup. The surrogate is benchmarked against physics-only and physics-residual MLP baselines, and against a transformer-based variant, on trajectory accuracy, trip-level summaries (energy, arrival time, peak coupler force), and generalization to unseen consist sizes and corridors. We then use the surrogate as a differentiable world model for model-predictive control that minimizes trip energy subject to speed limits and coupler-force safety constraints. The surrogate is expected to reproduce reference-simulator trajectories at a fraction of the computational cost while generalizing across train length and route, enabling gradient-based control that reduces fuel consumption relative to a constant-speed baseline. These findings would suggest that graph-based, physics-informed surrogates offer a practical path toward scalable, energy-aware freight train control.}
+
+\hfill\break%
+\noindent\textbf{Objectives:}~Freight consists use massive amounts of energy to transport cargo cross-country, and even small inconsistencies in the control can cause massive fuel losses in the long run. A system model of the freight consist is needed for control experiments, but freight consists are both highly nonlinear and the dynamics varies across both consist composition and route profiles. A data-driven system identification is required, but a comprehensive train dynamics dataset that can generalize across consists and routes is hard to come by, if not unavailable completely. Thus, a simulation environment is needed for building and testing control laws across a family of consists and route profiles. We seek to build such an environment, and frame it as a data-driven system identification framework, modeling the family of trains as graphs and training a graph neural network to model the system dynamics, enabling control experiments to be carried out.  
+
+\hfill\break%
+\noindent\textbf{Methods:}~In 3--4 sentences, describe the study design and technical rigor. Identify data type(s), source(s), and scope (e.g., sample size, time frame, and geography). Summarize the analytical approach used to evaluate the objective.
+
+\hfill\break%
+\noindent\textbf{Findings:}~In 2--3 sentences, report the most important results. Indicate whether results are significant based on statistical testing, sensitivity analysis, validation, and/or rigorous qualitative assessment.
+
+\hfill\break%
+\noindent\textbf{Novelty:}~In 1--2 sentences, clearly state the novel transportation contribution of this work.
+
+\hfill\break%
+\noindent\textbf{Practical Applications:}~In 1--2 sentences, explain how findings inform transportation practice and/or policy, including specific implementation considerations or operational contexts.
+
+\newpage
+
+% ---------- Introduction ----------
+\section{Introduction}\label{sec:intro}
+The Transportation Research Board (TRB) currently requires submissions of full papers to be considered for presentation at the TRB Annual Meeting \cite{trbwebsite}.  The Instructions For Authors website (\url{https://trb.secure-platform.com/a/page/TRBPaperReview}) outlines specific requirements for submissions. Initial submissions are PDFs, while accepted papers for the \textit{Transportation Research Record} may require Microsoft Office formats. Manuscripts must be line-numbered; captions are bold with TRB-specific punctuation; in-text citations now use author--date format, and the reference list is alphabetical rather than numbered. See the author information online at \url{https://trb.secure-platform.com/a/page/TRBPaperReview}.
+
+We assume basic familiarity with \LaTeX\ and \verb|bibtex|. As literate programming becomes more common, the template may evolve to support additional workflows.
+
+
+\subsection{History}
+\citet{pritchard} released the original template in 2009 and updated it in 2011. \citet{macfarlane} extended it in 2012 (Sweave integration and auto counts). \citet{wang} automated total word count calculation and improved formatting in 2015, added GitHub releases in 2016, and provided \TeX-only variants in 2017 (\url{https://github.com/chiehrosswang/TRB_LaTeX_tex}) and an RNW version (\url{https://github.com/chiehrosswang/TRB_LaTeX_rnw}). The 2019 and 2025 updates focused on the \TeX-only version: the 2019 update improved Overleaf compatibility, while the 2025 update enhanced word-counting and authorship blocks.
+
+In May 2026, \citet{wang} made several updates to reflect the modifications TRB introduced to the 2027 Annual Meeting submission process, including but not limited to, simplifying the calculation of submission length, requiring a structured abstract, and requiring a standard citation style (i.e., Chicago author-date).
+
+% ---------- Features ----------
+\section{Features}
+This template targets quick and TRB-compliant manuscript assembly \cite{trbwebsite}.
+
+\subsection{Title Page}
+The class provides a custom \verb|\maketitle| that prints authors (via \verb|\TRBauthor|), a page count, and the submission date. 
+
+\subsection{Page Layout}
+Margins are 1~in. The running header shows authors (set with \verb|\AuthorHeaders|) at the left and the page number at the right. Headings and spacing follow TRB conventions.
+
+\subsection{Line Numbers}
+Line numbering uses the \verb|lineno| package and resets each page. Blank lines are not numbered. The \verb|numbered| class option enables line numbers.
+
+% ---------- More Features ----------
+\section{More Features}
+
+% ---------- Captions ----------
+\subsection{Captions}
+Figure~\ref{fig:trial} shows a Gumbel distribution as an example. Figure captions use sentence case.  Table captions use Title Case and function as a short title. Table~\ref{tab:versions} summarizes the template history.  Both Figure and Table captions are bold.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.6\linewidth]{trb_template-gumbel}
+  \caption{Example figure illustrating the caption style and counting on the title page.}\label{fig:trial}
+\end{figure}
+
+\begin{table}[!ht]
+  \caption{A History of this Template}\label{tab:versions}
+  \begin{center}
+      \begin{tabular}{llll}
+        \hline
+        Version & Date & Author & Contributions \\
+        \hline
+        1.0        & Sep 2009 & Pritchard & Initial work \\
+        1.1        & Mar 2011 & Pritchard & Caption fixes \\
+        2.0        & Mar 2012 & Macfarlane & Automation, documentation \\
+        2.1        & Jul 2015 & Wang       & More automation and formatting \\
+        2.1.1      & Jan 2016 & Wang       & Minor modifications; GitHub \\
+        2.1.1 Lite & Jun 2017 & Wang       & \TeX-only template \\
+        3.1        & Jun 2017 & Wang       & Added \verb|trbunofficial.cls| \\
+        3.1 Lite   & Jun 2017 & Wang       & Added \verb|trbunofficial.cls| \\
+        4.0 Lite   & Jul 2019 & Wang       & Word-count updates for Overleaf \\
+        5.0 Lite   & Aug 2025 & Wang       & Word-count improvements* \\
+        6.0 Lite   & Jun 2026 & Wang       & Replaced word count with page count; updated citation style \\
+        \hline
+        \multicolumn{4}{l}{\footnotesize
+        * Total counts include: Title, front matter, body texts, headers, captions, references. Total word counts do not}\\
+        \multicolumn{4}{l}{\footnotesize include text in tables (each table is automatically counted as 250 words).} \\
+      \end{tabular}
+  \end{center}
+\end{table}
+
+% ---------- Bibliography ----------
+\subsection{Bibliography}
+Use \verb|trb.bst|. The commands \verb|\cite{}| and \verb|\citet{}| produce author--date citations. References appear in alphabetical order by first author.  Here is an example using \verb|\cite[]{}| \cite[21-25]{meyer2001} and another example \citet{Garrow2009} using \verb|\citet{}|.
+
+Other examples include \citet{Bierlaire2003,Bierlaire2008,Garrow2009,Koppelman2005} and grouped citations \cite{Bierlaire2003,Garrow2009,Koppelman2005}.
+
+% ---------- Equations ----------
+\subsection{Equations}
+Equations are left aligned with no extra indentation. Below is the Intelligent Driver Model (from \url{https://en.wikipedia.org/wiki/Intelligent_driver_model}).
+
+\begin{align}
+  & \dot{x}_\alpha = \frac{\mathrm{d}x_\alpha}{\mathrm{d}t} = v_\alpha,\\
+  & \dot{v}_\alpha = \frac{\mathrm{d}v_\alpha}{\mathrm{d}t}
+  = a\!\left( 1 - \left(\frac{v_\alpha}{v_0}\right)^\delta
+      - \left(\frac{s^*(v_\alpha,\Delta v_\alpha)}{s_\alpha}\right)^2 \right), \\
+  &s^*(v_\alpha,\Delta v_\alpha)
+  = s_0 + v_\alpha T + \frac{v_\alpha\,\Delta v_\alpha}{2\sqrt{a\,b}}\,.
+\end{align}
+
+% ---------- Section Referencing ----------
+\subsection{Referencing Sections by Custom Names}
+Because this template does not use section numbering, referencing
+sections directly can be difficult. To address this, you can create
+hyperlinks to labeled sections with your own display text using the
+\verb|\customref| command: \verb|\customref{Displayed Text}{label}|.
+
+For example, if you have defined \verb|\label{sec:intro}| for the
+Introduction section, you can write
+\verb|\customref{INTRODUCTION section}{sec:intro}|
+to produce a hyperlink that appears as
+\customref{INTRODUCTION section}{sec:intro}.
+
+% ---------- Conclusion / Build ----------
+\section{Conclusion and Build}\label{sec:build}
+This is a placeholder for conclusions.  To build with automatic page counting, use the following command:
+\begin{verbatim}
+    latexmk trb_template.tex -pdf -pvc
+\end{verbatim}
+
+% ---------- Acknowledgments ----------
+\section{Acknowledgments}
+We thank Aleksandar Trifunovic (\url{https://github.com/akstrfn}) for putting together the initial \verb|trbunofficial| class that advanced this work.
+
+% ---------- Author Contributions ----------
+% Consider using the Contributor Role Taxonomy (CRediT) https://credit.niso.org/ when stating author contributions
+\section*{AUTHOR CONTRIBUTIONS}
+The authors confirm contribution to the paper as follows: 
+study conception and design: X.~Author, Y.~Author; 
+data collection: Y.~Author; 
+analysis and interpretation of results: X.~Author, Y.~Author, Z.~Author; 
+draft manuscript preparation: Y.~Author, Z.~Author. 
+All authors reviewed the results and approved the final version of the manuscript.
+
+% ---------- Declaration of COI ----------
+\section*{DECLARATION OF CONFLICTING INTERESTS}
+% Choose one of the following statements:
+X.~Author is a member of Transportation Research Record’s Editorial Board.  All other authors declare no potential conflicts of interest with respect to the research, authorship, and publication of this article.
+
+% % OR
+%The authors declared the following potential conflicts of interest with respect to the research, authorship, and/or publication of this article: \emph{[insert text here]}.
+
+% % OR
+% The authors declared no potential conflicts of interest with respect to the research, authorship, and/or publication of this article.
+
+\section*{FUNDING}
+% Choose one of the following statements:
+The authors disclosed receipt of the following financial support 
+for the research, authorship, and/or publication of this article: 
+This research was supported by \emph{[funding agency]} (grant no.~\emph{xxxxx}).
+
+% % OR
+% The authors disclosed no financial support for the research, authorship, and/or publication of this article.
+
+
+\newpage
+\bibliographystyle{trb}
+\bibliography{trb_template}
+\end{document}

@@ -1,0 +1,18 @@
+{
+  "id": "intermodal_well_car_loaded",
+  "name": "Well car \u2014 double-stack intermodal (loaded)",
+  "category": "flatcar",
+  "length_m": 27.0,
+  "mass_tare_kg": 36000.0,
+  "lading": "containers",
+  "mass_lading_kg": 48000.0,
+  "davis_A": 550.0,
+  "davis_B": 10.0,
+  "davis_C": 0.9,
+  "can_traction": false,
+  "F_trac_max_N": 0.0,
+  "F_brk_max_N": 250000.0,
+  "coupler_type": "standard_knuckle",
+  "notes": "Double-stack well car; loading varies with container/TEU count.",
+  "schema_version": 1
+}

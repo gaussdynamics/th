@@ -1,0 +1,18 @@
+{
+  "id": "tank_car_water",
+  "name": "Tank car \u2014 water (full)",
+  "category": "tank",
+  "length_m": 18.0,
+  "mass_tare_kg": 30000.0,
+  "lading": "water",
+  "mass_lading_kg": 80000.0,
+  "davis_A": 600.0,
+  "davis_B": 12.0,
+  "davis_C": 0.7,
+  "can_traction": false,
+  "F_trac_max_N": 0.0,
+  "F_brk_max_N": 250000.0,
+  "coupler_type": "standard_knuckle",
+  "notes": "Worked example of the tare+lading split.",
+  "schema_version": 1
+}
