@@ -109,6 +109,35 @@ D_EDGE_STATIC = len(EdgeStatic)
 # batched interpolation helpers
 # ---------------------------------------------------------------------------
 
+def _interp_weights(xp: Tensor, x: Tensor) -> tuple[Tensor, Tensor]:
+    """Bracketing index and clamped linear weight for ``x`` on grid ``xp``.
+
+    Split out from the gather so that several fields sampled on the *same*
+    grid -- ``sin_theta`` and ``kappa`` on the route, traction and brake on the
+    command grid -- share one ``searchsorted`` instead of repeating it. That
+    matters: the workload is launch-bound, so redundant kernels cost real time.
+    """
+    n_nodes = xp.shape[1]
+    idx = torch.searchsorted(xp, x.contiguous(), right=True)
+    idx = idx.clamp(1, n_nodes - 1)
+
+    x0 = torch.gather(xp, 1, idx - 1)
+    x1 = torch.gather(xp, 1, idx)
+    span = x1 - x0
+    # A degenerate (repeated) node would divide by zero; fall back to the left
+    # value there rather than emitting a NaN that would poison the whole batch.
+    safe_span = torch.where(span > 0, span, torch.ones_like(span))
+    w = torch.where(span > 0, (x - x0) / safe_span, torch.zeros_like(span))
+    return idx, w.clamp(0.0, 1.0)  # the clamp reproduces numpy's flat ends
+
+
+def _apply_weights(fp: Tensor, idx: Tensor, w: Tensor) -> Tensor:
+    """Gather ``fp`` at a bracketing index and blend, given :func:`_interp_weights`."""
+    f0 = torch.gather(fp, 1, idx - 1)
+    f1 = torch.gather(fp, 1, idx)
+    return f0 + w * (f1 - f0)
+
+
 def _interp_batched(xp: Tensor, fp: Tensor, x: Tensor) -> Tensor:
     """Batched piecewise-linear interpolation with ``numpy.interp`` semantics.
 
@@ -119,42 +148,27 @@ def _interp_batched(xp: Tensor, fp: Tensor, x: Tensor) -> Tensor:
     Uses ``searchsorted`` + ``gather``, never a Python loop over vehicles, so
     the cost is independent of ``N``. Differentiable in ``x``.
     """
-    n_nodes = xp.shape[1]
-    idx = torch.searchsorted(xp, x.contiguous(), right=True)
-    idx = idx.clamp(1, n_nodes - 1)
-
-    x0 = torch.gather(xp, 1, idx - 1)
-    x1 = torch.gather(xp, 1, idx)
-    f0 = torch.gather(fp, 1, idx - 1)
-    f1 = torch.gather(fp, 1, idx)
-
-    span = x1 - x0
-    # A degenerate (repeated) node would divide by zero; fall back to the left
-    # value there rather than emitting a NaN that would poison the whole batch.
-    safe_span = torch.where(span > 0, span, torch.ones_like(span))
-    w = torch.where(span > 0, (x - x0) / safe_span, torch.zeros_like(span))
-    w = w.clamp(0.0, 1.0)  # clamping here is what reproduces numpy's flat ends
-    return f0 + w * (f1 - f0)
+    idx, w = _interp_weights(xp, x)
+    return _apply_weights(fp, idx, w)
 
 
-def _interp_commands(
-    cmd_t: Tensor, values: Tensor, t: float
-) -> Tensor:
+def _interp_commands(cmd_t: Tensor, values: Tensor, t: float | Tensor) -> Tensor:
     """Sample a materialized command field ``(B, T, N)`` at scalar time ``t``.
 
     Commands are materialized in time per ``DATA_SCHEMA.md`` section E rather
     than passed as Python callables, which would serialise the batch.
+
+    ``t`` may be a Python float or a 0-dim tensor already on the device. The
+    tensor form is what the compiled rollout uses: a Python float would have to
+    be shipped to the device on every stage, and would make the traced graph
+    depend on a value that changes every step.
     """
     b, n_t = cmd_t.shape
-    tq = torch.full((b, 1), float(t), dtype=cmd_t.dtype, device=cmd_t.device)
-    idx = torch.searchsorted(cmd_t, tq, right=True).clamp(1, n_t - 1)
-
-    t0 = torch.gather(cmd_t, 1, idx - 1)
-    t1 = torch.gather(cmd_t, 1, idx)
-    span = t1 - t0
-    safe_span = torch.where(span > 0, span, torch.ones_like(span))
-    w = torch.where(span > 0, (tq - t0) / safe_span, torch.zeros_like(span))
-    w = w.clamp(0.0, 1.0)
+    if isinstance(t, Tensor):
+        tq = t.reshape(1, 1).expand(b, 1).to(dtype=cmd_t.dtype)
+    else:
+        tq = torch.full((b, 1), float(t), dtype=cmd_t.dtype, device=cmd_t.device)
+    idx, w = _interp_weights(cmd_t, tq)
 
     n_veh = values.shape[2]
     gather_lo = (idx - 1).unsqueeze(-1).expand(b, 1, n_veh)
@@ -207,6 +221,21 @@ class TorchScenarioBatch:
         self._mass_safe = torch.where(self.node_mask, mass, torch.ones_like(mass))
         self._node_maskf = self.node_mask.to(self.y0.dtype)
         self._edge_maskf = self.edge_mask.to(self.y0.dtype)
+
+        # Pack the two command fields behind one contiguous buffer so a single
+        # pair of gathers serves both, then re-point the public fields at views
+        # of it. The originals are dropped, so this costs no extra memory.
+        n = self.u_trac.shape[2]
+        packed = torch.cat([self.u_trac, self.u_brk], dim=2).contiguous()
+        self._u_cmd = packed
+        self.u_trac = packed[:, :, :n]
+        self.u_brk = packed[:, :, n:]
+
+        # The NumPy path short-circuits the curvature proxy entirely when
+        # k_curv_scale is zero (route.curvature_force_longitudinal), which it
+        # is for every fixture but one and by default in the randomizer. Decide
+        # once here rather than paying for a route interpolation per RHS call.
+        self._needs_curvature = bool((self.k_curv_scale != 0).any().item())
 
     # -- properties ---------------------------------------------------------
 
@@ -478,7 +507,7 @@ def _grade_force(mass: Tensor, sin_theta_field: Tensor) -> Tensor:
 
 
 def torch_rhs(
-    t: float,
+    t: float | Tensor,
     y: Tensor,
     batch: TorchScenarioBatch,
     *,
@@ -488,6 +517,10 @@ def torch_rhs(
 
     ``brake_opposes_motion=None`` uses the per-scenario value carried in
     ``batch``; an explicit bool overrides it for the whole batch.
+
+    ``t`` is a scalar time; a 0-dim tensor is accepted as well as a float, so
+    the compiled rollout can keep time on the device instead of baking a
+    changing Python value into the traced graph.
 
     No in-place mutation, no ``.item()``, no data-dependent Python branching
     over batch elements -- the whole thing has to stay inside autograd.
@@ -527,8 +560,9 @@ def torch_rhs(
     f_out = torch.nn.functional.pad(f_cpl, (0, 1))  # force to the vehicle behind
 
     # -- commands -----------------------------------------------------------
-    u_trac = _interp_commands(batch.cmd_t, batch.u_trac, t)
-    u_brk = _interp_commands(batch.cmd_t, batch.u_brk, t)
+    # One interpolation over the packed buffer yields both fields.
+    u_both = _interp_commands(batch.cmd_t, batch._u_cmd, t)
+    u_trac, u_brk = u_both[:, :n], u_both[:, n:]
     u_trac = torch.where(can_traction > 0, u_trac, torch.zeros_like(u_trac))
 
     # -- resistances --------------------------------------------------------
@@ -538,11 +572,17 @@ def torch_rhs(
     sgn_v = torch.where(abs_v < _V_SIGN_EPS, torch.zeros_like(v), torch.sign(v))
     r_davis = (davis_a + davis_b * abs_v + davis_c * v * v) * sgn_v
 
-    sin_theta = _interp_batched(batch.route_s, batch.route_sin_theta, x)
+    # Route fields share one searchsorted; kappa is only gathered if some
+    # scenario in the batch actually has a nonzero curvature scale.
+    route_idx, route_w = _interp_weights(batch.route_s, x)
+    sin_theta = _apply_weights(batch.route_sin_theta, route_idx, route_w)
     f_grade = _grade_force(mass, sin_theta)
 
-    kappa = _interp_batched(batch.route_s, batch.route_kappa, x)
-    f_curv = batch.k_curv_scale * mass * v * v * kappa.abs() * sgn_v
+    if batch._needs_curvature:
+        kappa = _apply_weights(batch.route_kappa, route_idx, route_w)
+        f_curv = batch.k_curv_scale * mass * v * v * kappa.abs() * sgn_v
+    else:
+        f_curv = None
 
     # -- actuators ----------------------------------------------------------
     zt = z_trac.clamp_min(0.0)
@@ -563,7 +603,9 @@ def torch_rhs(
     )
 
     # -- assemble -----------------------------------------------------------
-    net = f_trac - f_brake - r_davis - f_grade - f_curv + f_in - f_out
+    net = f_trac - f_brake - r_davis - f_grade + f_in - f_out
+    if f_curv is not None:
+        net = net - f_curv
     dv = net / batch._mass_safe
 
     dx = v
@@ -577,6 +619,73 @@ def torch_rhs(
 # ---------------------------------------------------------------------------
 # fixed-step RK4 rollout
 # ---------------------------------------------------------------------------
+
+# "auto" captures a CUDA graph for inference rollouts on the GPU; "never"
+# forces the plain eager path. Exposed so the port report can time both.
+FAST_ROLLOUT = "auto"
+
+
+class _GraphedStepper:
+    """One RK4 step captured into a CUDA graph, replayed in place.
+
+    The workload is launch-bound, not FLOP-bound: measured eagerly at
+    ``B=64, N=130`` the GPU sits idle about 92 % of the time while the host
+    issues roughly 660 kernel launches per step. Capturing the step collapses
+    all of those into a single replay.
+
+    State and time live in static buffers that the captured graph updates
+    itself, so a replay needs no host interaction at all -- the inner loop
+    becomes ``graph.replay()`` with nothing crossing the PCIe bus.
+
+    ``torch.compile(mode="reduce-overhead")`` was tried first and is the route
+    the spec suggests, but its cudagraph-trees bookkeeping asserts when the
+    caller retains one output tensor per sampled step, which a rollout does by
+    construction. Capturing directly avoids that and drops the dependency on a
+    working inductor toolchain at run time.
+    """
+
+    def __init__(self, batch: TorchScenarioBatch, y0: Tensor, h: float) -> None:
+        self.y = y0.clone()
+        self.t = torch.zeros((), dtype=y0.dtype, device=y0.device)
+
+        # Capture has to happen on a non-default stream, after a few warmup
+        # iterations that let cuBLAS/allocator state settle.
+        side = torch.cuda.Stream()
+        side.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(side):
+            for _ in range(3):
+                _rk4_step(batch, self.y, self.t, h)
+        torch.cuda.current_stream().wait_stream(side)
+
+        self.graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(self.graph):
+            stepped = _rk4_step(batch, self.y, self.t, h)
+            self.y.copy_(stepped)
+            self.t.add_(h)
+
+    def reset(self, y: Tensor, t: float) -> None:
+        self.y.copy_(y)
+        self.t.fill_(t)
+
+    def advance(self, n_steps: int) -> Tensor:
+        for _ in range(n_steps):
+            self.graph.replay()
+        return self.y
+
+
+def _can_graph(y: Tensor) -> bool:
+    """Whether a CUDA-graph rollout is available and safe here.
+
+    Inference on CUDA only. Under autograd the eager path is used: capture
+    would freeze the backward graph into static buffers, and the differentiable
+    rollout is not the throughput-critical one.
+    """
+    return (
+        FAST_ROLLOUT != "never"
+        and y.is_cuda
+        and not (torch.is_grad_enabled() and y.requires_grad)
+    )
+
 
 def rollout_rk4(
     batch: TorchScenarioBatch,
@@ -608,13 +717,39 @@ def rollout_rk4(
     # One host sync up front for the whole schedule, rather than one per step.
     t_np = t_grid.detach().cpu().numpy().astype(np.float64)
 
+    # The substep schedule: (n_sub, h) per output interval. Built up front so
+    # the graph cache can be keyed on h without re-deriving it in the loop.
+    schedule = []
+    for j in range(len(t_np) - 1):
+        span = float(t_np[j + 1]) - float(t_np[j])
+        n_sub = max(1, int(math.ceil(abs(span) / dt - 1e-12)))
+        schedule.append((n_sub, span / n_sub))
+
+    if _can_graph(y0):
+        graphs: dict[float, _GraphedStepper] = {}
+        y = y0
+        outputs = [y]
+        for j, (n_sub, h) in enumerate(schedule):
+            stepper = graphs.get(h)
+            if stepper is None:
+                try:
+                    stepper = _GraphedStepper(batch, y0, h)
+                except Exception:  # noqa: BLE001 - capture failed; use eager
+                    graphs.clear()
+                    break
+                graphs[h] = stepper
+            stepper.reset(y, float(t_np[j]))
+            # The captured graph writes into its own static buffer, so each
+            # sample has to be copied out before the next interval reuses it.
+            y = stepper.advance(n_sub).clone()
+            outputs.append(y)
+        else:
+            return t_grid, torch.stack(outputs, dim=1)
+
     y = y0
     outputs = [y]
-    for j in range(len(t_np) - 1):
-        t_start, t_end = float(t_np[j]), float(t_np[j + 1])
-        span = t_end - t_start
-        n_sub = max(1, int(math.ceil(abs(span) / dt - 1e-12)))
-        h = span / n_sub
+    for j, (n_sub, h) in enumerate(schedule):
+        t_start = float(t_np[j])
         for k in range(n_sub):
             y = _rk4_step(batch, y, t_start + k * h, h)
         outputs.append(y)
@@ -622,7 +757,9 @@ def rollout_rk4(
     return t_grid, torch.stack(outputs, dim=1)
 
 
-def _rk4_step(batch: TorchScenarioBatch, y: Tensor, t: float, h: float) -> Tensor:
+def _rk4_step(
+    batch: TorchScenarioBatch, y: Tensor, t: float | Tensor, h: float
+) -> Tensor:
     """One classical RK4 step. Out-of-place throughout, for autograd."""
     k1 = torch_rhs(t, y, batch)
     k2 = torch_rhs(t + 0.5 * h, y + (0.5 * h) * k1, batch)
