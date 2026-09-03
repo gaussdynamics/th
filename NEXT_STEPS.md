@@ -44,17 +44,28 @@ Two things drive the cost, and both are fixable in the same piece of work:
 I previously suggested the torch port as step 5, after a pilot dataset. **The measurement
 says it is the blocker, not a later optimization.** Revised critical path:
 
-1. ~~Control-profile regime library~~ ✅ done (this pass)
-2. ~~Scenario randomization~~ ✅ done (this pass)
-3. **Batched torch N-vehicle RHS** ← now the gate on everything downstream.
-   Specified in `TORCH_PORT_SPEC.md`, with the acceptance contract already
-   committed and red at `simulator2/tests/test_torch_rhs.py` and reference
-   fixtures under `simulator2/tests/fixtures/torch_reference/`. Handed to
-   Claude Code CLI on the 4090 workstation.
-4. `write_scenario_npz` + dataset driver + `index.parquet` / `norm_stats.json` / `splits.json`
-5. Pilot dataset (~500 scenarios) to debug graph batching and normalization
-6. Full dataset
+1. ~~Control-profile regime library~~ ✅ done
+2. ~~Scenario randomization~~ ✅ done
+3. ~~**Batched torch N-vehicle RHS**~~ ✅ done 2026-09-03 on the 4090 workstation.
+   `simulator2/torch_rhs.py`; acceptance contract green; results and the
+   measurements behind them in `TORCH_PORT_REPORT.md`.
+4. ~~`write_scenario_npz` + dataset driver + manifests~~ ✅ done 2026-09-03.
+   `simulator2/dataset.py` + `scripts/build_dataset.py`.
+5. ~~Pilot dataset~~ ✅ done — 512 scenarios, used to debug normalization
+   (the `u_trac [T, N]` channel-axis bug) and to surface the overspeed issue
+   in "Still open" item 1 below.
+6. **Full dataset** ← here now.
 7. GNN / Neural-ODE surrogate
+
+**What the port changed about the numbers above.** The 170-CPU-hour estimate is
+obsolete: a 10,000-scenario build at 300–600 s per scenario now takes roughly
+20–25 minutes of GPU time, and `N = 130` costs the same per scenario as
+`N = 11`, so `ood_size` is no longer the thing that cannot be generated. The
+per-scenario wall-clock budget this document called mandatory is also no longer
+needed — fixed-step RK4 makes cost `ceil(duration/dt)` steps regardless of
+regime, which removes the hang at the source rather than bounding it. (Just as
+well: the `SIGALRM` mechanism in `scripts/bench_scenarios.py` is Unix-only and
+the workstation is native Windows.)
 
 The port was always required anyway — the physics-residual design (`ŷ = y_phys + Δy_GNN`)
 has to evaluate `F_phys` inside autograd on every training step, so a differentiable
@@ -215,10 +226,44 @@ pathological consist/regime pairing will hang a 10,000-scenario build with no di
    *Note: the route pipeline needs OSM + DEM network access, which the device bridge does
    not have. Run it locally, or stage the `routegen` package into the cloud container where
    network is available.*
-2. **Splits.** `splits.json` needs `val`, `test_id`, `ood_grade`, `ood_corridor`, and the
-   reserved `control_eval` routes that must never touch surrogate training.
+
+   **This is now the binding constraint, and the pilot quantified it.** The
+   open-loop RHS does not enforce `route_vmax` — the field is exogenous
+   information for the controller — so nothing stops a coasting consist
+   accelerating down a clamped 4% grade. Over 512 pilot scenarios: 71% never
+   exceed the limit, **20% exceed it by more than 5 m/s, and 3% by more than
+   20 m/s**, the worst reaching 57 m/s (205 km/h). It tracks the grade field
+   exactly — 39% of `route_line2` scenarios are over by >5 m/s against 2% of
+   `route_line5`. The build records `v_over_limit_max_mps` and
+   `frac_time_over_limit` per scenario in `index.parquet`, so these are
+   filterable without rebuilding, but the fix is the corridor set, not a filter.
+
+2. **Splits.** ~~`splits.json` needs `val`, `test_id`, `ood_grade`,
+   `ood_corridor`, and the reserved `control_eval` routes.~~ The driver supports
+   all seven and checks corridor reservations before the consist-level
+   `ood_size` flag, so a `control_eval` corridor cannot leak into training.
+   What remains is an input problem, not a code one: with 5 corridors every
+   holdout costs ~20% of the data, so the v1 build reserves `route_line2` for
+   `ood_grade` and `route_line5` for `ood_corridor` and leaves **`control_eval`
+   empty**. Populating it needs the wider corridor set from item 1.
 3. **`k_curv_scale` is 0.0 by default** in the randomizer because the curvature proxy's
    magnitude is not calibrated — the route `kappa` field is generated but unused. Worth a
-   deliberate decision before the dataset is built, not after.
+   deliberate decision before the dataset is built, not after. *(The v1 build was
+   made at 0.0, so the decision is still outstanding and now has a dataset
+   riding on it. `--k-curv-scale` exposes it; the torch RHS skips the
+   interpolation entirely when it is zero, so engaging it costs a little speed.)*
 4. ~~Chapter 4 validation figures~~ ✅ resolved — see above. Only Stage 7 needed
    regenerating; it has been.
+5. **Precision for generation.** `TORCH_PORT_REPORT.md` measures float64 at
+   1.20× the cost of float32 — not the 64× the port spec assumed, because the
+   rollout is latency-bound rather than FLOP-bound — while float32 rounding
+   alone consumes 60% of the 0.05 m/s velocity tolerance on the worst fixture
+   over just 40 s. The v1 build therefore integrates in float64 and stores
+   float32. The module default is still float32 to match the spec's API.
+6. **Deriving `d(state)/dt` for residual training.** §Consumption of
+   `DATA_SCHEMA.md` suggests finite-differencing `state`. At the 0.25 s output
+   spacing that carries an O(Δt²) error of the same order as the residual the
+   GNN is meant to learn — measured 2.2e-2 m/s² on a benign cruise run, several
+   m/s² on harsher ones, collapsing to 3.9e-5 at Δt = 0.01. Recompute the RHS
+   analytically from the stored arrays instead; §H guarantees everything needed
+   is present.
