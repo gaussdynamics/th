@@ -83,3 +83,6 @@ paper/*.blg
 paper/*.fls
 paper/*.fdb_latexmk
 paper/*.run.xml
+
+# Generated datasets (build with scripts/build_dataset.py)
+data/
