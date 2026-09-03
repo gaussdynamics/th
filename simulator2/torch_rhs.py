@@ -275,7 +275,87 @@ class TorchScenarioBatch:
         for p in paths:
             with np.load(Path(p)) as d:
                 raw.append({k: d[k] for k in d.files})
+        return cls._from_records(raw, device=device, dtype=dtype)
 
+    @classmethod
+    def from_scenarios(
+        cls,
+        scenarios: Sequence["object"],
+        device: str | torch.device = "cpu",
+        dtype: torch.dtype = torch.float32,
+        commands: Sequence[tuple[np.ndarray, np.ndarray]] | None = None,
+    ) -> "TorchScenarioBatch":
+        """Build a batch from ``ExtendedTrainScenario`` objects.
+
+        This is the dataset driver's entry point: it turns the sampled,
+        callable-carrying scenario objects into the dense tensors the batched
+        RHS needs. Commands are materialized onto each scenario's ``t_eval``
+        grid here, once, rather than being called during integration.
+
+        ``commands`` supplies already-materialized ``(u_trac, u_brk)`` pairs to
+        skip that step. The per-vehicle callables cost ``T*N`` Python calls, so
+        a caller that can produce the arrays a cheaper way -- as
+        ``dataset.materialize_commands_fast`` does -- should pass them in.
+
+        The scenario type is not imported (that would make this module depend on
+        ``io_types`` and, transitively, on the NumPy path); only its attributes
+        are read.
+        """
+        from .simulate import materialize_commands  # local: keeps the module standalone
+
+        records = []
+        for k, sc in enumerate(scenarios):
+            n = len(sc.vehicles)
+            t_eval = np.asarray(sc.t_eval, dtype=np.float64)
+            if commands is not None:
+                u_trac, u_brk = commands[k]
+            else:
+                u_trac, u_brk = materialize_commands(sc, t_eval)
+            route = sc.route
+            r_len = np.asarray(route.s_nodes_m).size
+            kappa = route.kappa_nodes
+            records.append({
+                "N": n,
+                "t": t_eval,
+                "y0": np.asarray(sc.y0, dtype=np.float64),
+                "node_static": np.array([
+                    [v.mass_kg, v.davis_A, v.davis_B, v.davis_C,
+                     float(v.can_traction), v.F_trac_max_N, v.F_brk_max_N]
+                    for v in sc.vehicles
+                ], dtype=np.float64),
+                "edge_static": np.array([
+                    [c.L0_m, c.slack_half_m, c.k_draft, c.c_draft, c.k_buff, c.c_buff]
+                    for c in sc.couplers
+                ], dtype=np.float64).reshape(max(n - 1, 0), D_EDGE_STATIC),
+                "u_trac": u_trac,
+                "u_brk": u_brk,
+                "route_s": np.asarray(route.s_nodes_m, dtype=np.float64),
+                "route_sin_theta": np.asarray(route.sin_theta_nodes, dtype=np.float64),
+                "route_kappa": (np.zeros(r_len) if kappa is None
+                                else np.asarray(kappa, dtype=np.float64)),
+                "tau_brk_s": sc.tau_brk_s,
+                "tau_trac_s": sc.tau_trac_s,
+                "p_max_w": sc.p_max_w,
+                "k_curv_scale": sc.k_curv_scale,
+                "v_eps": DEFAULT_V_EPS,
+                "v_brake_eps": DEFAULT_V_BRAKE_EPS,
+                "brake_opposes_motion": sc.brake_opposes_motion,
+            })
+        return cls._from_records(records, device=device, dtype=dtype)
+
+    @classmethod
+    def _from_records(
+        cls,
+        raw: Sequence[dict],
+        device: str | torch.device = "cpu",
+        dtype: torch.dtype = torch.float32,
+    ) -> "TorchScenarioBatch":
+        """Pad a list of per-scenario array dicts into one batch.
+
+        Shared by :meth:`from_fixtures` and :meth:`from_scenarios`; a record has
+        the same keys either way, which is what keeps the fixture path and the
+        production path from drifting apart.
+        """
         b = len(raw)
         n_max = max(int(r["N"]) for r in raw)
         t_cmd_max = max(int(r["t"].shape[0]) for r in raw)
