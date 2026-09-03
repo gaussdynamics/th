@@ -75,7 +75,27 @@ def rebuild_rhs(d: dict, route: dict, t: float, y: np.ndarray) -> np.ndarray:
     )
     kap = np.interp(x, route["route_s"], route["route_kappa"])
     kcs = float(d["k_curv_scale"])
-    c_cur = np.where(np.abs(v) < 1e-9, 0.0, kcs * mass * v * v * np.abs(kap) * sgn)
+    # The curvature law is per-build, so it has to be read from the file rather
+    # than assumed -- applying proxy_v2's k*m*v^2*|kappa| to a build made with a
+    # speed-independent law is wrong by a factor of ~33 at 15 m/s, which the
+    # loose finite-difference tolerance would happily swallow.
+    model = str(d.get("curvature_model", "proxy_v2"))
+    if model == "proxy_v2":
+        mag = kcs * mass * v * v * np.abs(kap)
+    else:
+        k_abs = np.minimum(np.abs(kap), 1.0 / 60.0)  # route.MIN_CURVE_RADIUS_M
+        if model == "linear":
+            w_c = 0.0004 * 1746.4 * k_abs
+        elif model == "roeckl":
+            w_c = np.where(
+                k_abs <= 1.0 / 300.0,
+                1e-3 * 650.0 * k_abs / (1.0 - 55.0 * k_abs),
+                1e-3 * 500.0 * k_abs / (1.0 - 30.0 * k_abs),
+            )
+        else:
+            raise ValueError(f"unknown curvature_model {model!r} in the dataset")
+        mag = kcs * mass * 9.81 * w_c
+    c_cur = np.where(np.abs(v) < 1e-9, 0.0, mag * sgn)
 
     zt, zb = np.maximum(z_trac, 0.0), np.maximum(z_brk, 0.0)
     f_tr = np.where(

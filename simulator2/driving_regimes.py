@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import random
+import zlib
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -341,9 +342,18 @@ def generate_regime_profile(
     duration_s: Optional[float] = None,
     dpu_mode: Optional[str] = None,
 ) -> ControlProfile:
-    """Deterministic for a given ``(regime, seed)``."""
+    """Deterministic for a given ``(regime, seed)``, across processes.
+
+    The regime is folded into the seed with ``zlib.crc32`` rather than the
+    builtin ``hash``. ``Regime`` is a ``str`` enum and CPython randomizes string
+    hashes per process unless ``PYTHONHASHSEED`` is set, so the previous
+    ``hash(regime.value)`` made this function reproducible *within* a run and
+    different on every new one -- which silently made dataset builds
+    unreproducible from their recorded seed. ``crc32`` is stable across
+    processes, platforms and versions.
+    """
     cfg = config or RegimeLibraryConfig()
-    rng = random.Random((hash(regime.value) & 0xFFFF) * 1_000_003 + seed)
+    rng = random.Random((zlib.crc32(regime.value.encode()) & 0xFFFF) * 1_000_003 + seed)
 
     # Rounded to the same precision _curve() rounds knot times to, so a knot
     # placed at `dur` round-trips exactly instead of landing a few hundred

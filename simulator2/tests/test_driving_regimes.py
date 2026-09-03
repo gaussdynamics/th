@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import random
 
+from pathlib import Path
+
 import pytest
 
 from simulator2.control_profile import ControlProfile
@@ -138,3 +140,40 @@ def test_custom_weights_respected() -> None:
     cfg = RegimeLibraryConfig(weights={Regime.COAST: 1.0})
     rng = random.Random(1)
     assert {sample_regime(rng, cfg) for _ in range(50)} == {Regime.COAST}
+
+
+def test_deterministic_across_processes() -> None:
+    """The within-process determinism test above cannot catch a seed derived
+    from ``hash()`` of a string: CPython randomizes string hashes per process,
+    so such a function is stable inside one run and different in the next.
+
+    That is exactly the bug this guards -- ``generate_regime_profile`` used
+    ``hash(regime.value)``, which made every dataset build unreproducible from
+    its recorded seed while every same-process test passed. Subprocesses are
+    launched with distinct PYTHONHASHSEED values to force the issue.
+    """
+    import json as _json
+    import os
+    import subprocess
+    import sys
+
+    snippet = (
+        "from simulator2.driving_regimes import Regime, generate_regime_profile;"
+        "import json;"
+        "p = generate_regime_profile(Regime.THROTTLE_MODULATION, seed=42);"
+        "print(json.dumps(p.to_dict()))"
+    )
+    repo_root = Path(__file__).resolve().parents[2]
+    outputs = []
+    for hash_seed in ("0", "1", "12345"):
+        env = {**os.environ, "PYTHONHASHSEED": hash_seed}
+        res = subprocess.run(
+            [sys.executable, "-c", snippet],
+            cwd=str(repo_root), env=env, capture_output=True, text=True, check=True,
+        )
+        outputs.append(_json.loads(res.stdout))
+
+    assert outputs[0] == outputs[1] == outputs[2], (
+        "generate_regime_profile is not reproducible across processes; "
+        "something in its seeding depends on PYTHONHASHSEED"
+    )
