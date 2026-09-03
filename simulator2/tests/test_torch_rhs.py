@@ -242,9 +242,31 @@ def test_brake_flag_disabled_reproduces_historical_behaviour() -> None:
 
 @requires_port
 def test_rhs_gradcheck() -> None:
-    path = FIXTURES[0]
+    """Analytic gradients must match numerical ones.
+
+    Evaluated at a deliberately perturbed state rather than straight at a
+    fixture's ``y0``. The model is piecewise in three places -- ``max(z, 0)``
+    on the actuator states, the piecewise-linear route field, and the coupler
+    deadband -- and every fixture's ``y0`` sits exactly on at least one of
+    those kinks: actuators start settled at a zero command, and vehicles are
+    placed at exact multiples of the 10 m route-node spacing (``x0`` is
+    3000, 2980, ... on a route sampled every 10 m). A central difference
+    straddling a kink returns the average of the two one-sided slopes, which
+    cannot equal any single analytic subgradient, so gradcheck at those points
+    fails for *any* faithful implementation rather than testing anything.
+
+    ``regime_stretch_brake`` is the one fixture holding brake and traction
+    simultaneously, so both actuator states are strictly positive; the
+    position offset moves the consist off the route lattice. Together they put
+    the evaluation point where the model is genuinely differentiable, which is
+    what this test is meant to check.
+    """
+    path = next(p for p in FIXTURES if _name(p) == "regime_stretch_brake")
+    fx = _load(path)
     batch = TorchScenarioBatch.from_fixtures([path], device="cpu", dtype=torch.float64)
-    y = torch.as_tensor(_load(path)["y0"][None, :], dtype=torch.float64, requires_grad=True)
+    y0 = fx["y0"][None, :].copy()
+    y0[:, : int(fx["N"])] += 3.7  # off the 10 m route-node lattice
+    y = torch.tensor(y0, dtype=torch.float64, requires_grad=True)
     assert torch.autograd.gradcheck(
         lambda yy: torch_rhs(1.0, yy, batch), (y,), eps=1e-6, atol=1e-6, rtol=1e-4
     )
@@ -257,7 +279,7 @@ def test_gradients_flow_through_rollout() -> None:
     path = next(p for p in FIXTURES if _name(p) == "regime_cruise")
     fx = _load(path)
     batch = TorchScenarioBatch.from_fixtures([path], device="cpu", dtype=torch.float64)
-    y0 = torch.as_tensor(fx["y0"][None, :], dtype=torch.float64, requires_grad=True)
+    y0 = torch.tensor(fx["y0"][None, :], dtype=torch.float64, requires_grad=True)
     t_grid = torch.as_tensor(fx["t"][:101], dtype=torch.float64)
     _, y_out = rollout_rk4(batch, y0, t_grid, dt=0.02)
     y_out.pow(2).sum().backward()
@@ -269,7 +291,7 @@ def test_gradients_flow_through_rollout() -> None:
 def test_no_inplace_breaks_autograd() -> None:
     path = FIXTURES[0]
     batch = TorchScenarioBatch.from_fixtures([path], device="cpu", dtype=torch.float64)
-    y = torch.as_tensor(_load(path)["y0"][None, :], dtype=torch.float64, requires_grad=True)
+    y = torch.tensor(_load(path)["y0"][None, :], dtype=torch.float64, requires_grad=True)
     with torch.autograd.set_detect_anomaly(True):
         torch_rhs(1.0, y, batch).sum().backward()
 
