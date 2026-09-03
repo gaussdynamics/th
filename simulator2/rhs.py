@@ -57,6 +57,8 @@ def train_rhs_n(
             davis_resistance_longitudinal(v[i], vp.davis_A, vp.davis_B, vp.davis_C)
         )
         g = grade_force(vp.mass_kg, float(x[i]), route.sin_theta_at)
+        # The Stage-4 RHS predates the curvature-model flag and is only used by
+        # the notebook build-up, so it keeps the original proxy.
         ccur = curvature_force_longitudinal(
             vp.mass_kg, float(v[i]), float(x[i]), route, k_curv_scale
         )
@@ -83,6 +85,7 @@ def train_rhs_extended(
     v_eps: float = DEFAULT_V_EPS,
     brake_opposes_motion: bool = True,
     v_brake_eps: float = DEFAULT_V_BRAKE_EPS,
+    curvature_model: str = "proxy_v2",
 ) -> np.ndarray:
     """Extended RHS with first-order traction/brake buildup and power cap (notebook).
 
@@ -127,7 +130,8 @@ def train_rhs_extended(
         )
         g = grade_force(vp.mass_kg, float(x[i]), route.sin_theta_at)
         ccur = curvature_force_longitudinal(
-            vp.mass_kg, float(v[i]), float(x[i]), route, k_curv_scale
+            vp.mass_kg, float(v[i]), float(x[i]), route, k_curv_scale,
+            curvature_model,
         )
         zt = float(max(z_trac[i], 0.0))
         zb = float(max(z_brk[i], 0.0))
@@ -156,6 +160,7 @@ def train_rhs_tensorized(
     v_eps: float = DEFAULT_V_EPS,
     brake_opposes_motion: bool = True,
     v_brake_eps: float = DEFAULT_V_BRAKE_EPS,
+    curvature_model: str = "proxy_v2",
 ) -> np.ndarray:
     """Same dynamics as ``train_rhs_extended``, expressed via ``H`` and ``E`` tensors.
 
@@ -212,7 +217,8 @@ def train_rhs_tensorized(
         )
         g = grade_force(float(h[i, NodeChannel.MASS_KG]), xi, route.sin_theta_at)
         ccur = curvature_force_longitudinal(
-            float(h[i, NodeChannel.MASS_KG]), vi, xi, route, k_curv_scale
+            float(h[i, NodeChannel.MASS_KG]), vi, xi, route, k_curv_scale,
+            curvature_model,
         )
         zt = float(max(z_trac_i, 0.0))
         zb = float(max(z_brk_i, 0.0))

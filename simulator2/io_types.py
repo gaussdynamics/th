@@ -34,6 +34,11 @@ class ExtendedTrainScenario:
     u_trac_cmd: Callable[[float, int], float]
     u_brk_cmd: Callable[[float, int], float]
     k_curv_scale: float = 0.0
+    #: Curvature resistance model: "proxy_v2" (default, the original
+    #: k*m*v^2*|kappa| notebook proxy), "roeckl" or "linear" (both
+    #: speed-independent, with k_curv_scale as a multiplier on the standard
+    #: formula). See route.curvature_force_longitudinal.
+    curvature_model: str = "proxy_v2"
     tau_brk_s: float = 3.0
     tau_trac_s: float = 5.0
     p_max_w: float = 3.5e6

@@ -359,7 +359,14 @@ def main() -> None:
     ap.add_argument("--max-trains", type=int, default=None)
     ap.add_argument("--route-dir", type=Path, default=DEFAULT_ROUTE_DIR)
     ap.add_argument("--duration-range", type=float, nargs=2, default=(180.0, 600.0))
-    ap.add_argument("--k-curv-scale", type=float, default=0.0)
+    ap.add_argument("--k-curv-scale", type=float, default=0.0,
+                    help="0 disables curvature. With --curvature-model roeckl "
+                         "or linear, 1.0 is the standard formula")
+    ap.add_argument("--curvature-model", default="proxy_v2",
+                    choices=("proxy_v2", "roeckl", "linear"),
+                    help="proxy_v2 is the original k*m*v^2*|kappa| law and the "
+                         "default; roeckl and linear are speed-independent and "
+                         "calibrated (see TORCH_PORT_REPORT.md)")
     ap.add_argument("--ood-corridors", nargs="*", default=[])
     ap.add_argument("--control-eval-corridors", nargs="*", default=[])
     ap.add_argument("--ood-grade-corridors", nargs="*", default=[])
@@ -392,6 +399,7 @@ def main() -> None:
         duration_s_range=tuple(args.duration_range),
         dt_s=args.dt_out,
         k_curv_scale=args.k_curv_scale,
+        curvature_model=args.curvature_model,
     )
 
     print(f"sampling {args.n_scenarios} scenarios")

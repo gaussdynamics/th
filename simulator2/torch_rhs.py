@@ -41,6 +41,10 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from .route import (  # shared with the NumPy path so the laws cannot drift
+    MIN_CURVE_RADIUS_M,
+    _AREMA_COEFF,
+)
 from .constants import (
     DEFAULT_C_BUFF,
     DEFAULT_C_DRAFT,
@@ -212,6 +216,10 @@ class TorchScenarioBatch:
     v_eps: Tensor           # (B, 1)
     v_brake_eps: Tensor     # (B, 1)
     brake_opposes_motion: Tensor  # (B, 1) bool
+    #: Which curvature law ``k_curv_scale`` scales -- one string for the
+    #: whole batch. Batches are built homogeneous, so this stays a Python
+    #: constant in the traced graph instead of a per-element select.
+    curvature_model: str = "proxy_v2"
 
     def __post_init__(self) -> None:
         # Padded vehicles carry mass 0, which would divide to NaN before the
@@ -340,6 +348,7 @@ class TorchScenarioBatch:
                 "v_eps": DEFAULT_V_EPS,
                 "v_brake_eps": DEFAULT_V_BRAKE_EPS,
                 "brake_opposes_motion": sc.brake_opposes_motion,
+                "curvature_model": getattr(sc, "curvature_model", "proxy_v2"),
             })
         return cls._from_records(records, device=device, dtype=dtype)
 
@@ -428,6 +437,12 @@ class TorchScenarioBatch:
             [[bool(r["brake_opposes_motion"])] for r in raw],
             dtype=torch.bool, device=dev,
         )
+        models = {str(r.get("curvature_model", "proxy_v2")) for r in raw}
+        if len(models) > 1:
+            raise ValueError(
+                f"batch mixes curvature models {sorted(models)}; bucket scenarios "
+                "by curvature_model before batching"
+            )
 
         return cls(
             y0=y0, node_mask=node_mask, edge_mask=edge_mask,
@@ -438,7 +453,7 @@ class TorchScenarioBatch:
             tau_brk_s=_scalar("tau_brk_s"), tau_trac_s=_scalar("tau_trac_s"),
             p_max_w=_scalar("p_max_w"), k_curv_scale=_scalar("k_curv_scale"),
             v_eps=_scalar("v_eps"), v_brake_eps=_scalar("v_brake_eps"),
-            brake_opposes_motion=bom,
+            brake_opposes_motion=bom, curvature_model=models.pop(),
         )
 
     @classmethod
@@ -559,7 +574,9 @@ class TorchScenarioBatch:
 
     def to(self, device=None, dtype=None) -> "TorchScenarioBatch":
         """Move / cast every tensor field, preserving bool masks."""
-        def _cast(v: Tensor) -> Tensor:
+        def _cast(v):
+            if not isinstance(v, Tensor):
+                return v  # curvature_model is a plain string
             if v.dtype == torch.bool:
                 return v.to(device=device) if device is not None else v
             return v.to(device=device, dtype=dtype)
@@ -572,6 +589,36 @@ class TorchScenarioBatch:
 # ---------------------------------------------------------------------------
 # right-hand side
 # ---------------------------------------------------------------------------
+
+def _curvature_force(
+    k_scale: Tensor,
+    mass: Tensor,
+    v: Tensor,
+    kappa: Tensor,
+    sgn_v: Tensor,
+    model: str,
+) -> Tensor:
+    """Curvature resistance, matching ``route.curvature_force_longitudinal``.
+
+    ``model`` is a batch-level string rather than a per-scenario tensor: the
+    driver builds homogeneous batches, and a Python branch on a constant keeps
+    the traced graph free of a ``where`` that would never vary. See
+    :attr:`TorchScenarioBatch.curvature_model`.
+    """
+    if model == "proxy_v2":
+        return k_scale * mass * v * v * kappa.abs() * sgn_v
+
+    kap = kappa.abs().clamp(max=1.0 / MIN_CURVE_RADIUS_M)
+    if model == "linear":
+        w_c = _AREMA_COEFF * kap
+    elif model == "roeckl":
+        wide = 1e-3 * 650.0 * kap / (1.0 - 55.0 * kap)
+        tight = 1e-3 * 500.0 * kap / (1.0 - 30.0 * kap)
+        w_c = torch.where(kap <= 1.0 / 300.0, wide, tight)
+    else:
+        raise ValueError(f"unknown curvature_model {model!r}")
+    return k_scale * mass * GRAVITY_MPS2 * w_c * sgn_v
+
 
 def _grade_force(mass: Tensor, sin_theta_field: Tensor) -> Tensor:
     """``m g sin(theta(x))`` as the NumPy path computes it.
@@ -660,7 +707,9 @@ def torch_rhs(
 
     if batch._needs_curvature:
         kappa = _apply_weights(batch.route_kappa, route_idx, route_w)
-        f_curv = batch.k_curv_scale * mass * v * v * kappa.abs() * sgn_v
+        f_curv = _curvature_force(
+            batch.k_curv_scale, mass, v, kappa, sgn_v, batch.curvature_model
+        )
     else:
         f_curv = None
 

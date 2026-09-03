@@ -347,6 +347,9 @@ def write_scenario_arrays(
         u_brk=f32(arrays.u_brk),
         # F is referenced, not duplicated: see routes/<route_id>.npz
         route_id=str(metadata["route_id"]),
+        # Which curvature law k_curv_scale scales; a string, so it cannot
+        # ride along in the numeric constants block.
+        curvature_model=str(metadata.get("curvature_model", "proxy_v2")),
         # G
         **{k: np.float32(v) for k, v in arrays.summaries.items()},
         # H

@@ -117,6 +117,10 @@ class RandomizationConfig:
     #: proxy's magnitude is not calibrated; set deliberately to engage the
     #: route's kappa field.
     k_curv_scale: float = 0.0
+    #: Which curvature law k_curv_scale scales. "proxy_v2" keeps the
+    #: original v^2 proxy; "roeckl"/"linear" are speed-independent and
+    #: calibrated, so k_curv_scale = 1.0 is the textbook value.
+    curvature_model: str = "proxy_v2"
     p_max_w: float = C.DEFAULT_P_MAX_W
     tau_trac_s: float = C.DEFAULT_TAU_TRAC_S
     tau_brk_s: float = C.DEFAULT_TAU_BRK_S
@@ -348,6 +352,7 @@ def make_randomized_scenario(
         "duration_clipped_to_route": bool(duration_clipped),
         "consist_len_m": round(consist_len_m, 3),
         "k_curv_scale": cfg.k_curv_scale,
+        "curvature_model": cfg.curvature_model,
         "brake_opposes_motion": cfg.brake_opposes_motion,
         "seed": int(seed),
     }
@@ -360,6 +365,7 @@ def make_randomized_scenario(
         u_trac_cmd=u_trac_cmd,
         u_brk_cmd=u_brk_cmd,
         k_curv_scale=cfg.k_curv_scale,
+        curvature_model=cfg.curvature_model,
         tau_brk_s=cfg.tau_brk_s,
         tau_trac_s=cfg.tau_trac_s,
         p_max_w=cfg.p_max_w,

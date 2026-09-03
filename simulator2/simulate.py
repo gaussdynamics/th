@@ -97,6 +97,7 @@ def simulate_train_tensorized(
             scenario.tau_trac_s,
             scenario.p_max_w,
             brake_opposes_motion=scenario.brake_opposes_motion,
+            curvature_model=getattr(scenario, "curvature_model", "proxy_v2"),
         )
 
     sol = solve_ivp(
