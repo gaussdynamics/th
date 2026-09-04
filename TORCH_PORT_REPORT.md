@@ -335,7 +335,12 @@ Unchanged from `NEXT_STEPS.md`, and all still gating the dataset:
    `ood_grade`, `ood_corridor` or `control_eval`. With 5 corridors in one
    region, `ood_corridor` and `ood_grade` are not buildable, and fixing that
    needs the route pipeline with OSM + DEM network access.
-4. **`k_curv_scale` is still 0.0 by default**, so the route `kappa` field is
-   generated but unused. The port honours this (and skips the interpolation
-   entirely when it is zero, as the NumPy path does), but the calibration
-   decision is still open and is better made before the dataset is built.
+4. ~~**`k_curv_scale` is still 0.0 by default**~~ — resolved after this report
+   was first written. Investigating the calibration showed the *form* was
+   wrong, not just the constant: real curve resistance is speed-independent
+   while the proxy scales with `v²`, so no single `k` is correct. A
+   `curvature_model` flag now offers `roeckl` and `linear` alongside the
+   original `proxy_v2` (still the default, so nothing here changes). See
+   `NEXT_STEPS.md` item 3. The port skips the interpolation entirely when the
+   scale is zero, exactly as the NumPy path does, and enabling a model costs
+   12–20 % throughput on the synthetic benchmark — about 3 % on a real build.

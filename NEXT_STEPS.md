@@ -246,12 +246,29 @@ pathological consist/regime pairing will hang a 10,000-scenario build with no di
    holdout costs ~20% of the data, so the v1 build reserves `route_line2` for
    `ood_grade` and `route_line5` for `ood_corridor` and leaves **`control_eval`
    empty**. Populating it needs the wider corridor set from item 1.
-3. **`k_curv_scale` is 0.0 by default** in the randomizer because the curvature proxy's
-   magnitude is not calibrated — the route `kappa` field is generated but unused. Worth a
-   deliberate decision before the dataset is built, not after. *(The v1 build was
-   made at 0.0, so the decision is still outstanding and now has a dataset
-   riding on it. `--k-curv-scale` exposes it; the torch RHS skips the
-   interpolation entirely when it is zero, so engaging it costs a little speed.)*
+3. ~~**`k_curv_scale` is 0.0 by default**~~ — investigated 2026-09-03, and the
+   problem was worse than "uncalibrated". Real curve resistance is
+   **speed-independent** (Röckl, AREMA: ≈ `6.8·m·κ` N), while the proxy is
+   `k·m·v²·|κ|`, so *no single `k` is correct*: one matching the standard
+   models at 15 m/s is 9× too small at 5 m/s and 2.8× too large at 25 m/s. The
+   only non-zero value in the repo, `k=0.5` in the `curvature_enabled` fixture,
+   gives 13.3 kN on a 100 t car at the corridors' p95 curvature — 16× the
+   standard value and 1.4× the force of a 1% grade.
+
+   `curvature_model` now selects `proxy_v2` (default, unchanged), `roeckl` (the
+   published two-branch formula) or `linear` (AREMA, smooth). For the latter two
+   `k_curv_scale` is a multiplier on the standard formula, so **1.0 is the
+   textbook value** rather than a free parameter.
+
+   The term is not negligible: at k=1.0 it moves the median trajectory by
+   0.33 m/s and 13 m — 6.5× the 0.05 m/s tolerance the port was held to —
+   though `F_max` moves only 0.26% at the median and 3.3% at p90. **`linear` is
+   preferred over `roeckl`**: Röckl is genuinely discontinuous at R = 300 m (a
+   ~30% jump, pinned by a test), and a new kink in an RHS the surrogate
+   differentiates through is the opposite of what the brake `tanh` blend was for.
+
+   `data/v1` keeps `proxy_v2` at k=0; `data/v2` is the same corpus under
+   `linear` at k=1.0.
 4. ~~Chapter 4 validation figures~~ ✅ resolved — see above. Only Stage 7 needed
    regenerating; it has been.
 5. **Precision for generation.** `TORCH_PORT_REPORT.md` measures float64 at
@@ -267,3 +284,21 @@ pathological consist/regime pairing will hang a 10,000-scenario build with no di
    m/s² on harsher ones, collapsing to 3.9e-5 at Δt = 0.01. Recompute the RHS
    analytically from the stored arrays instead; §H guarantees everything needed
    is present.
+7. ~~**Dataset builds were not reproducible from their own seed.**~~ ✅ fixed
+   2026-09-03. `generate_regime_profile` seeded its RNG with
+   `hash(regime.value)`; `Regime` is a `str` enum and CPython randomizes string
+   hashes per process, so a function documented as deterministic was stable
+   within a run and different in the next. Two identical `build_dataset.py`
+   invocations sampled different durations, start chainages, initial speeds and
+   slack states — only quantities drawn *before* the profile (adhesion, regime)
+   matched. Now seeded with `zlib.crc32`.
+
+   The existing `test_deterministic_for_seed` could not catch this, because it
+   calls the function twice in one process where `hash()` is stable.
+   `test_deterministic_across_processes` forks under three `PYTHONHASHSEED`
+   values; it was verified to fail against the old seeding before being kept.
+
+   **Any dataset built before this fix is unreproducible from its
+   `build_config.json`, and two such builds do not share scenarios even at the
+   same seed.** That is why the first `data/v1` and `data/v2` could not be
+   diffed against each other; both were rebuilt afterwards.
