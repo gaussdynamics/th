@@ -17,9 +17,9 @@ Time integration uses adaptive Runge-Kutta or implicit methods as needed when st
 
 \section{Stage 1: single powered vehicle}
 
-The starting point is a single point mass $m$ with longitudinal position $x(t)$ and velocity $v(t)=\dot{x}$. The equation of motion aggregates traction, braking, Davis running resistance, grade, and an optional curvature proxy into a single scalar force balance:
+The starting point is a single point mass $m$ with longitudinal position $x(t)$ and velocity $v(t)=\dot{x}$. The equation of motion aggregates traction, braking, Davis running resistance, grade, and an optional curve resistance into a single scalar force balance:
 \begin{equation}
-    m\dot{v} = F_{\mathrm{trac}}(t) - F_{\mathrm{brk}}(t) - R(v) - G(x) - C(x,v),
+    m\dot{v} = F_{\mathrm{trac}}(t) - F_{\mathrm{brk}}(t) - R(v) - G(x) - C_{\kappa}(x,v),
     \label{eq:ltd_stage1}
 \end{equation}
 with $\dot{x}=v$. Davis resistance is implemented in the usual magnitude-direction form,
@@ -27,7 +27,20 @@ with $\dot{x}=v$. Davis resistance is implemented in the usual magnitude-directi
     R(v) = \bigl(A + B|v| + C v^2\bigr)\,\mathrm{sgn}(v),
     \label{eq:ltd_davis}
 \end{equation}
-with $\mathrm{sgn}(v)$ set to zero at $|v|<\varepsilon$ to avoid chatter at standstill. Grade enters through $G(x)=mg\sin\theta(x)$ with $\theta$ the local track inclination. The optional term $C$ is a simple longitudinal curvature proxy proportional to $m v^2 |\kappa(x)|$ with tunable scale, disabled in the earliest runs. Traction and brake commands may be specified as arbitrary functions of time; the first stage uses a smooth ``ramp'' in time so that $F_{\mathrm{trac}}$ rises continuously from zero after a delay, rather than stepping instantaneously, which eases numerical stiffness and mirrors the later actuator-lag extension. \Cref{fig:ltd_stage01} shows position, speed, and the plotted residual $F_{\mathrm{trac}}-R(v)$ on level track with braking and curvature removed, confirming that the integrator and force signs behave as intended before couplers are introduced.
+with $\mathrm{sgn}(v)$ set to zero at $|v|<\varepsilon$ to avoid chatter at standstill. Note that the coefficient $C$ in \cref{eq:ltd_davis} is the Davis quadratic term and is unrelated to the curve resistance $C_{\kappa}$. Grade enters through $G(x)=mg\sin\theta(x)$ with $\theta$ the local track inclination.
+
+Curve resistance is written, as is standard in railway practice, as a \emph{specific} resistance $w_c$: a fraction of vehicle weight fixed by the curve radius $R=1/|\kappa|$ and independent of speed. The implementation uses the linear (AREMA) form,
+\begin{equation}
+    C_{\kappa}(x,v) = c_{\kappa}\, m g\, w_c\bigl(\kappa(x)\bigr)\,\mathrm{sgn}(v),
+    \qquad
+    w_c(\kappa) = \lambda\,|\kappa|,
+    \label{eq:ltd_curvature}
+\end{equation}
+with $\lambda \approx 0.699$, the AREMA figure of 0.8 lb per ton per degree of curve expressed in terms of $\kappa$, and $c_{\kappa}$ a dimensionless multiplier for which $c_{\kappa}=1$ recovers the standard value. The term is disabled by setting $c_{\kappa}=0$, which is the case in the earliest runs and in any scenario that does not require it. On the corridors used here the force is small but not negligible: at the 95th-percentile curvature (radius $\approx$ 840 m) it is roughly 800 N on a loaded 100 t car, comparable to that car's Davis resistance at 15 m/s and about 8\% of the force of a 1\% grade.
+
+Two aspects of \cref{eq:ltd_curvature} are stated explicitly because both were settled by measurement rather than by convention. The first is the absence of a speed dependence. Earlier revisions used a proxy proportional to $m v^{2}|\kappa(x)|$; that form is retained in the implementation so results recorded before this change can be reproduced, but it is not the model of record. Curve resistance does not scale with speed, so a coefficient matched to \cref{eq:ltd_curvature} at one speed is wrong at every other --- one calibrated at 15 m/s is nine times too small at 5 m/s and 2.8 times too large at 25 m/s. The discrepancy is in the exponent rather than the constant, so no choice of scale repairs it. The second is the choice of $w_c$. The R\"ockl formula, $w_c = 650/(R-55)$ N/kN for $R \geq 300$ m and $500/(R-30)$ below, is the more familiar empirical statement and agrees with \cref{eq:ltd_curvature} to within about 15\% over the 300--2000 m range these routes occupy. It is available in the implementation but is not the default, because it is discontinuous at $R = 300$ m, where its two branches differ by roughly 30\%. A jump in the right-hand side is a jump in its gradient, and the learned surrogate of \cref{ch:framework} differentiates through this force balance; the reasoning is the same as that behind the $\tanh$ blend in \cref{eq:ltd_brake_sign}. The distinction being drawn is between a jump and a kink: piecewise-linear interpolation of the route field already makes $\partial C_{\kappa}/\partial x$ discontinuous at every route node, and the coupler deadband of Stage~3 does the same at slack transitions, but in both cases the force itself remains continuous. R\"ockl would instead make the force discontinuous, which is a stronger defect and, unlike the other two, one the model does not need.
+
+Traction and brake commands may be specified as arbitrary functions of time; the first stage uses a smooth ``ramp'' in time so that $F_{\mathrm{trac}}$ rises continuously from zero after a delay, rather than stepping instantaneously, which eases numerical stiffness and mirrors the later actuator-lag extension. \Cref{fig:ltd_stage01} shows position, speed, and the plotted residual $F_{\mathrm{trac}}-R(v)$ on level track with braking and curvature removed, confirming that the integrator and force signs behave as intended before couplers are introduced.
 
 \begin{figure}[htbp]
     \centering
@@ -119,7 +132,7 @@ with the convention $F_{-1}^{\mathrm{in}}=F_{N-1}^{\mathrm{out}}=0$, and with tr
 
 \section{Stage 6: per-vehicle grade and curvature from a route profile}
 
-Grade and curvature are no longer evaluated at a single global $x$; each vehicle samples $\sin\theta(x_i)$ and optionally $\kappa(x_i)$ at its own position. The profile is stored as piecewise-linear nodes and interpolated (e.g.\ linearly in arc length). Then $G_i=m_i g\sin\theta(x_i)$ and the same curvature proxy as before applies per vehicle. This introduces spatial dispersion along the train: the head and tail can experience different grades simultaneously, which excites relative motion and coupler cycling even when speed traces remain nearly overlaid. \Cref{fig:ltd_stage06} shows the prescribed $\sin\theta$ along route distance in the top panel and the time evolution of lead and rear speed and selected coupler forces below; the horizontal axes of the lower panels are simulation time, not chainage, so the spatial profile should be read as a fixed map through which the train moves.
+Grade and curvature are no longer evaluated at a single global $x$; each vehicle samples $\sin\theta(x_i)$ and optionally $\kappa(x_i)$ at its own position. The profile is stored as piecewise-linear nodes and interpolated (e.g.\ linearly in arc length). Then $G_i=m_i g\sin\theta(x_i)$, and \cref{eq:ltd_curvature} applies per vehicle with $m$ and $\kappa$ evaluated at that vehicle: $C_{\kappa,i}=c_{\kappa}\,m_i g\,\lambda\,|\kappa(x_i)|\,\mathrm{sgn}(v_i)$. This introduces spatial dispersion along the train: the head and tail can experience different grades simultaneously, which excites relative motion and coupler cycling even when speed traces remain nearly overlaid. \Cref{fig:ltd_stage06} shows the prescribed $\sin\theta$ along route distance in the top panel and the time evolution of lead and rear speed and selected coupler forces below; the horizontal axes of the lower panels are simulation time, not chainage, so the spatial profile should be read as a fixed map through which the train moves.
 
 \begin{figure}[htbp]
     \centering
