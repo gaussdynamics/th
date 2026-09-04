@@ -2,7 +2,10 @@
 
 _Companion to `PROJECT_DIRECTION.md` and `DATA_SCHEMA.md`. Written 2026-08-17 after
 building the control-profile library and scenario randomizer, and benchmarking the
-reference simulator on realistic consists._
+reference simulator on realistic consists. Updated 2026-09-03; the work done since
+is written up in `TORCH_PORT_REPORT.md` (the integrator),
+`DATASET_BUILD_REPORT.md` (the corpora) and `CURVATURE_MODEL_NOTE.md` (an open
+physics decision)._
 
 ---
 
@@ -54,8 +57,10 @@ says it is the blocker, not a later optimization.** Revised critical path:
 5. ~~Pilot dataset~~ ✅ done — 512 scenarios, used to debug normalization
    (the `u_trac [T, N]` channel-axis bug) and to surface the overspeed issue
    in "Still open" item 1 below.
-6. **Full dataset** ← here now.
-7. GNN / Neural-ODE surrogate
+6. ~~**Full dataset**~~ ✅ done 2026-09-03. Two 10,000-scenario corpora,
+   `data/v1` (curvature off) and `data/v2` (`linear`, k=1.0). Build,
+   validation and caveats in `DATASET_BUILD_REPORT.md`.
+7. **GNN / Neural-ODE surrogate** ← here now.
 
 **What the port changed about the numbers above.** The 170-CPU-hour estimate is
 obsolete: a 10,000-scenario build at 300–600 s per scenario now takes roughly

@@ -1,7 +1,8 @@
 # Torch Port — Results
 
 _Deliverable 3 of `TORCH_PORT_SPEC.md`. Written 2026-09-03 on the RTX 4090
-workstation. Companion to `NEXT_STEPS.md`._
+workstation. Companion to `NEXT_STEPS.md`. What was built on top of this port
+is in `DATASET_BUILD_REPORT.md`._
 
 ---
 
@@ -38,10 +39,13 @@ on native Windows 11 against Python 3.11.6. Consequences:
   makes MSVC suppress the `alloca → _alloca` macro in `<malloc.h>` and fail at
   link with `LNK2019`. Worked around with `CL=/Dalloca=_alloca`.
 - **`scripts/bench_scenarios.py` uses `signal.SIGALRM`, which is Unix-only.**
-  Spec §9 anticipated this. The per-scenario wall-clock budget that
-  `NEXT_STEPS.md` calls mandatory for a 10,000-scenario build still needs a
-  Windows implementation. Not done here — it belongs to the dataset driver,
-  which is out of scope per §1.
+  Spec §9 anticipated this. *(Follow-up: no Windows replacement was needed. The
+  per-scenario wall-clock budget `NEXT_STEPS.md` called mandatory existed
+  because adaptive stepping's cost varied 61× across regimes and a pathological
+  pairing could hang a build. Fixed-step RK4 removes the failure mode at the
+  source — cost is `ceil(duration/dt)` steps regardless of regime — so the
+  dataset driver imposes no timeout and needs none. See
+  `DATASET_BUILD_REPORT.md`.)*
 
 The final port does **not** depend on the compiler toolchain at run time (see
 [CUDA graphs](#torchcompile-vs-cuda-graphs)), so `gpu_env.ps1` is only needed if
