@@ -1,6 +1,9 @@
 # Next Steps — Data Generation → GNN Surrogate
 
-_Companion to `PROJECT_DIRECTION.md` and `DATA_SCHEMA.md`. Written 2026-08-17 after
+_Companion to `PROJECT_DIRECTION.md` and `DATA_SCHEMA.md`. Updated 2026-09-17: the
+surrogate formulation is settled and recorded in `SURROGATE_FORMULATION_NOTE.md`;
+item 6 and the torch-port justification below carry corrections from it.
+Written 2026-08-17 after
 building the control-profile library and scenario randomizer, and benchmarking the
 reference simulator on realistic consists. Updated 2026-09-03; the work done since
 is written up in `TORCH_PORT_REPORT.md` (the integrator),
@@ -60,7 +63,10 @@ says it is the blocker, not a later optimization.** Revised critical path:
 6. ~~**Full dataset**~~ ✅ done 2026-09-03. Two 10,000-scenario corpora,
    `data/v1` (curvature off) and `data/v2` (`linear`, k=1.0). Build,
    validation and caveats in `DATASET_BUILD_REPORT.md`.
-7. **GNN / Neural-ODE surrogate** ← here now.
+7. **GNN graph network simulator** ← here now. _Formulation settled 2026-09-17;
+   the physics-residual Neural-ODE design was dropped before any model code was
+   written. See `SURROGATE_FORMULATION_NOTE.md` for the measurements and
+   `PROJECT_DIRECTION.md` for the revised locked decision._
 
 **What the port changed about the numbers above.** The 170-CPU-hour estimate is
 obsolete: a 10,000-scenario build at 300–600 s per scenario now takes roughly
@@ -76,6 +82,15 @@ The port was always required anyway — the physics-residual design (`ŷ = y_phy
 has to evaluate `F_phys` inside autograd on every training step, so a differentiable
 batched RHS is a hard dependency of the *model*, not just of data generation. The
 benchmark just means it cannot be deferred.
+
+**Correction, 2026-09-17.** The second half of that justification no longer holds.
+Under the graph network simulator formulation the training loop never evaluates
+`F_phys` — the target is `s_{k+1} - s_k` read straight off the stored grid — so the
+torch RHS is *not* a dependency of the model. It remains a hard dependency of **data
+generation** (the 170-CPU-hour problem above is real and the port solved it), of the
+**surrogate-vs-simulator speedup measurement** in Ch6, and of any ground-truth rollout
+the control chapter needs. The port was correct work for the wrong stated reason;
+nothing about it needs redoing.
 
 Note `simulator/physics/core/railphysics/` is already torch and batched, but it is
 **single-locomotive** — no couplers, no consist. It is a useful reference for the Davis /
@@ -282,7 +297,11 @@ pathological consist/regime pairing will hang a 10,000-scenario build with no di
    alone consumes 60% of the 0.05 m/s velocity tolerance on the worst fixture
    over just 40 s. The v1 build therefore integrates in float64 and stores
    float32. The module default is still float32 to match the spec's API.
-6. **Deriving `d(state)/dt` for residual training.** §Consumption of
+6. ~~**Deriving `d(state)/dt` for residual training.**~~ ✅ moot 2026-09-17 —
+   the graph network simulator formulation trains on `s_{k+1} - s_k` from the
+   stored grid, which is exact, so no derivative is ever estimated. Kept below
+   because it binds again if the Neural-ODE formulation is ever revived.
+   §Consumption of
    `DATA_SCHEMA.md` suggests finite-differencing `state`. At the 0.25 s output
    spacing that carries an O(Δt²) error of the same order as the residual the
    GNN is meant to learn — measured 2.2e-2 m/s² on a benign cruise run, several
