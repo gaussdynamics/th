@@ -396,6 +396,74 @@ teacher-forced from stored state. Error compounding over a multi-step rollout is
 where one-step simulators usually fail, and the standard fix (training-time noise
 injection) changes how the sampler has to work.
 
+## Rollout: the compounding failure, and the fix
+
+_Added 2026-09-17. `surrogate/rollout.py`, 3000 steps, 4 GiB of train split.
+Errors are max-over-consist, median over sampled start points, model run on its
+own output from one true state._
+
+**Without noise injection the model is worse than useless past ~20 steps.**
+"Hold" is the trivial baseline of freezing the initial state and never updating
+it:
+
+| steps | seconds | max dv, no noise | max dv, noise | hold |
+|---|---|---|---|---|
+| 1 | 0.25 | 0.0052 | 0.0044 | 0.0155 |
+| 5 | 1.25 | 0.0517 | 0.0131 | 0.0669 |
+| 20 | 5.00 | **0.2272** | 0.0317 | **0.2002** |
+| 50 | 12.50 | 0.4447 | 0.0622 | 0.4523 |
+
+At 20 steps the un-noised model (0.2272 m/s) is *worse than freezing the state*
+(0.2002). At 50 steps it has simply converged to the baseline. Coupler stretch
+is worse still: 40.4 mm at 20 steps against 7.6 mm for hold, a model five times
+worse than doing nothing.
+
+This is the standard distribution-shift failure. A one-step model only ever
+sees states the simulator produced; its own small errors move it off that
+distribution, where it predicts worse, and the error compounds.
+
+**Noise injection fixes it, at 7x.** Training inputs are perturbed and the
+target is recomputed against the *true* next state, so the label is the
+correction that lands on the truth from a drifted start rather than the
+correction from a clean one. At 20 steps velocity error falls 0.2272 to 0.0317
+(7.2x), at 50 steps 0.4447 to 0.0622 (7.1x), and the model beats hold at every
+horizon in both channels.
+
+Noise magnitude, single-seed sweep at 3000 steps, velocity error by horizon:
+
+| noise_v | 1 | 5 | 20 | 50 | val one-step RMSE |
+|---|---|---|---|---|---|
+| 0 | 0.0052 | 0.0517 | 0.2272 | 0.4447 | 0.0207 |
+| 0.005 | **0.0044** | **0.0131** | **0.0317** | **0.0622** | 0.0216 |
+| 0.01 | 0.0053 | 0.0147 | 0.0372 | 0.0709 | 0.0222 |
+| 0.02 | 0.0069 | 0.0206 | 0.0529 | 0.0909 | 0.0249 |
+| 0.04 | 0.0104 | 0.0326 | 0.0861 | 0.1488 | 0.0352 |
+
+Defaults are `noise_v = 0.005 m/s` and `noise_delta = 0.001 m`, which is roughly
+the model's own one-step error in each channel -- the graph-network-simulator
+prescription of perturbing by about what the model will drift by. There is a
+real trade: more stretch noise helps long-horizon *shape* (9.5 mm at 50 steps
+for `noise_delta = 0.001` with `noise_v = 0.01`, against 12.9 mm for the chosen
+default) while costing velocity. The sweep is single-seed, so differences under
+~20% should not be read as signal.
+
+**One-step accuracy is paid for, not free.** Velocity RMSE goes 0.0207 to 0.0216
+and shape RMSE 0.247 to 0.317 with noise on. That is the expected exchange:
+slightly blunter one-step, dramatically more stable rolled out. Chapter 6 should
+report both, because a one-step-only table would flatter the un-noised model
+while hiding that it diverges.
+
+**The harness is exact.** `test_oracle_rollout_reproduces_the_trajectory` feeds
+the rollout the true targets instead of model output and checks it reproduces
+the stored trajectory over 30 steps (< 1e-3 m/s, float32 accumulation). Without
+that, rollout error would be partly harness error and there would be no way to
+see it.
+
+**Still open.** Noise is injected at a fixed std rather than scheduled, and
+training is still single-step -- neither pushforward nor multi-step
+backpropagation is implemented. Both are worth trying before the control
+chapter, which needs stable rollouts of hundreds of steps, not fifty.
+
 ## What this changes downstream
 
 - `NEXT_STEPS.md` item 6 (don't finite-difference `state` for derivative

@@ -52,6 +52,48 @@ BYTES_PER_VEHICLE_STEP = 48
 _ROUTE_FIELDS = ("route_sin_theta", "route_kappa", "route_vmax")
 
 
+def build_features(
+    st: Tensor, ed: Tensor, node_static: Tensor, edge_static: Tensor,
+    route: Tensor, u0: Tensor, u1: Tensor, nrm: dict[str, Tensor],
+) -> tuple[Tensor, Tensor]:
+    """Network inputs from raw tensors.
+
+    Shared by the training sampler and the rollout so the two cannot drift
+    apart -- a train/inference feature mismatch is the classic silent way for a
+    step model to look fine one-step and fall apart rolled out.
+    """
+    node = torch.cat([
+        (st[..., 1:4] - nrm["state_mean"][1:4]) / nrm["state_std"][1:4],
+        (u0 - nrm["u_mean"]) / nrm["u_std"],
+        (u1 - nrm["u_mean"]) / nrm["u_std"],
+        (node_static - nrm["node_static_mean"]) / nrm["node_static_std"],
+        (route - nrm["route_mean"]) / nrm["route_std"],
+    ], dim=-1)
+    edge = torch.cat([
+        (ed - nrm["edge_dyn_mean"]) / nrm["edge_dyn_std"],
+        (edge_static - nrm["edge_static_mean"]) / nrm["edge_static_std"],
+    ], dim=-1)
+    return node, edge
+
+
+def interp_route(route_s: Tensor, route_f: Tensor, x: Tensor) -> Tensor:
+    """Piecewise-linear lookup of route fields at arbitrary positions.
+
+    ``route_s`` ``[B, R]``, ``route_f`` ``[B, R, F]``, ``x`` ``[B, N]`` ->
+    ``[B, N, F]``. Needed because a rollout moves the train to positions that
+    were never tabulated; the grid is 10 m, so the centimetre-scale position
+    error a rollout accumulates is far below its resolution.
+    """
+    i = torch.searchsorted(route_s, x.contiguous()).clamp(1, route_s.shape[-1] - 1)
+    s0 = torch.gather(route_s, 1, i - 1)
+    s1 = torch.gather(route_s, 1, i)
+    w = ((x - s0) / (s1 - s0).clamp_min(1e-9)).clamp(0.0, 1.0).unsqueeze(-1)
+    idx = (i - 1).unsqueeze(-1).expand(-1, -1, route_f.shape[-1])
+    f0 = torch.gather(route_f, 1, idx)
+    f1 = torch.gather(route_f, 1, idx + 1)
+    return f0 + w * (f1 - f0)
+
+
 @dataclass
 class Batch:
     node: Tensor        # [B, N, N_NODE_FEATURES]
@@ -59,6 +101,15 @@ class Batch:
     abar: Tensor        # [B, N]    target, normalized
     dcorr: Tensor       # [B, N-1]  target, normalized
     n_vehicles: int
+    st0: Tensor         # [B, N, 4]   raw state at k
+    ed0: Tensor         # [B, N-1, 3] raw edge_dynamic at k
+    # Kept so a batch can be rebuilt from a perturbed start state without
+    # re-gathering from the block (noise injection, surrogate.rollout).
+    node_static: Tensor
+    edge_static: Tensor
+    route: Tensor
+    u0: Tensor
+    u1: Tensor
 
 
 class _Block:
@@ -87,6 +138,9 @@ class _Block:
         self.edge_static = torch.from_numpy(
             np.stack([r["edge_static"] for r in recs])).to(device)
 
+        self.corridor = torch.tensor([r["corridor"] for r in recs],
+                                     dtype=torch.long, device=device)
+        self.lengths = torch.tensor(lengths, dtype=torch.long, device=device)
         pairs = [(i, k) for i, L in enumerate(lengths) for k in range(L - 1)]
         self.pairs = torch.tensor(pairs, dtype=torch.long, device=device)
 
@@ -101,24 +155,17 @@ class _Block:
         ed0, ed1 = self.edge_dyn[si, k], self.edge_dyn[si, k + 1]
         nrm = self.norm
 
-        node = torch.cat([
-            (st0[..., 1:4] - nrm["state_mean"][1:4]) / nrm["state_std"][1:4],
-            (u0 - nrm["u_mean"]) / nrm["u_std"],
-            (u1 - nrm["u_mean"]) / nrm["u_std"],
-            (self.node_static[si] - nrm["node_static_mean"]) / nrm["node_static_std"],
-            (self.route[si, k] - nrm["route_mean"]) / nrm["route_std"],
-        ], dim=-1)
-        edge = torch.cat([
-            (ed0 - nrm["edge_dyn_mean"]) / nrm["edge_dyn_std"],
-            (es - nrm["edge_static_mean"]) / nrm["edge_static_std"],
-        ], dim=-1)
-
+        node, edge = build_features(st0, ed0, self.node_static[si], es,
+                                    self.route[si, k], u0, u1, nrm)
         abar = node_targets(st0, st1, h)
         dcorr = edge_targets(ed0[..., 0], ed1[..., 0], st0, st1, h)
         if tgt_std is not None:
             abar = abar / tgt_std["abar"]
             dcorr = dcorr / tgt_std["dcorr"]
-        return Batch(node=node, edge=edge, abar=abar, dcorr=dcorr, n_vehicles=self.n)
+        return Batch(node=node, edge=edge, abar=abar, dcorr=dcorr,
+                     n_vehicles=self.n, st0=st0, ed0=ed0,
+                     node_static=self.node_static[si], edge_static=es,
+                     route=self.route[si, k], u0=u0, u1=u1)
 
 
 class ScenarioSet:
@@ -160,7 +207,9 @@ class ScenarioSet:
         self.gib = float(cost[keep][: len(self.rows)].sum() / 2 ** 30)
 
         norm = _load_norm(self.root, device)
+        self.norm = norm
         routes: dict[str, dict] = {}
+        corridor_id: dict[str, int] = {}
         by_n: dict[int, list[dict]] = {}
         h = tau_brk = tau_trac = None
 
@@ -190,7 +239,27 @@ class ScenarioSet:
             rec["route"] = np.stack(
                 [np.interp(xq, rt["route_s"], rt[k]).astype(np.float32)
                  for k in _ROUTE_FIELDS], axis=-1)
+            rec["corridor"] = corridor_id.setdefault(r.route_id, len(corridor_id))
             by_n.setdefault(int(r.N), []).append(rec)
+
+        # The five corridors, once, on the device: a rollout looks route fields
+        # up at positions it predicts rather than positions the corpus stored.
+        r_max = max(v["route_s"].shape[0] for v in routes.values())
+        n_cor = len(corridor_id)
+        s_tab = np.zeros((n_cor, r_max), dtype=np.float32)
+        f_tab = np.zeros((n_cor, r_max, len(_ROUTE_FIELDS)), dtype=np.float32)
+        for rid, ci in corridor_id.items():
+            rt = routes[rid]
+            n_r = rt["route_s"].shape[0]
+            s_tab[ci, :n_r] = rt["route_s"]
+            # Pad by repeating the last sample so a clamped lookup past the end
+            # returns the final value rather than a zero.
+            s_tab[ci, n_r:] = rt["route_s"][-1]
+            for j, k in enumerate(_ROUTE_FIELDS):
+                f_tab[ci, :n_r, j] = rt[k]
+                f_tab[ci, n_r:, j] = rt[k][-1]
+        self.route_s = torch.from_numpy(s_tab).to(device)
+        self.route_f = torch.from_numpy(f_tab).to(device)
 
         self.h, self.tau_brk, self.tau_trac = float(h), float(tau_brk), float(tau_trac)
         self.blocks = {n: _Block(n, recs, norm, device)

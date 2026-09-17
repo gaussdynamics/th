@@ -33,6 +33,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from surrogate.data import N_EDGE_FEATURES, N_NODE_FEATURES, ScenarioSet
 from surrogate.model import ChainGNN
+from surrogate.rollout import add_noise, noisy_targets, rollout_metrics
+from surrogate.step import coupler_features
 
 
 @torch.no_grad()
@@ -86,6 +88,38 @@ def evaluate(model, ds, tgt_std, batch_size: int) -> dict[str, float]:
     }
 
 
+def _perturb(ds, b, gen, v_std: float, d_std: float, tgt_std):
+    """Re-derive one batch from a noised start state.
+
+    Features and targets are both rebuilt, because the label has to be the
+    correction that lands on the *true* next state from the perturbed start --
+    otherwise the noise just blurs the input and teaches nothing about drift.
+    """
+    from surrogate.data import Batch, build_features
+
+    blk = ds.blocks[b.n_vehicles]
+    st0, ed0 = b.st0, b.ed0
+    delta0 = ed0[..., 0]
+    st_p, delta_p = add_noise(st0, delta0, gen, v_std=v_std, delta_std=d_std)
+
+    # Reconstruct the true next state from the clean targets already in hand.
+    st1 = st0.clone()
+    st1[..., 1] = st0[..., 1] + ds.h * (b.abar * tgt_std["abar"])
+    delta1 = delta0 + ds.h * 0.5 * (
+        (st0[..., 1][..., :-1] - st0[..., 1][..., 1:])
+        + (st1[..., 1][..., :-1] - st1[..., 1][..., 1:])
+    ) + b.dcorr * tgt_std["dcorr"]
+
+    abar, dcorr = noisy_targets(st_p, delta_p, st1, delta1, ds.h)
+    ed_p = coupler_features(delta_p, st_p[..., 1], b.edge_static)
+    node, edge = build_features(st_p, ed_p, b.node_static, b.edge_static,
+                                b.route, b.u0, b.u1, ds.norm)
+    return Batch(node=node, edge=edge, abar=abar / tgt_std["abar"],
+                 dcorr=dcorr / tgt_std["dcorr"], n_vehicles=b.n_vehicles,
+                 st0=st_p, ed0=ed_p, node_static=b.node_static,
+                 edge_static=b.edge_static, route=b.route, u0=b.u0, u1=b.u1)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -96,6 +130,18 @@ def main() -> None:
     ap.add_argument("--budget-gib", type=float, default=6.0,
                     help="device memory for the loaded train split")
     ap.add_argument("--val-budget-gib", type=float, default=2.0)
+    # Defaults match the model's own one-step error (~0.005 m/s on velocity,
+    # ~0.6 mm on stretch), which is the graph-network-simulator prescription:
+    # perturb by roughly what the model will drift by. Pass 0 to disable and
+    # watch the rollout diverge. More noise trades one-step sharpness for
+    # long-horizon shape accuracy; the sweep behind these values is
+    # single-seed, so differences under ~20% are not meaningful.
+    ap.add_argument("--noise-v", type=float, default=0.005,
+                    help="std of velocity noise injected into training inputs [m/s]")
+    ap.add_argument("--noise-delta", type=float, default=0.001,
+                    help="std of coupler-stretch noise injected [m]")
+    ap.add_argument("--rollout", type=int, nargs="+", default=[1, 5, 20, 50],
+                    help="horizons to score by rolling the model on its own output")
     ap.add_argument("--ood", action="store_true",
                     help="also score the ood_size split (N 120-150, disjoint from train)")
     ap.add_argument("--steps", type=int, default=3000)
@@ -142,6 +188,8 @@ def main() -> None:
     run_loss, t0 = 0.0, time.time()
     for step in range(1, args.steps + 1):
         b = train.sample(args.batch_size, gen, tgt_std)
+        if args.noise_v > 0.0 or args.noise_delta > 0.0:
+            b = _perturb(train, b, gen, args.noise_v, args.noise_delta, tgt_std)
         a_hat, d_hat = model(b.node, b.edge)
         # Both targets are unit-variance here, so a plain sum weights them
         # equally in normalized space rather than by physical magnitude.
@@ -189,6 +237,20 @@ def main() -> None:
             ("shape     max|ddelta| p99 [mm]", m["dd_p99"] * 1e3, m["dd_p99_zero"] * 1e3),
         ):
             print(f"  {label:34s} {got:11.5f} {zero:12.5f} {zero/max(got,1e-12):6.1f}x")
+
+        if args.rollout:
+            hmax = max(args.rollout)
+            roll = rollout_metrics(model, ds, tgt_std, hmax)
+            if roll:
+                print(f"  rollout (model on its own output), median over starts")
+                print(f"  {'steps':>7s} {'seconds':>8s} {'max|dv| [m/s]':>15s}"
+                      f" {'hold':>9s} {'max|ddelta| [mm]':>18s} {'hold':>9s}")
+                for k in args.rollout:
+                    if k not in roll:
+                        continue
+                    r = roll[k]
+                    print(f"  {k:7d} {k*ds.h:8.2f} {r['v']:15.5f} {r['v_hold']:9.4f}"
+                          f" {r['delta']*1e3:18.3f} {r['delta_hold']*1e3:9.3f}")
 
 
 if __name__ == "__main__":

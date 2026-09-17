@@ -121,6 +121,25 @@ def advance(
     return torch.stack([x1, v1, zb1, zt1], dim=-1), delta1
 
 
+def coupler_features(delta: Tensor, v: Tensor, edge_static: Tensor) -> Tensor:
+    """``[delta, delta_dot, F_cpl]`` from a *carried* stretch and the velocities.
+
+    The rollout propagates ``delta`` directly rather than re-deriving it from
+    positions, so this is the form the model sees at inference. Deriving it
+    from ``x`` instead would reintroduce the ~1 mm float32 quantization that
+    the edge formulation exists to avoid -- and at coupler stiffness that is up
+    to 17.8 kN of noise on ``F_cpl``.
+    """
+    delta_dot = v[..., :-1] - v[..., 1:]
+    slack = edge_static[..., 1]
+    zero = torch.zeros_like(delta)
+    f_draft = edge_static[..., 2] * (delta - slack) + edge_static[..., 3] * delta_dot
+    f_buff = edge_static[..., 4] * (delta + slack) + edge_static[..., 5] * delta_dot
+    f = torch.where(delta > slack, f_draft, zero)
+    f = torch.where(delta < -slack, f_buff, f)
+    return torch.stack([delta, delta_dot, f], dim=-1)
+
+
 def coupler_state(state: Tensor, edge_static: Tensor) -> Tensor:
     """``[delta, delta_dot, F_cpl]`` per coupler, from the node state.
 
@@ -134,11 +153,4 @@ def coupler_state(state: Tensor, edge_static: Tensor) -> Tensor:
     """
     x, v = state[..., X], state[..., V]
     delta = (x[..., :-1] - x[..., 1:]) - edge_static[..., 0]
-    delta_dot = v[..., :-1] - v[..., 1:]
-    slack = edge_static[..., 1]
-    zero = torch.zeros_like(delta)
-    f_draft = edge_static[..., 2] * (delta - slack) + edge_static[..., 3] * delta_dot
-    f_buff = edge_static[..., 4] * (delta + slack) + edge_static[..., 5] * delta_dot
-    f = torch.where(delta > slack, f_draft, zero)
-    f = torch.where(delta < -slack, f_buff, f)
-    return torch.stack([delta, delta_dot, f], dim=-1)
+    return coupler_features(delta, v, edge_static)
