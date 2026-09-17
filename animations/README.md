@@ -1,0 +1,112 @@
+# Train Tensor Animations (Manim)
+
+This module adds a rendering layer on top of `simulator2` outputs so animation uses the **existing** longitudinal train dynamics and tensorized state definitions (`H_hist`, `E_hist`) instead of re-implementing physics in Manim.
+
+## What It Includes
+
+- Exporter adapter from `simulate_train_tensorized(...)` to animation-friendly `.npz`.
+- Reusable data loader and tensor matrix visualizer.
+- Main side-by-side scene: train model + evolving tensor slice.
+- Additional scenes for time-index explanation, coupler-wave focus, and tensorization concept.
+
+## Folder Layout
+
+- `animations/data/` generated demo run files.
+- `animations/scenes/` Manim scenes.
+- `animations/utils/` exporter, loader, train shapes, color mapping, matrix visualizer.
+- `animations/render.py` scene render helper.
+
+## 1) Generate Demo Simulation Data
+
+From repository root:
+
+```bash
+python animations/utils/simulation_exporter.py
+```
+
+This writes:
+
+- `animations/data/demo_tensor_run.npz`
+
+## 2) Visualized Simulator Fields
+
+Exporter pulls simulator output from:
+
+- `result.t`
+- `result.H_hist`
+- `result.E_hist`
+- sampled `scenario.u_trac_cmd(t,i)` and `scenario.u_brk_cmd(t,i)`
+
+Saved convenience channels include:
+
+- `positions_m` from `H_hist[:,:,x]`
+- `velocities_mps` from `H_hist[:,:,v]`
+- `z_brk_n` from `H_hist[:,:,z_brk]`
+- `z_trac_n` from `H_hist[:,:,z_trac]`
+- `coupler_forces_n` from `E_hist[:,:,f_cpl]`
+- `tensor_slice` shaped `[t, vehicle, feature]` with features:
+  - `x_m`, `v_m_per_s`, `z_brk_n`, `z_trac_n`, `f_cpl_left_n`
+
+## 3) Feature-to-Visual Mapping
+
+- Train left panel:
+  - car horizontal motion from `positions_m`
+  - locomotive velocity arrow color from `velocities_mps`
+  - coupler connector colors from `coupler_forces_n`
+- Tensor right panel:
+  - rows = vehicle index
+  - cols = feature channel
+  - cell colors from `tensor_slice[t,:,:]`
+
+## 4) Color Coding
+
+`animations/utils/color_mapping.py` centralizes color logic:
+
+- Diverging map (`blue -> white -> red`) for signed values:
+  - velocity
+  - coupler force
+- Sequential map (`blue -> green`) for nonnegative / magnitude channels.
+- Normalization is fixed over the full loaded run for temporal consistency.
+
+## 5) Render Scenes
+
+Direct Manim commands:
+
+```bash
+manim -pqh animations/scenes/train_tensor_side_by_side.py TrainTensorSideBySide
+manim -pql animations/scenes/tensor_time_evolution.py TensorTimeEvolution
+manim -pql animations/scenes/coupler_wave.py CouplerWave
+manim -pql animations/scenes/tensorization_advantage.py TensorizationAdvantage
+```
+
+Using helper script:
+
+```bash
+python animations/render.py --scene train --quality l --preview
+python animations/render.py --scene all --quality m
+```
+
+## 6) Scene Notes
+
+- `TrainTensorSideBySide`: main thesis-ready explanatory scene.
+- `TensorTimeEvolution`: explains `X[t, vehicle, feature]` slicing.
+- `CouplerWave`: animates force propagation from `E[..., f_cpl]`; if unavailable, scene explains requirement.
+- `TensorizationAdvantage`: conceptual sequential-vs-batched update comparison.
+
+## 7) Extending with New Features
+
+1. Add channel extraction in `simulation_exporter.py`.
+2. Append name to `tensor_slice_feature_names`.
+3. Update column labels in scenes (or drive labels from data directly).
+4. Add color rule in `color_mapping.py` if signed/magnitude behavior differs.
+
+## Environment Notes
+
+Install dependencies:
+
+```bash
+pip install -r animations/requirements.txt
+```
+
+If Manim system dependencies are missing, follow the official setup docs:
+[https://docs.manim.community/](https://docs.manim.community/)

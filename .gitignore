@@ -85,4 +85,12 @@ paper/*.fdb_latexmk
 paper/*.run.xml
 
 # Generated datasets (build with scripts/build_dataset.py)
-data/
+/data/
+
+# Manim intermediates -- re-rendered from animations/ by animations/render.py.
+# The finished .mp4 under media/videos/<scene>/<quality>/ is kept; the
+# partial segments it was concatenated from, and the LaTeX/SVG cache, are not.
+media/videos/**/partial_movie_files/
+media/texts/
+media/Tex/
+media/images/
