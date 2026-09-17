@@ -243,9 +243,37 @@ pathological consist/regime pairing will hang a 10,000-scenario build with no di
    train manifest confirms the gap: only `train` and `ood_size` exist — no `val`, no
    `test_id`, no `control_eval`. Agreed plan: fix the smoothing so the clamp stops binding,
    then pull 15–25 corridors across varied terrain.
-   *Note: the route pipeline needs OSM + DEM network access, which the device bridge does
-   not have. Run it locally, or stage the `routegen` package into the cloud container where
-   network is available.*
+   *~~Note: the route pipeline needs OSM + DEM network access, which the device bridge does
+   not have.~~* **Wrong; corrected 2026-09-17.** Both Overpass and USGS 3DEP are reachable.
+   A bare request gets HTTP 406 from Overpass, which `routegen.osm` already avoids by
+   setting the User-Agent the OSM usage policy expects — that is probably what the original
+   note saw. Nothing here was ever blocked, and the claim had been repeated into several
+   later documents unverified.
+
+   **Phase A done 2026-09-17, and the diagnosis was not the expected one.** `route_line2`'s
+   *raw elevation* is broken (19.3% of 10 m steps jump over 1 m, against 0.7–1.5% on every
+   other corridor), so no smoothing window fixes it and the corridor is now rejected by a QA
+   gate applied before the window is chosen. Settings are `smooth_window_m=800` (was 200)
+   and `grade_clip=0.025` (was 0.04), selected against stated criteria by
+   `scripts/tune_grade_smoothing.py`. The overspeed prediction was half right: the
+   catastrophic tail is gone (worst 67.8 → 25.7 m/s) but the moderate population is
+   unchanged like-for-like (13.3% → 13.5% over by >5 m/s), because control profiles are
+   sampled independently of the terrain they run on. Full write-up in
+   `ROUTE_PIPELINE_NOTE.md`.
+
+   **Phase B scope, set 2026-09-17:** no longer "15–25 corridors" but the major freight
+   network over a wide multi-state area centred on Pueblo CO, with the North American
+   network as the eventual goal. Seeds in `route_generator/seeds/seeds_pueblo_region.json`
+   (22, including Raton and Tennessee Pass for a genuinely steep `ood_grade`). Junk rail is
+   already excluded by the existing `main_only` filter.
+
+   **Phase C scope:** 10,000 scenarios cost 25 minutes, so plan for 50,000–100,000. Disk is
+   the binding constraint at that scale, not compute (~124 GB at 100k).
+
+   **Endpoint gotcha:** `build_dataset.py`'s docstring suggests the kumi mirror. Measured
+   2026-09-17 on one 8 km tile: overpass-api.de **4.3 s**, maps.mail.ru 44.5 s,
+   private.coffee 185 s, kumi.systems **319 s**. Use the default; re-measure before
+   trusting any mirror recommendation.
 
    **This is now the binding constraint, and the pilot quantified it.** The
    open-loop RHS does not enforce `route_vmax` — the field is exogenous

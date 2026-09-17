@@ -1,0 +1,112 @@
+[
+  {
+    "name": "Pueblo CO",
+    "lat": 38.2544,
+    "lon": -104.6091
+  },
+  {
+    "name": "La Junta CO (Transcon)",
+    "lat": 37.9847,
+    "lon": -103.5438
+  },
+  {
+    "name": "Trinidad CO (Raton Pass)",
+    "lat": 37.1695,
+    "lon": -104.5005
+  },
+  {
+    "name": "Raton NM (Raton Pass south)",
+    "lat": 36.9034,
+    "lon": -104.4392
+  },
+  {
+    "name": "Denver CO",
+    "lat": 39.7392,
+    "lon": -104.9903
+  },
+  {
+    "name": "Minturn CO (Tennessee Pass)",
+    "lat": 39.5885,
+    "lon": -106.4311
+  },
+  {
+    "name": "Sterling CO",
+    "lat": 40.6255,
+    "lon": -103.2077
+  },
+  {
+    "name": "Cheyenne WY",
+    "lat": 41.14,
+    "lon": -104.8202
+  },
+  {
+    "name": "Grand Junction CO",
+    "lat": 39.0639,
+    "lon": -108.5506
+  },
+  {
+    "name": "Albuquerque NM",
+    "lat": 35.0844,
+    "lon": -106.6504
+  },
+  {
+    "name": "Dodge City KS",
+    "lat": 37.7528,
+    "lon": -100.0171
+  },
+  {
+    "name": "Amarillo TX",
+    "lat": 35.222,
+    "lon": -101.8313
+  },
+  {
+    "name": "Alliance NE (PRB coal)",
+    "lat": 42.1017,
+    "lon": -102.8724
+  },
+  {
+    "name": "North Platte NE (Bailey Yard)",
+    "lat": 41.1239,
+    "lon": -100.7654
+  },
+  {
+    "name": "Wichita KS",
+    "lat": 37.6872,
+    "lon": -97.3301
+  },
+  {
+    "name": "Salt Lake City UT",
+    "lat": 40.7608,
+    "lon": -111.891
+  },
+  {
+    "name": "El Paso TX",
+    "lat": 31.7619,
+    "lon": -106.485
+  },
+  {
+    "name": "Tulsa OK",
+    "lat": 36.154,
+    "lon": -95.9928
+  },
+  {
+    "name": "Omaha NE",
+    "lat": 41.2565,
+    "lon": -95.9345
+  },
+  {
+    "name": "Kansas City MO",
+    "lat": 39.0997,
+    "lon": -94.5786
+  },
+  {
+    "name": "Tucson AZ",
+    "lat": 32.2226,
+    "lon": -110.9747
+  },
+  {
+    "name": "Fort Worth TX",
+    "lat": 32.7555,
+    "lon": -97.3308
+  }
+]
