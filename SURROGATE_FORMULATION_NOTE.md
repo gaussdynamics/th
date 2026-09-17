@@ -598,6 +598,62 @@ n^0.66 exponent. If that is right, the lever is long-consist velocity accuracy,
 not a shape-specific mechanism -- and the cheapest test is whether shape error
 tracks velocity error across checkpoints rather than varying independently.
 
+### The velocity-driven hypothesis is wrong
+
+_Tested 2026-09-17 with `coupled_rollout` in `scripts/diagnose_shape.py`, which
+forces one channel to the truth at every step and measures the other. That is a
+causal test; correlating errors across checkpoints would not have been._
+
+| oracle | val N=38: shape @200 | ood_size N=150: shape @200 |
+|---|---|---|
+| none (real rollout) | 1.27 mm | 44.18 mm |
+| **perfect velocity field** | 1.73 mm | **40.07 mm** |
+
+**A perfect velocity field removes only 9% of the shape error on long consists,
+and on val it makes shape *worse*.** Velocity error is not what drives shape
+error; the ~40 mm residual is the correction head's own, on 149 couplers.
+
+The reverse direction says the same thing: forcing the true stretch makes
+*velocity* worse too, 0.0833 to 0.1388 m/s on ood_size.
+
+### What that implies instead
+
+The two channels' errors are **anti-correlated** -- the model has learned an
+internally self-consistent effective dynamics in which its velocity error and
+its stretch error partly cancel. Injecting ground truth into either channel
+breaks that compensation and the other gets worse. That is worth knowing
+generally: per-channel oracle tests on this model will *understate* how good the
+joint state is, and any metric that scores one channel against a teacher-forced
+other is measuring the wrong thing.
+
+It also reframes the failure. Per-step correction error is only 17% worse on
+ood_size, yet 200-step error is ~35x worse than val in the same comparison. So
+this is not accuracy but **stability**: on val the rollout accumulates *less*
+than a random walk (1.27 mm against the ~5.7 mm independent errors would give),
+so errors self-correct; on ood_size it accumulates far *more* than a random walk
+(44 mm against ~22 mm), so they reinforce. The learned dynamics is a stable
+attractor inside the training size range and not outside it.
+
+### Recommendation
+
+Stop attacking this from the model side without a stability-specific idea; two
+reasonable hypotheses have now been tested and rejected, and a third (more
+message-passing rounds) was ruled out by the along-chain profile before being
+tried.
+
+The practical route is to separate the two claims, which want different models
+anyway:
+
+- **Chapter 6** keeps `ood_size` untouched and claims what is actually
+  demonstrated -- **velocity** extrapolates to consists 1.5-15x longer than
+  trained on (7.4x over baseline one-step, 11x over hold at 200 steps) -- and
+  states the shape limitation plainly rather than burying it.
+- **Chapter 7** trains its surrogate across the full size range, since the
+  control demo needs accuracy on the consists it actually controls, not
+  extrapolation to unseen ones. The held-out split that matters there is
+  `control_eval` (corridors), which is empty for unrelated reasons and is the
+  real blocker.
+
 ### The limitation as it stands
 
 Across three seeds, ood_size shape error at 200 steps is **39.3 mm against 44-50

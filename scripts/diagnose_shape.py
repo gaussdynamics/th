@@ -122,7 +122,83 @@ def main() -> None:
         blk, si, k0 = got
         err = signed_rollout(model, ds, blk, si, k0, args.horizon, tgt_std)
         report(f"{split}  N={blk.n}", err, args.horizon)
+        coupling_report(model, ds, blk, si, k0, args.horizon, tgt_std,
+                        f"{split}  N={blk.n}")
 
+
+
+
+# ---------------------------------------------------------------------------
+# coupling: is shape error caused by velocity error, or its own?
+# ---------------------------------------------------------------------------
+@torch.no_grad()
+def coupled_rollout(model, ds, blk, si, k0, horizon, tgt_std, *, oracle):
+    """Roll out with one channel forced to the truth at every step.
+
+    ``oracle='none'``  both channels run on the model (the real rollout).
+    ``oracle='v'``     node state is replaced by the truth each step, and the
+                       stretch trapezoid uses the true closing rates, so the
+                       only model error left in ``delta`` is its own correction.
+    ``oracle='delta'`` the reverse: stretch is replaced by the truth, isolating
+                       how much of the velocity error comes from bad geometry.
+
+    ``delta`` integrates ``v_j - v_{j+1}``, so velocity error feeds shape
+    directly. Forcing one side answers which way the causation runs, which
+    correlating errors across checkpoints cannot.
+    """
+    es, ns = blk.edge_static[si], blk.node_static[si]
+    l0 = es[..., 0]
+    rs, rf = ds.route_s[blk.corridor[si]], ds.route_f[blk.corridor[si]]
+    st = blk.state[si, k0]
+    delta = blk.edge_dyn[si, k0][..., 0]
+    v_err, d_err = [], []
+
+    for j in range(horizon):
+        kj = k0 + j
+        u0, u1 = blk.u[si, kj], blk.u[si, kj + 1]
+        ed = coupler_features(delta, st[..., 1], es)
+        route = interp_route(rs, rf, st[..., 0])
+        node, edge = build_features(st, ed, ns, es, route, u0, u1, ds.norm)
+        a, d = model(node, edge)
+
+        st_true = blk.state[si, kj + 1]
+        d_true = blk.edge_dyn[si, kj + 1][..., 0]
+
+        if oracle == "v":
+            v_k = blk.state[si, kj][..., 1]
+            ddot = v_k[..., :-1] - v_k[..., 1:]
+            ddot1 = st_true[..., 1][..., :-1] - st_true[..., 1][..., 1:]
+            delta = delta + ds.h * 0.5 * (ddot + ddot1) + d * tgt_std["dcorr"]
+            st = st_true
+        else:
+            st, delta = advance(st, delta, a * tgt_std["abar"],
+                                d * tgt_std["dcorr"], u0, u1, l0,
+                                tau_brk=ds.tau_brk, tau_trac=ds.tau_trac, h=ds.h)
+            if oracle == "delta":
+                delta = d_true
+
+        v_err.append((st[..., 1] - st_true[..., 1]).abs().amax(-1))
+        d_err.append((delta - d_true).abs().amax(-1))
+    return torch.stack(v_err), torch.stack(d_err)
+
+
+def coupling_report(model, ds, blk, si, k0, horizon, tgt_std, label):
+    print(f"\n== coupling: {label} ==")
+    print(f"  {'oracle':>10s} {'max|dv| @200 [m/s]':>20s} {'max|ddelta| @200 [mm]':>23s}")
+    out = {}
+    for oracle in ("none", "v", "delta"):
+        v, d = coupled_rollout(model, ds, blk, si, k0, horizon, tgt_std,
+                               oracle=oracle)
+        out[oracle] = (float(v[-1].median()), float(d[-1].median()) * 1e3)
+        vs = "-- forced --" if oracle == "v" else f"{out[oracle][0]:20.5f}"
+        dsx = "-- forced --" if oracle == "delta" else f"{out[oracle][1]:23.3f}"
+        print(f"  {oracle:>10s} {vs:>20s} {dsx:>23s}")
+    base_d = out["none"][1]
+    orac_d = out["v"][1]
+    print(f"\n  shape error with a perfect velocity field: {orac_d:.2f} mm "
+          f"vs {base_d:.2f} mm  ->  {1 - orac_d/max(base_d,1e-9):.0%} of it is "
+          f"caused by velocity error")
+    return out
 
 if __name__ == "__main__":
     main()
