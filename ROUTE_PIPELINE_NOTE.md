@@ -145,9 +145,12 @@ Powder River Basin coal.
 
 ### Running it
 
-    python build_dataset.py --seeds seeds/seeds_pueblo_region.json \
-        --out data_pueblo --endpoint https://overpass.kumi.systems/api/interpreter \
-        --seed-radius-km 30 --max-radius-km 250 --sleep 1.5 --min-len-km 5
+    python -u build_dataset.py --seeds seeds/seeds_pueblo_region.json \
+        --out data_pueblo --seed-radius-km 30 --max-radius-km 250 \
+        --sleep 1.5 --min-len-km 5
+
+``-u`` matters: piped stdout is block-buffered, so without it a running
+crawl looks identical to a hung one for many minutes.
 
 Caches per seed under `raw/` and resumes, so it can be stopped and restarted,
 and new seeds cost only their own crawl.
