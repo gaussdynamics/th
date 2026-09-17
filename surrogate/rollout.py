@@ -152,3 +152,56 @@ def rollout_metrics(
         }
         for j in range(cat["v"].shape[0])
     }
+
+
+def training_batch(
+    model, ds, blk, si: Tensor, k0: Tensor,
+    *, n_push: int, gen: torch.Generator, v_std: float, delta_std: float,
+    tgt_std: dict[str, Tensor],
+) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+    """One supervised step, optionally started from the model's own drift.
+
+    With ``n_push = 0`` this is ordinary one-step training (plus Gaussian noise
+    if asked for). With ``n_push > 0`` the model first takes that many steps on
+    its own output with no gradient, and only the step *after* that is
+    supervised -- the pushforward trick.
+
+    The point is that Gaussian noise is a guess at what the model's error looks
+    like, while the pushforward uses the real thing: the perturbation is drawn
+    from the model's own error distribution at its current level of training,
+    and it tightens automatically as the model improves. Gradients are not
+    taken through the unrolled steps, so the cost is one extra forward pass per
+    push and memory does not grow with horizon.
+    """
+    es = blk.edge_static[si]
+    ns = blk.node_static[si]
+    l0 = es[..., 0]
+    rs = ds.route_s[blk.corridor[si]]
+    rf = ds.route_f[blk.corridor[si]]
+
+    st = blk.state[si, k0]
+    delta = blk.edge_dyn[si, k0][..., 0]
+    st, delta = add_noise(st, delta, gen, v_std=v_std, delta_std=delta_std)
+
+    def features(state, d, kj):
+        u0, u1 = blk.u[si, kj], blk.u[si, kj + 1]
+        ed = coupler_features(d, state[..., 1], es)
+        route = interp_route(rs, rf, state[..., 0])
+        return (*build_features(state, ed, ns, es, route, u0, u1, ds.norm), u0, u1)
+
+    if n_push > 0:
+        with torch.no_grad():
+            for j in range(n_push):
+                node, edge, u0, u1 = features(st, delta, k0 + j)
+                a, d = model(node, edge)
+                st, delta = advance(st, delta, a * tgt_std["abar"],
+                                    d * tgt_std["dcorr"], u0, u1, l0,
+                                    tau_brk=ds.tau_brk, tau_trac=ds.tau_trac,
+                                    h=ds.h)
+
+    kj = k0 + n_push
+    node, edge, _, _ = features(st, delta, kj)
+    st1 = blk.state[si, kj + 1]
+    d1 = blk.edge_dyn[si, kj + 1][..., 0]
+    abar, dcorr = noisy_targets(st, delta, st1, d1, ds.h)
+    return node, edge, abar / tgt_std["abar"], dcorr / tgt_std["dcorr"]

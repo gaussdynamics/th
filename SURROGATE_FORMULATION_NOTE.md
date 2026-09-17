@@ -464,6 +464,75 @@ training is still single-step -- neither pushforward nor multi-step
 backpropagation is implemented. Both are worth trying before the control
 chapter, which needs stable rollouts of hundreds of steps, not fifty.
 
+## Deeper rollout: pushforward, and where it stops working
+
+_Added 2026-09-17. `--push` in `scripts/train_surrogate.py`, implemented in
+`surrogate.rollout.training_batch`._
+
+Gaussian noise guesses at what the model's error looks like. The **pushforward
+trick** uses the real thing: the model takes `n` steps on its own output with no
+gradient, and only the step after that is supervised. The perturbation is then
+drawn from the model's own error distribution at its current level of training,
+and tightens automatically as it improves. Memory does not grow with `n` --
+gradients are not taken through the unrolled steps -- so the cost is one extra
+forward pass per push.
+
+Sweep at 3000 steps, velocity error (max over consist, median over starts):
+
+| config | 10 | 50 | 100 | 200 | shape @200 [mm] | train time |
+|---|---|---|---|---|---|---|
+| noise only | 0.0188 | 0.0581 | 0.0987 | 0.1614 | 12.3 | 57 s |
+| push 1 + noise | 0.0185 | 0.0531 | 0.0914 | 0.1413 | 10.3 | 68 s |
+| **push 3 + noise** | 0.0151 | 0.0424 | 0.0709 | 0.1219 | 10.4 | 90 s |
+| push 8 + noise | 0.0169 | 0.0425 | 0.0644 | **0.0944** | 14.9 | 135 s |
+| push 16 + noise | 0.0248 | 0.0501 | 0.0742 | 0.1129 | 9.8 | 224 s |
+| push 1, **no** noise | 0.0236 | 0.0837 | 0.1311 | 0.2229 | 25.0 | 69 s |
+
+Two things worth taking from that table:
+
+- **Pushforward alone is worse than Gaussian noise alone** (0.2229 vs 0.1614 at
+  200 steps). They are complementary, not substitutes. Plausibly because early
+  in training the model's one-step error is small, so the pushforward supplies
+  much less perturbation than the fixed noise does.
+- **Gains flatten and the shape column is non-monotonic.** Velocity improves to
+  about push 8; shape is best at 16, worst at 8, and mid at 3. That is not a
+  physical story, it is single-seed variance, and it should not be read as one.
+
+Default is `--push 3`: the cheapest point in the useful range, ~1.6x training
+time for ~25% better velocity at 200 steps.
+
+### Result at the default, 6000 steps
+
+| horizon | val (N 10-80) | hold | ood_size (N 121-150) | hold |
+|---|---|---|---|---|
+| 1 step | 0.0037 | 0.0158 | 0.0108 | 0.0279 |
+| 50 steps (12.5 s) | 0.0275 | 0.4838 | 0.0608 | 0.5286 |
+| 200 steps (50 s) | **0.0659** | 1.7807 | **0.1178** | 1.3066 |
+
+Velocity at 200 steps is **27x better than holding the state on val, and 11x on
+consists 1.5-15x longer than anything trained on**. Doubling training from 3000
+to 6000 steps nearly halved the 200-step error (0.1219 to 0.0659), so this is
+not near convergence.
+
+### The limitation Chapter 7 needs to know about
+
+**Coupler shape does not extrapolate over long rollouts.** On val it holds:
+5.8 mm at 200 steps against 39.8 for hold, a 6.8x gain. On `ood_size` it very
+nearly does not: **41.0 mm against 49.2 for hold, a gain of 1.2x**.
+
+Velocity extrapolates to unseen consist lengths and shape does not. Two likely
+reasons, both testable: a 150-car train has 149 couplers whose errors accumulate
+along the chain, and message passing at 5 rounds reaches ~3-5 vehicles per step,
+so coordinating a 150-car consist takes far more steps than a 40-car one.
+
+This matters because the control chapter's safety constraint is on **coupler
+force**, which is a function of shape, on **long consists**, over **long
+horizons** -- precisely the corner where the surrogate is currently weakest. It
+does not block Chapter 6, which reports velocity and one-step accuracy, but it
+has to be either fixed or stated plainly before Chapter 7 leans on it. Worth
+trying first: more message-passing rounds for large `N`, or a rollout-length
+curriculum, or supervising `F_cpl` directly rather than only the stretch.
+
 ## What this changes downstream
 
 - `NEXT_STEPS.md` item 6 (don't finite-difference `state` for derivative

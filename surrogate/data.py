@@ -287,6 +287,25 @@ class ScenarioSet:
         p = blk.pairs[j]
         return blk.assemble(p[:, 0], p[:, 1], self.h, tgt_std)
 
+    def sample_starts(self, batch_size: int, gen: torch.Generator, span: int):
+        """Draw ``(block, scenario, k)`` with at least ``span`` steps left.
+
+        Plain :meth:`sample` only guarantees one step of headroom. Pushforward
+        and multi-step training need a window, and a scenario too short for it
+        has to be excluded rather than silently truncating the window.
+        """
+        bi = int(torch.multinomial(self.block_p, 1, generator=gen).item())
+        blk = self.blocks[self.block_keys[bi]]
+        room = blk.lengths - span - 1
+        ok = torch.nonzero(room > 0).squeeze(-1)
+        if ok.numel() == 0:
+            return None
+        si = ok[torch.randint(ok.numel(), (batch_size,), generator=gen,
+                              device=self.device)]
+        k0 = (torch.rand(batch_size, generator=gen, device=self.device)
+              * room[si].float()).long()
+        return blk, si, k0
+
     def iter_all(self, batch_size: int, tgt_std: dict[str, Tensor] | None):
         for blk in self.blocks.values():
             for a in range(0, len(blk), batch_size):

@@ -18,7 +18,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from surrogate.data import ScenarioSet, interp_route
-from surrogate.rollout import add_noise, noisy_targets, rollout
+from surrogate.rollout import add_noise, noisy_targets, rollout, training_batch
 from surrogate.step import advance, edge_targets, node_targets
 
 DATA = _REPO_ROOT / "data" / "v2"
@@ -101,3 +101,39 @@ def test_noisy_targets_land_on_the_true_next_state(ds):
                          tau_brk=ds.tau_brk, tau_trac=ds.tau_trac, h=ds.h)
     assert (got[..., 1] - st1[..., 1]).abs().max() < 1e-9
     assert (got_d - d1).abs().max() < 1e-9
+
+
+def test_training_batch_shapes_and_zero_push_path(ds):
+    """push=0 must be the plain one-step path, and shapes must not depend on it."""
+    blk = ds.blocks[ds.block_keys[0]]
+    got = ds.sample_starts(16, torch.Generator(device=DEVICE).manual_seed(0), 5)
+    assert got is not None
+    blk, si, k0 = got
+    std = {"abar": torch.tensor(1.0, device=DEVICE),
+           "dcorr": torch.tensor(1.0, device=DEVICE)}
+
+    class _Zero(torch.nn.Module):
+        def forward(self, node, edge):
+            return (torch.zeros(node.shape[:-1], device=node.device),
+                    torch.zeros(edge.shape[:-1], device=edge.device))
+
+    m = _Zero().to(DEVICE)
+    for n_push in (0, 3):
+        gen = torch.Generator(device=DEVICE).manual_seed(1)
+        node, edge, ta, td = training_batch(m, ds, blk, si, k0, n_push=n_push,
+                                            gen=gen, v_std=0.0, delta_std=0.0,
+                                            tgt_std=std)
+        n = blk.n
+        assert node.shape[:2] == (16, n) and edge.shape[:2] == (16, n - 1)
+        assert ta.shape == (16, n) and td.shape == (16, n - 1)
+        assert torch.isfinite(ta).all() and torch.isfinite(td).all()
+
+    # With no noise and no push, targets must equal the stored one-step targets.
+    gen = torch.Generator(device=DEVICE).manual_seed(1)
+    _, _, ta, td = training_batch(m, ds, blk, si, k0, n_push=0, gen=gen,
+                                  v_std=0.0, delta_std=0.0, tgt_std=std)
+    st0, st1 = blk.state[si, k0], blk.state[si, k0 + 1]
+    d0 = blk.edge_dyn[si, k0][..., 0]
+    d1 = blk.edge_dyn[si, k0 + 1][..., 0]
+    assert (ta - node_targets(st0, st1, ds.h)).abs().max() < 1e-6
+    assert (td - edge_targets(d0, d1, st0, st1, ds.h)).abs().max() < 1e-6

@@ -33,7 +33,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 from surrogate.data import N_EDGE_FEATURES, N_NODE_FEATURES, ScenarioSet
 from surrogate.model import ChainGNN
-from surrogate.rollout import add_noise, noisy_targets, rollout_metrics
+from surrogate.rollout import rollout_metrics, training_batch
 from surrogate.step import coupler_features
 
 
@@ -88,38 +88,6 @@ def evaluate(model, ds, tgt_std, batch_size: int) -> dict[str, float]:
     }
 
 
-def _perturb(ds, b, gen, v_std: float, d_std: float, tgt_std):
-    """Re-derive one batch from a noised start state.
-
-    Features and targets are both rebuilt, because the label has to be the
-    correction that lands on the *true* next state from the perturbed start --
-    otherwise the noise just blurs the input and teaches nothing about drift.
-    """
-    from surrogate.data import Batch, build_features
-
-    blk = ds.blocks[b.n_vehicles]
-    st0, ed0 = b.st0, b.ed0
-    delta0 = ed0[..., 0]
-    st_p, delta_p = add_noise(st0, delta0, gen, v_std=v_std, delta_std=d_std)
-
-    # Reconstruct the true next state from the clean targets already in hand.
-    st1 = st0.clone()
-    st1[..., 1] = st0[..., 1] + ds.h * (b.abar * tgt_std["abar"])
-    delta1 = delta0 + ds.h * 0.5 * (
-        (st0[..., 1][..., :-1] - st0[..., 1][..., 1:])
-        + (st1[..., 1][..., :-1] - st1[..., 1][..., 1:])
-    ) + b.dcorr * tgt_std["dcorr"]
-
-    abar, dcorr = noisy_targets(st_p, delta_p, st1, delta1, ds.h)
-    ed_p = coupler_features(delta_p, st_p[..., 1], b.edge_static)
-    node, edge = build_features(st_p, ed_p, b.node_static, b.edge_static,
-                                b.route, b.u0, b.u1, ds.norm)
-    return Batch(node=node, edge=edge, abar=abar / tgt_std["abar"],
-                 dcorr=dcorr / tgt_std["dcorr"], n_vehicles=b.n_vehicles,
-                 st0=st_p, ed0=ed_p, node_static=b.node_static,
-                 edge_static=b.edge_static, route=b.route, u0=b.u0, u1=b.u1)
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -140,7 +108,16 @@ def main() -> None:
                     help="std of velocity noise injected into training inputs [m/s]")
     ap.add_argument("--noise-delta", type=float, default=0.001,
                     help="std of coupler-stretch noise injected [m]")
-    ap.add_argument("--rollout", type=int, nargs="+", default=[1, 5, 20, 50],
+    # 3 is the cheapest point in the useful range: ~1.6x training time for
+    # ~25% better velocity error at 200 steps. Gains continue to about 8 and
+    # then reverse; see SURROGATE_FORMULATION_NOTE.md for the sweep, and note
+    # it is single-seed, with shape error non-monotonic across it.
+    ap.add_argument("--push", type=int, default=3,
+                    help="unsupervised model steps before each supervised one "
+                         "(pushforward); 0 = plain one-step training")
+    ap.add_argument("--push-warmup", type=int, default=500,
+                    help="steps of plain training before pushforward turns on")
+    ap.add_argument("--rollout", type=int, nargs="+", default=[1, 10, 50, 100, 200],
                     help="horizons to score by rolling the model on its own output")
     ap.add_argument("--ood", action="store_true",
                     help="also score the ood_size split (N 120-150, disjoint from train)")
@@ -187,13 +164,20 @@ def main() -> None:
 
     run_loss, t0 = 0.0, time.time()
     for step in range(1, args.steps + 1):
-        b = train.sample(args.batch_size, gen, tgt_std)
-        if args.noise_v > 0.0 or args.noise_delta > 0.0:
-            b = _perturb(train, b, gen, args.noise_v, args.noise_delta, tgt_std)
-        a_hat, d_hat = model(b.node, b.edge)
+        # Pushforward needs a model worth unrolling; before warmup it would
+        # just be feeding the network its own untrained noise.
+        n_push = args.push if step > args.push_warmup else 0
+        got = train.sample_starts(args.batch_size, gen, n_push + 1)
+        if got is None:
+            continue
+        blk, si, k0 = got
+        node, edge, t_a, t_d = training_batch(
+            model, train, blk, si, k0, n_push=n_push, gen=gen,
+            v_std=args.noise_v, delta_std=args.noise_delta, tgt_std=tgt_std)
+        a_hat, d_hat = model(node, edge)
         # Both targets are unit-variance here, so a plain sum weights them
         # equally in normalized space rather than by physical magnitude.
-        loss = ((a_hat - b.abar) ** 2).mean() + ((d_hat - b.dcorr) ** 2).mean()
+        loss = ((a_hat - t_a) ** 2).mean() + ((d_hat - t_d) ** 2).mean()
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
