@@ -13,6 +13,7 @@ SCENES = {
     "time": ("animations/scenes/tensor_time_evolution.py", "TensorTimeEvolution"),
     "coupler": ("animations/scenes/coupler_wave.py", "CouplerWave"),
     "advantage": ("animations/scenes/tensorization_advantage.py", "TensorizationAdvantage"),
+    "three": ("animations/scenes/three_vehicle_matrices.py", "ThreeVehicleMatrices"),
 }
 
 

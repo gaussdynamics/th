@@ -1,3 +1,7 @@
 manim>=0.18
 numpy>=1.24
 scipy>=1.10
+# iso_map extracts terrain contours with contourpy (ships with matplotlib)
+contourpy>=1.1
+# only needed to re-fetch the DEM cache in terrain_dem.py
+requests>=2.28

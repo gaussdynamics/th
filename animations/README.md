@@ -77,6 +77,7 @@ manim -pqh animations/scenes/train_tensor_side_by_side.py TrainTensorSideBySide
 manim -pql animations/scenes/tensor_time_evolution.py TensorTimeEvolution
 manim -pql animations/scenes/coupler_wave.py CouplerWave
 manim -pql animations/scenes/tensorization_advantage.py TensorizationAdvantage
+manim -qh animations/scenes/three_vehicle_matrices.py ThreeVehicleMatrices
 ```
 
 Using helper script:
@@ -92,6 +93,71 @@ python animations/render.py --scene all --quality m
 - `TensorTimeEvolution`: explains `X[t, vehicle, feature]` slicing.
 - `CouplerWave`: animates force propagation from `E[..., f_cpl]`; if unavailable, scene explains requirement.
 - `TensorizationAdvantage`: conceptual sequential-vs-batched update comparison.
+- `ThreeVehicleMatrices`: the schema explainer -- see the section below.
+
+## Three-Vehicle Matrix Scene
+
+`ThreeVehicleMatrices` is the schema explainer: one locomotive and two loaded
+coal hoppers running 1.5 km of `route_line5_22km`, with all five schema arrays
+filling in live beside them.
+
+```bash
+python animations/utils/segment_run.py            # build the run (once)
+python animations/render.py --scene three --quality h
+```
+
+**What is on screen**
+
+| Region | Shows |
+|---|---|
+| top left | the consist, coupler travel exaggerated x40, coupler bars heat-mapped by `F_cpl` |
+| top centre | the corridor as an isometric block: real OSM alignment, real USGS 3DEP terrain contours, a marker at the lead vehicle |
+| top right | route fields sampled at the lead vehicle (chainage, grade, curvature, radius, speed limit, elevation) |
+| middle | the three node matrices: `state [3x4]`, `node_static [3x7]`, control `[3x2]` |
+| lower left | the two edge matrices: `edge_dynamic [2x3]`, `edge_static [2x6]` |
+| lower right | the control input `u(t)` with a playhead |
+
+Dashed leader lines tie each matrix **row** to the vehicle or coupler it
+describes. Static panels (`node_static`, `edge_static`) are drawn muted and
+never change; dynamic panels are heat-mapped and run. That contrast is the
+point -- it is why `DATA_SCHEMA.md` stores the two kinds separately.
+
+**Three vehicles, and why**
+
+`N = 3` is what makes every matrix legible at once: 3x4, 3x7, 3x2, 2x3 and 2x6
+all fit on one frame with their numbers readable, and there are few enough rows
+to wire each one to its object. The same scene at `N = 75` would be five grey
+rectangles.
+
+**What is real and what is not**
+
+* The alignment, the grade field, the curvature and the speed limit are the
+  corridor's own, and the dynamics are `simulator2` with the `linear` curvature
+  model at `k_curv_scale = 1` -- the same configuration as the `data/v2` build.
+* Terrain contours are **real**: USGS 3DEP sampled on a 28x64 grid over the
+  segment by `animations/utils/terrain_dem.py`, cached in
+  `animations/data/terrain_<route>.npz` so rendering needs no network. Delete
+  the cache to re-fetch. If the service is unreachable and no cache exists, the
+  exporter falls back to interpolating the track's own elevation and says so in
+  the run metadata.
+* The **drawn** elevation profile integrates the route's `sin_theta` field
+  rather than using the raw 3DEP samples on the alignment. Those raw samples
+  jump up to 3 m between adjacent 10 m vertices -- a 30 % grade where the fitted
+  route field says 3.5 % -- and at 34x vertical exaggeration that renders noise
+  instead of terrain. Both are exported (`seg_z` raw, `seg_z_model` integrated).
+* Two exaggerations are applied and both are labelled on screen: elevation x34
+  and coupler travel x40. Real slack is +-25 mm on a 29 m train.
+* Playback is 4x: the 100 s run plays in 25 s.
+
+**Choosing the segment**
+
+`SEG_S0_M`/`SEG_S1_M` in `segment_run.py` were picked by scoring 1.6 km windows
+across every corridor on grade spread and mean curvature, skipping
+`route_line2_33km` (its grade field sits on the +-4 % clamp for a quarter of its
+length). The chosen window climbs 12.7 m, curves to a 550 m radius and carries a
+20 m/s limit. The control profile is four traction notches and a light brake at
+the end, tuned so the train stays under the speed limit and finishes inside the
+window.
 
 ## 7) Extending with New Features
 
