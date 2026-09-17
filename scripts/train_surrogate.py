@@ -129,6 +129,11 @@ def main() -> None:
     ap.add_argument("--rounds", type=int, default=5)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--zero-mean", action="store_true",
+                    help="constrain the edge head to a zero consist-mean "
+                         "(ablation; measured worse -- see the note)")
+    ap.add_argument("--save", type=Path, default=None,
+                    help="write the trained weights, target stats and args here")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     args = ap.parse_args()
 
@@ -153,7 +158,8 @@ def main() -> None:
           f"ddelta_corr {float(tgt_std['dcorr'])*1e3:.3f} mm")
 
     model = ChainGNN(N_NODE_FEATURES, N_EDGE_FEATURES,
-                     hidden=args.hidden, rounds=args.rounds).to(args.device)
+                     hidden=args.hidden, rounds=args.rounds,
+                     zero_mean_edge=args.zero_mean).to(args.device)
     n_par = sum(p.numel() for p in model.parameters())
     print(f"ChainGNN  hidden={args.hidden} rounds={args.rounds}  "
           f"{n_par:,} parameters\n")
@@ -194,6 +200,14 @@ def main() -> None:
             run_loss = 0.0
 
     print(f"\ndone in {time.time()-t0:.0f}s")
+
+    if args.save is not None:
+        args.save.parent.mkdir(parents=True, exist_ok=True)
+        torch.save({"model": model.state_dict(),
+                    "tgt_std": {k: float(v) for k, v in tgt_std.items()},
+                    "hidden": args.hidden, "rounds": args.rounds},
+                   args.save)
+        print(f"  saved to {args.save}")
 
     sets = [("val", val)]
     if args.ood:

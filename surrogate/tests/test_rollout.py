@@ -137,3 +137,28 @@ def test_training_batch_shapes_and_zero_push_path(ds):
     d1 = blk.edge_dyn[si, k0 + 1][..., 0]
     assert (ta - node_targets(st0, st1, ds.h)).abs().max() < 1e-6
     assert (td - edge_targets(d0, d1, st0, st1, ds.h)).abs().max() < 1e-6
+
+
+def test_zero_mean_edge_flag_does_what_it_says():
+    """The zero-mean ablation must actually bind, and must be off by default.
+
+    Measured worse than leaving the mean free (see the note), so the test pins
+    the *behaviour of the flag*, not a claim that the constraint helps.
+    """
+    from surrogate.data import N_EDGE_FEATURES, N_NODE_FEATURES
+    from surrogate.model import ChainGNN
+
+    torch.manual_seed(0)
+    m = ChainGNN(N_NODE_FEATURES, N_EDGE_FEATURES, hidden=16, rounds=2,
+                 zero_mean_edge=True).to(DEVICE)
+    for n in (11, 150):
+        node = torch.randn(4, n, N_NODE_FEATURES, device=DEVICE)
+        edge = torch.randn(4, n - 1, N_EDGE_FEATURES, device=DEVICE)
+        _, d = m(node, edge)
+        assert d.mean(dim=-1).abs().max() < 1e-5
+
+    free = ChainGNN(N_NODE_FEATURES, N_EDGE_FEATURES, hidden=16, rounds=2).to(DEVICE)
+    node = torch.randn(4, 40, N_NODE_FEATURES, device=DEVICE)
+    edge = torch.randn(4, 39, N_EDGE_FEATURES, device=DEVICE)
+    _, d = free(node, edge)
+    assert d.mean(dim=-1).abs().max() > 1e-5, "default must leave the mean free"

@@ -533,6 +533,81 @@ has to be either fixed or stated plainly before Chapter 7 leans on it. Worth
 trying first: more message-passing rounds for large `N`, or a rollout-length
 curriculum, or supervising `F_cpl` directly rather than only the stretch.
 
+## Coupler shape on long consists: diagnosed, one fix tried and rejected
+
+_Added 2026-09-17. `scripts/diagnose_shape.py`. Three seeds, 6000 steps each._
+
+### What the error actually is
+
+Signed per-coupler error over a 200-step rollout, which separates the three
+failure modes that would each need a different fix:
+
+| | val (N=38) | ood_size (N=150) |
+|---|---|---|
+| growth exponent (rms ~ n^p) | 0.37 | **0.66** |
+| bias at 200 steps | +0.15 mm (2.8% of rms) | **+3.91 mm (26%)** |
+| std at 200 steps | 5.47 mm | 14.73 mm |
+| mean abs error by quarter along the consist | 1.28 / 1.25 / 1.39 / 1.90 | 11.4 / 8.8 / 10.8 / 6.8 |
+
+Two hypotheses die here:
+
+- **Not a message-passing range problem.** Error is uniform along the consist,
+  slightly *lower* at the far end. Scaling `rounds` with `N` would have been
+  wasted work.
+- **Not an independent random walk.** n^0.66 is faster than the n^0.5 of
+  independent per-step errors, so the errors are temporally correlated.
+
+### The fix that was tried, and failed
+
+`sum_j delta_j = (x_first - x_last) - sum L0`, so the sum of the corrections
+over a consist is pinned by the end vehicles' motion, which the trapezoid
+already carries. The true consist-mean has a std of **0.026 mm on train and
+0.008 mm on ood_size** against a 1.04 mm per-coupler scale -- and it is
+*tighter* on long trains, exactly where the drift appeared. Constraining the
+edge head to a zero consist-mean therefore looked well-motivated.
+
+It is not. Shape error at 200 steps, mm:
+
+| seed | val, constrained | val, free | ood, constrained | ood, free |
+|---|---|---|---|---|
+| 0 | 10.12 | 5.84 | 41.06 | 40.96 |
+| 1 | 6.48 | 4.42 | 41.49 | 40.41 |
+| 2 | 5.31 | 4.60 | 35.42 | 36.65 |
+| **mean** | **7.30** | **4.95** | **39.32** | **39.34** |
+
+**Consistently ~47% worse on val in all three seeds, and identical on
+ood_size.** The constraint is available as `--zero-mean` and is off by default.
+
+The mistake was reading "26% of the rms" as "26% of the problem". The rms is
+`sqrt(3.91^2 + 14.73^2) = 15.24`; removing the bias entirely takes it to 14.73,
+a 3% improvement, and the reported metric is max-over-consist where a 3.9 mm
+bias against a 14.7 mm spread is invisible. **The dominant term is variance,
+not bias**, and that was visible in the diagnostic before any code was written.
+Why it actively *hurts* is less certain: centering couples every coupler's
+gradient to every other one, which plausibly costs more than the freed drift
+mode does.
+
+### Where the evidence now points
+
+Shape error is probably **driven by velocity error rather than independent of
+it**. `delta` integrates `ddot = v_j - v_{j+1}`, so any spatially correlated
+component of the velocity field's error accumulates directly into stretch. At
+200 steps the ood velocity error is 0.128 m/s; a sustained correlated component
+of under 1% of that accounts for the whole 41 mm, and it would also explain the
+n^0.66 exponent. If that is right, the lever is long-consist velocity accuracy,
+not a shape-specific mechanism -- and the cheapest test is whether shape error
+tracks velocity error across checkpoints rather than varying independently.
+
+### The limitation as it stands
+
+Across three seeds, ood_size shape error at 200 steps is **39.3 mm against 44-50
+mm for holding the state**: a gain of roughly 1.2x, where val gets 7x. Velocity
+extrapolates to unseen consist lengths; coupler shape does not, over long
+horizons. Chapter 7's safety constraint is on coupler force, on long consists,
+over long horizons, so this has to be fixed or stated plainly before that
+chapter leans on it. It does not affect Chapter 6's velocity and one-step
+results.
+
 ## What this changes downstream
 
 - `NEXT_STEPS.md` item 6 (don't finite-difference `state` for derivative

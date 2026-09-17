@@ -50,9 +50,11 @@ class ChainGNN(nn.Module):
         rounds: int = 5,
         n_node_out: int = 1,
         n_edge_out: int = 1,
+        zero_mean_edge: bool = False,
     ) -> None:
         super().__init__()
         self.rounds = rounds
+        self.zero_mean_edge = zero_mean_edge
         self.enc_node = _mlp(n_node_features, hidden, hidden)
         self.enc_edge = _mlp(n_edge_features, hidden, hidden)
         # One set of weights per round, shared across every vehicle and every
@@ -89,4 +91,31 @@ class ChainGNN(nn.Module):
             n = n + self.norm_node[r](
                 self.node_mlp[r](torch.cat([n, left, right], dim=-1)))
 
-        return self.decode_node(n).squeeze(-1), self.decode_edge(e).squeeze(-1)
+        d = self.decode_edge(e).squeeze(-1)
+        if self.zero_mean_edge:
+            # sum_j delta_j = (x_first - x_last) - sum L0, so the sum of the
+            # corrections over a consist is pinned by the end vehicles' motion,
+            # which the trapezoid already carries. Measured on the corpus, the
+            # true mean has a std of 0.026 mm on train and 0.008 mm on
+            # ood_size, against a 1.04 mm per-coupler scale -- 2.5% and 0.6%.
+            #
+            # Left free, that mean is an unbounded drift mode: the model
+            # stretches the whole train a little every step and nothing pushes
+            # back. It showed up as a +3.9 mm bias after 200 steps on 150-car
+            # consists, a quarter of the total error there, with the rollout
+            # growing as n^0.66 instead of the n^0.37 seen on val.
+            #
+            # MEASURED AND REJECTED as a default, 2026-09-17. Imposing it cost
+            # ~47% on val shape error at 200 steps in all three seeds tried
+            # (7.30 mm against 4.95 mm mean) and changed ood_size not at all
+            # (39.3 mm either way). The drift it removes is only 3% of the rms
+            # there; the dominant term is variance, not bias. Plausibly the
+            # centering couples every coupler's gradient to every other one,
+            # which hurts more than the freed drift mode costs.
+            #
+            # Kept behind the flag because it is a clean ablation for Ch6, not
+            # because it helps. Targets are left uncentered: the component the
+            # model then cannot emit is 0.026 mm against a 1.04 mm scale, an
+            # irreducible loss floor of well under 0.1%.
+            d = d - d.mean(dim=-1, keepdim=True)
+        return self.decode_node(n).squeeze(-1), d
