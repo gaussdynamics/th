@@ -198,17 +198,41 @@ def plot_scenario(d: dict, route: dict, row, vs_distance: bool):
         ax.grid(alpha=0.25, lw=0.5)
         ax.margins(x=0.01)
 
-    fig.suptitle(
-        f"{row.scenario_id}   [{row.split}]\n"
+    subtitle = _wrap_facts([
         f"{row.consist_label} / {row.control_label} / {row.adhesion} adhesion / "
-        f"{row.slack_state} slack   |   N={n}, {row.total_mass_kg / 1e6:.2f} kt, "
-        f"{row.consist_len_m:.0f} m   |   curvature {row.curvature_model} "
-        f"k={row.k_curv_scale:g}   |   peak |F_cpl| {peak:,.0f} kN, "
+        f"{row.slack_state} slack",
+        f"N={n}, {row.total_mass_kg / 1e6:.2f} kt, {row.consist_len_m:.0f} m",
+        f"curvature {row.curvature_model} k={row.k_curv_scale:g}",
+        f"peak |F_cpl| {peak:,.0f} kN, "
         f"over limit {row.v_over_limit_max_mps:.2f} m/s",
-        fontsize=10, y=0.995,
-    )
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
+    ])
+    fig.suptitle(f"{row.scenario_id}   [{row.split}]\n{subtitle}",
+                 fontsize=9.5, y=0.995)
+    # Every wrapped line of the subtitle costs the axes a little headroom.
+    fig.tight_layout(rect=(0, 0, 1, 0.975 - 0.013 * subtitle.count("\n")))
     return fig
+
+
+# The subtitle carries whatever the consist and control labels happen to be,
+# and for the longer ones one line runs off an 11.5 in canvas -- matplotlib
+# clips it at both ends rather than complaining. Pack the facts onto as many
+# lines as they need instead.
+_SUBTITLE_COLS = 112
+
+
+def _wrap_facts(facts, cols: int = _SUBTITLE_COLS) -> str:
+    """Join ``facts`` with " | ", breaking the line before it overruns."""
+    lines, cur = [], ""
+    for fact in facts:
+        candidate = f"{cur}   |   {fact}" if cur else fact
+        if cur and len(candidate) > cols:
+            lines.append(cur)
+            cur = fact
+        else:
+            cur = candidate
+    if cur:
+        lines.append(cur)
+    return "\n".join(lines)
 
 
 def print_summary(row) -> None:
