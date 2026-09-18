@@ -26,6 +26,7 @@ import json
 import math
 import os
 import random
+import warnings
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
@@ -43,9 +44,23 @@ EPQS_URL = "https://epqs.nationalmap.gov/v1/json"
 
 USER_AGENT = "route_generator/0.1 (railway LTD dataset; USGS 3DEP client)"
 
-# Max points per ImageServer request. The service caps samples per call; 100 is
-# comfortably under the limit and keeps individual responses small.
-BATCH_CHUNK = 100
+# Max points per ImageServer request. Measured 2026-09-17: the service returns
+# a full result up to 1000 points and silently truncates to 1000 at 2000, so
+# 1000 is the ceiling rather than a guess. Throughput against chunk size, on
+# real alignment vertices:
+#
+#     100 pts/req ->   435 pts/s      500 pts/req -> 1,385 pts/s
+#     250 pts/req ->   929 pts/s     1000 pts/req -> 2,729 pts/s
+#
+# Latency is nearly flat in chunk size (0.23 s at 100, 0.37 s at 1000), so the
+# old value spent almost all of its time on per-request overhead.
+BATCH_CHUNK = 1000
+
+# Batch requests are issued concurrently. Measured at 1000 points/request:
+# 1 worker 2,196 pts/s, 4 -> 5,785, 8 -> 11,829, 16 -> 16,427. Sequential
+# issue was the single largest cost in mapping the network: it put the
+# continental main line at 8.7 hours against 0.55 at this setting.
+BATCH_WORKERS = 16
 
 # EPQS sentinel for "no data at this location".
 _EPQS_NODATA = -1000000.0
@@ -134,8 +149,12 @@ def _sample_chunk_imageserver(
     last = "unknown error"
     for attempt in range(retries + 1):
         try:
-            resp = http.get(IMAGESERVER_URL, params=params, headers=headers,
-                            timeout=(15, timeout_s))
+            # POST, not GET: a 1000-point geometry is ~30 KB of JSON, far past
+            # what a URL can carry, and the service rejects it rather than
+            # truncating. This was a silent 600x slowdown -- every chunk failed
+            # and every point fell through to the per-point EPQS path.
+            resp = http.post(IMAGESERVER_URL, data=params, headers=headers,
+                             timeout=(15, timeout_s))
         except Exception as exc:  # noqa: BLE001 - Timeout/ConnectionError/…
             last = f"network error: {exc}"
         else:
@@ -187,6 +206,7 @@ def sample_elevations(
     retries: int = 3,
     backoff_s: float = 1.5,
     epqs_workers: int = 8,
+    batch_workers: int = BATCH_WORKERS,
     progress: Optional[Callable[[int, int], None]] = None,
 ) -> Tuple[np.ndarray, Dict]:
     """Ground elevation (m) for each ``(lon, lat)``; gaps filled by EPQS.
@@ -219,15 +239,44 @@ def sample_elevations(
 
     done = 0
     if method == "batch":
-        for base, chunk in _chunks(pts, BATCH_CHUNK):
-            vals = _sample_chunk_imageserver(chunk, session, timeout_s, retries, backoff_s)
-            for j, v in enumerate(vals):
-                if v is not None:
-                    elev[base + j] = v
-                    n_batch += 1
-            done += len(chunk)
-            if progress:
-                progress(done, n)
+        # Issued concurrently: the request is latency-bound, not bandwidth- or
+        # server-CPU-bound, so workers scale nearly linearly to 16. A failed
+        # chunk leaves its points unresolved and they fall through to the EPQS
+        # path below, which is what that path is for.
+        jobs = list(_chunks(pts, BATCH_CHUNK))
+
+        failures: List[str] = []
+
+        def _one(job):
+            base, chunk = job
+            try:
+                return base, _sample_chunk_imageserver(
+                    chunk, session, timeout_s, retries, backoff_s)
+            except Exception as exc:  # noqa: BLE001
+                # Recorded, not swallowed. These points still fall through to
+                # EPQS, but a batch path that fails for every chunk looks
+                # identical to one that works except for being 600x slower,
+                # and that is exactly how it was missed once already.
+                failures.append(f"{type(exc).__name__}: {exc}")
+                return base, [None] * len(chunk)
+
+        with ThreadPoolExecutor(max_workers=max(1, batch_workers)) as ex:
+            for base, vals in ex.map(_one, jobs):
+                for j, v in enumerate(vals):
+                    if v is not None:
+                        elev[base + j] = v
+                        n_batch += 1
+                done += len(vals)
+                if progress:
+                    progress(done, n)
+
+        if failures:
+            warnings.warn(
+                f"getSamples failed on {len(failures)}/{len(jobs)} chunk(s); "
+                f"those points fall back to the slow per-point path. "
+                f"First error: {failures[0][:160]}",
+                RuntimeWarning, stacklevel=2,
+            )
 
     # Fallback (or primary, when method == "epqs"): EPQS for unresolved points.
     missing_idx = [i for i in range(n) if elev[i] is None]

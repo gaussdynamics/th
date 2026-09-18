@@ -268,6 +268,100 @@ more now that there is more to choose from:
 
 ---
 
+## The continental network, and what it costs to map
+
+_Measured 2026-09-17. `scripts/pull_narn.py`, `scripts/bench_route_pipeline.py`._
+
+### What was pulled
+
+    95,936 segments   274,145 km   2,719,766 vertices   35 MB   in 13.5 min
+
+| | |
+|---|---|
+| countries | US 81,533 · Canada 12,455 · Mexico 1,948 segments |
+| graph | 92,787 nodes, 95,936 edges |
+| named subdivisions | 2,492 |
+| native vertex spacing | ~101 m |
+| owners by km | UP 40,204 · BNSF 38,817 · CN 30,533 · CPKC 26,136 · CSXT 25,782 · NS 23,022 |
+
+### The pipeline, confirmed
+
+The four stages are the existing `routegen` ones, unchanged:
+
+1. **resample** — alignment to a uniform chainage grid at `ds` metres.
+2. **elevate** — 3DEP `getSamples`.
+3. **derive_profile** — Savitzky-Golay grade, planform curvature, `v_max`.
+4. **export** — the four-channel tensor `.npz` the simulator consumes.
+
+Only stage 2 costs anything. Projected onto the real 274,145 km at 10 m
+spacing, which is 27.4M points:
+
+| stage | rate | hours |
+|---|---|---|
+| resample | 625 km/s | 0.12 |
+| **elevation** | **16,427 pts/s** | **0.46** |
+| profile | 4,264 km/s | 0.02 |
+| **total** | | **0.60** |
+
+**The entire North American main-line network, in simulator-ready form, is
+about 36 minutes.**
+
+### Getting there needed two changes, and one of them I got wrong first
+
+`BATCH_CHUNK` was 100 and chunks were issued **sequentially**; only the EPQS
+*fallback* was threaded. Measured throughput against chunk size on real
+alignment vertices:
+
+| points/request | 100 | 250 | 500 | 1000 | 2000 |
+|---|---|---|---|---|---|
+| points/s | 435 | 929 | 1,385 | **2,729** | truncates to 1000 |
+
+Latency is nearly flat in chunk size — 0.23 s at 100 points, 0.37 s at 1000 —
+so the old value spent almost all its time on per-request overhead. 1000 is the
+service ceiling, not a guess: at 2000 it silently returns only 1000.
+
+Concurrency at 1000 points/request: 1 worker 2,196 pts/s, 4 → 5,785, 8 →
+11,829, **16 → 16,427**. The request is latency-bound, so workers scale nearly
+linearly.
+
+Together: **17.5 hours → 0.46 hours** for continental elevation.
+
+**The mistake worth recording.** The first attempt at this raised `BATCH_CHUNK`
+to 1000 and made it concurrent, and made the pipeline *600x slower* — 4 pts/s,
+with every point falling through to the per-point EPQS path.
+`_sample_chunk_imageserver` issues a **GET**, and a 1000-point geometry is
+~30 KB of JSON, far past what a URL carries; the service rejects it. The
+benchmark had used POST and so never saw it.
+
+This is the same URL-length failure as `scripts/pull_narn.py`, which had been
+diagnosed and fixed an hour earlier and not carried across. Both are now POST.
+
+What made it *silent* was worse than the bug: the concurrent wrapper caught
+every exception and returned `None` for the chunk, which is indistinguishable
+from a working batch path except for being 600x slower. Chunk failures are now
+collected and raised as a `RuntimeWarning` naming the first error. **A fallback
+path that silently absorbs a total failure of the primary is not a fallback, it
+is a way to not find out.**
+
+### The stage that does not exist yet
+
+NARN gives a **graph**, not routes: 95,936 segments averaging 2.9 km, joined at
+92,787 nodes. The simulator needs continuous corridors with monotonic chainage.
+So there is a stage before `resample` that has no implementation:
+
+**traverse the graph into corridors.** The `SUBDIV` field is the natural unit —
+2,492 named subdivisions, which is exactly how a railroad divides its own
+network, and it gives corridors real identities. Open questions: how to order
+segments within a subdivision (node adjacency gives it, but direction needs
+fixing), what to do where a subdivision branches, and whether to cut long
+subdivisions into route-length pieces or keep them whole and sample windows
+from them as the scenario randomizer already does.
+
+That is the next piece of work, and it is a graph problem rather than a data
+problem — everything it needs is already on disk.
+
+---
+
 ## Phase C — corpus rebuild, at a larger scale
 
 10,000 scenarios took 25 minutes of GPU time. That was never the constraint, and
