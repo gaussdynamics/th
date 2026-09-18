@@ -182,6 +182,92 @@ seeing results is not held out.
 
 ---
 
+## Phase B revised: NARN replaces the Overpass crawl
+
+_Changed 2026-09-17 after the crawl failed. This supersedes the seed-and-crawl
+approach described above; the seed file and `routegen.crawl` are kept because
+OSM is still the only source of line speed._
+
+### The crawl did not work, and my endpoint advice caused it
+
+The run above failed five consecutive seeds with `HTTP 504 (busy)` over 4.5
+hours, producing only `.error` files. It looked alive because it kept advancing
+the seed counter.
+
+The cause was the endpoint recommendation two sections up. That table timed
+**one 8 km tile** and concluded overpass-api.de was 74x faster than the kumi
+mirror. A single query does not predict a sustained crawl: the main instance
+answers one request quickly and throttles hard once a crawl starts issuing
+hundreds. **Benchmark the workload, not a sample of it.** The earlier table is
+left in place because the numbers are real; what was wrong was the conclusion
+drawn from them.
+
+### The better source
+
+USDOT/BTS publish the **North American Rail Network** as a queryable feature
+service. It is a better fit than OSM on every axis that matters here:
+
+| | Overpass crawl | NARN |
+|---|---|---|
+| topology | inferred by stitching heuristics | **explicit** (`FRFRANODE`/`TOFRANODE`) |
+| junk rail | filtered by tag heuristics | **pre-classified** by `NET` |
+| coverage | per-seed crawl, 250 km radius | **whole continent**, 302,771 segments |
+| rate limit | 504s under load | none observed |
+| Colorado main line | 5 seeds failed in 4.5 h | **1,307 segments, 4,407 km, 9 s** |
+| corridor identity | `route_line2` | `MOFFAT TUNNEL`, owner `UP` |
+
+`NET` classifies every segment, which is exactly the "ignore the junk rail"
+rule, already applied by the people who own the data:
+
+| code | meaning | segments |
+|---|---|---|
+| **M** | **Main sub network** | **95,936** |
+| O | Other track (minor industrial leads) | 88,561 |
+| Y | Yard tracks | 79,028 |
+| I | Major industrial lead | 16,134 |
+| S | Passing sidings over 4000 ft | 10,193 |
+| X / A / R | Out of service, abandoned, removed | 11,431 |
+| T | Trail on former right-of-way | 1,473 |
+| F | Rail ferry connection | 15 |
+
+Per-segment attributes the OSM path never had: owner (`RROWNER1`), subdivision
+and branch names, track count, passenger flag, state, mileage. Corridors get
+real identities, which matters for a thesis that wants to name the route its
+control demo runs on.
+
+### What NARN does not give
+
+**Line speed.** `v_max(s)` comes from OSM `maxspeed`, so `routegen.osm` stays in
+the pipeline for that, queried per corridor rather than crawled. Until then the
+FRA class fallback in `derive_profile` applies.
+
+**Elevation.** Unchanged: 3DEP, which was never the bottleneck. Its cost at
+continental scale is the open question -- point queries run ~6 s, so batching is
+required before this scales past a region. That is the next thing to measure.
+
+### Acquisition
+
+`scripts/pull_narn.py`. Fetches object ids for a server-side filter, then pulls
+geometry in chunks **by POST** -- an id list of a few hundred makes a URL long
+enough that the service answers 404, which reads like a wrong endpoint rather
+than an oversized request. Writes `segments.parquet` (one row per segment, with
+a vertex slice) and `geometry.npz` (concatenated coordinates plus offsets),
+which is far smaller and faster to load than per-segment GeoJSON.
+
+    python scripts/pull_narn.py --out data/narn --where "NET='M'"
+
+### What this does not change
+
+The corridor selection *rules* from the original plan still hold, and matter
+more now that there is more to choose from:
+
+- **Pick the steep holdout on purpose**, verified against the raw-elevation QA
+  gate. Raton and Tennessee Pass are in the seed list for that reason and are
+  identifiable in NARN by subdivision name.
+- **Reserve `control_eval` before generating anything**, in writing.
+
+---
+
 ## Phase C — corpus rebuild, at a larger scale
 
 10,000 scenarios took 25 minutes of GPU time. That was never the constraint, and
