@@ -12,6 +12,51 @@ physics decision)._
 
 ---
 
+## Where things stand — end of 2026-09-17
+
+Branch `surrogate-gns`, 11 commits ahead of `main`, tree clean, nothing pushed.
+
+**Surrogate.** Formulation settled and implemented: a graph network simulator
+taking one learned 0.25 s step (`surrogate/`, 16 tests). Trains in ~80 s on the
+4090. Velocity extrapolates to consists 1.5-15x longer than trained on (7.4x
+over baseline one-step, 11x over hold at 200 steps). Rollout survives 200 steps
+with noise injection plus pushforward. Full record and three rejected fixes in
+`SURROGATE_FORMULATION_NOTE.md`.
+
+**Known limitation, unresolved:** coupler *shape* does not extrapolate over long
+rollouts — 1.2x over hold on 150-car consists against 7x on val. Three
+hypotheses tested and rejected. Diagnosed as a stability rather than accuracy
+problem. The recommendation is to route around it: Ch6 claims the velocity
+extrapolation it demonstrates and states the shape limit plainly; Ch7 trains
+across the full size range instead of demanding extrapolation.
+
+**Routes.** Phase A done: `route_line2` rejected on raw-elevation QA, window
+200 -> 800 m, clip 4% -> 2.5% (`ROUTE_PIPELINE_NOTE.md`). Phase B pivoted from
+Overpass crawling to USDOT NARN — the whole continental main line is pulled to
+`data/narn` (95,936 segments, 274,145 km, 36 MB). Elevation sampling is 38x
+faster after fixing a GET that should have been a POST.
+
+### Next action, unambiguous
+
+**Traverse the NARN graph into corridors.** It is the only thing standing
+between the pulled network and a full-network corpus, everything it needs is on
+disk, and it is a graph problem rather than a data one. `SUBDIV` (2,492 named
+subdivisions) is the natural unit. See the last section of
+`ROUTE_PIPELINE_NOTE.md` for the open questions.
+
+After that: the overspeed second cause (control profiles are sampled
+independently of terrain — a randomizer fix, not a route fix), then the Phase C
+rebuild at 50,000-100,000 scenarios where disk, not compute, binds.
+
+### Artifacts on disk that are *not* in git
+
+`/data/` is gitignored. `data/narn` (36 MB) regenerates in 13.5 min via
+`scripts/pull_narn.py`; `data/v1` and `data/v2` are 13 GB each and regenerate in
+~25 min each. `checkpoints/` (5.7 MB) holds two trained models and is
+gitignored; retraining is ~80 s. Nothing here is precious.
+
+---
+
 ## The headline finding: the NumPy simulator cannot build this dataset
 
 A sweep of 66 runs (3 consists × 2 routes × 11 driving regimes, **120 s of simulated time
