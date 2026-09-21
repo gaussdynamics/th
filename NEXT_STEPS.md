@@ -12,9 +12,9 @@ physics decision)._
 
 ---
 
-## Where things stand — end of 2026-09-17
+## Where things stand — end of 2026-09-20
 
-Branch `surrogate-gns`, 11 commits ahead of `main`, tree clean, nothing pushed.
+Branch `surrogate-gns`, 12 commits ahead of `main`, nothing pushed.
 
 **Surrogate.** Formulation settled and implemented: a graph network simulator
 taking one learned 0.25 s step (`surrogate/`, 16 tests). Trains in ~80 s on the
@@ -33,16 +33,44 @@ across the full size range instead of demanding extrapolation.
 **Routes.** Phase A done: `route_line2` rejected on raw-elevation QA, window
 200 -> 800 m, clip 4% -> 2.5% (`ROUTE_PIPELINE_NOTE.md`). Phase B pivoted from
 Overpass crawling to USDOT NARN — the whole continental main line is pulled to
-`data/narn` (95,936 segments, 274,145 km, 36 MB). Elevation sampling is 38x
-faster after fixing a GET that should have been a POST.
+`data/narn` (95,936 segments, 274,145 km, 36 MB).
+
+**Traversal done 2026-09-20.** `routegen/narn.py` +
+`scripts/build_narn_corridors.py` walk the NARN graph into **5,621 named
+corridors** (248,892 km; min 15.0, median 47.6, max 60.0 km) in 93 s offline,
+with 16 tests. `scripts/build_narn_routes.py` carries them through the four
+existing stages. Corridors have real identities now — `bnsf_raton_p0_56km`,
+`up_moffat_tunnel_p2_56km`, `rrrr_tennessee_pass_p0_39km`. **Corridor supply is
+no longer the constraint.** Every decision is written up in
+`ROUTE_PIPELINE_NOTE.md`.
+
+Three findings came out of the pilot that change what happens next:
+
+1. **3DEP does not cover the non-US network.** 0 of 48 US corridors failed the
+   raw-elevation gate; 5 of 9 Canadian and 1 of 3 Mexican did. Restrict to
+   `COUNTRY == 'US'` (4,350 corridors, still far more than needed) unless a
+   second DEM is sourced. "North American" is a US network until then.
+2. **Tunnels fail the gate.** 3DEP correctly returns the mountain surface above
+   a bore, so Tennessee Pass and three Moffat Tunnel pieces are rejected — the
+   steep corridors `ood_grade` most wants. Needs a decision: interpolate across
+   detected tunnel runs, source portal elevations, or accept with a flag.
+3. **The 2.5% clip binds on real mountain grade.** `bnsf_raton_p3_56km` sits at
+   the clamp for 25.4% of its length, and Raton's ruling grade genuinely is
+   ~3.5%. The clip was tuned on a corridor set with no real mountain grade.
+   Re-run `tune_grade_smoothing.py` on a mountain sample.
+
+Also corrected: the recorded **16,427 pts/s elevation rate does not
+reproduce** — 1,700 pts/s burst, 421 sustained, so the continental projection is
+4.5-18 h, not 36 minutes. Not blocking (a few hundred corridors is 10-20 min),
+but batching elevation across corridors is the obvious unclaimed optimization.
 
 ### Next action, unambiguous
 
-**Traverse the NARN graph into corridors.** It is the only thing standing
-between the pulled network and a full-network corpus, everything it needs is on
-disk, and it is a graph problem rather than a data one. `SUBDIV` (2,492 named
-subdivisions) is the natural unit. See the last section of
-`ROUTE_PIPELINE_NOTE.md` for the open questions.
+**Settle the tunnel and grade-clip decisions, then build the split corridor
+set.** Both are prerequisites for an honest `ood_grade`, both are cheap, and the
+measurements that frame them are in `ROUTE_PIPELINE_NOTE.md`. Then pick the
+corridors for `train`/`val`/`test_id`/`ood_grade`/`ood_corridor`/`control_eval`
+out of the 4,350 US corridors and elevate just those.
 
 After that: the overspeed second cause (control profiles are sampled
 independently of terrain — a randomizer fix, not a route fix), then the Phase C
@@ -51,8 +79,12 @@ rebuild at 50,000-100,000 scenarios where disk, not compute, binds.
 ### Artifacts on disk that are *not* in git
 
 `/data/` is gitignored. `data/narn` (36 MB) regenerates in 13.5 min via
-`scripts/pull_narn.py`; `data/v1` and `data/v2` are 13 GB each and regenerate in
-~25 min each. `checkpoints/` (5.7 MB) holds two trained models and is
+`scripts/pull_narn.py`. `data/narn_corridors` (250 MB, 5,621 GeoJSON corridors)
+regenerates in 93 s, offline, via `scripts/build_narn_corridors.py`.
+`data/narn_routes_pilot` / `_steep` / `_sample` are elevated pilot outputs
+(76 corridors total) and regenerate via `scripts/build_narn_routes.py` at
+~400-1,700 pts/s of 3DEP. `data/v1` and `data/v2` are 13 GB each and regenerate
+in ~25 min each. `checkpoints/` (5.7 MB) holds two trained models and is
 gitignored; retraining is ~80 s. Nothing here is precious.
 
 ---
@@ -306,11 +338,14 @@ pathological consist/regime pairing will hang a 10,000-scenario build with no di
    sampled independently of the terrain they run on. Full write-up in
    `ROUTE_PIPELINE_NOTE.md`.
 
-   **Phase B scope, set 2026-09-17:** no longer "15–25 corridors" but the major freight
-   network over a wide multi-state area centred on Pueblo CO, with the North American
-   network as the eventual goal. Seeds in `route_generator/seeds/seeds_pueblo_region.json`
-   (22, including Raton and Tennessee Pass for a genuinely steep `ood_grade`). Junk rail is
-   already excluded by the existing `main_only` filter.
+   **Phase B scope — delivered 2026-09-20, wider than planned.** The
+   Pueblo-region seed set is moot: the NARN traversal produced **5,621 corridors
+   over the whole continent** (4,350 in the US), including Raton, Moffat Tunnel,
+   Tennessee Pass and Cajon by name. Corridor supply is no longer the binding
+   constraint on any split. What now blocks `ood_grade` is not acquisition but
+   two decisions recorded at the top of this file and in
+   `ROUTE_PIPELINE_NOTE.md`: tunnels fail the raw-elevation gate, and the 2.5%
+   grade clip truncates real mountain grade.
 
    **Phase C scope:** 10,000 scenarios cost 25 minutes, so plan for 50,000–100,000. Disk is
    the binding constraint at that scale, not compute (~124 GB at 100k).

@@ -245,6 +245,12 @@ FRA class fallback in `derive_profile` applies.
 continental scale is the open question -- point queries run ~6 s, so batching is
 required before this scales past a region. That is the next thing to measure.
 
+**Correction, 2026-09-20: 3DEP does not cover the non-US network.** That is a
+gap in NARN's usefulness, not just in its attributes: 935 Canadian and 336
+Mexican corridors (23% of the total) have no usable elevation from this source.
+Measured on a 60-corridor sample, 0 of 48 US corridors failed the raw-elevation
+QA gate against 5 of 9 Canadian and 1 of 3 Mexican. Details below.
+
 ### Acquisition
 
 `scripts/pull_narn.py`. Fetches object ids for a server-side filter, then pulls
@@ -306,6 +312,12 @@ spacing, which is 27.4M points:
 **The entire North American main-line network, in simulator-ready form, is
 about 36 minutes.**
 
+> **Superseded 2026-09-20.** The elevation rate above does not reproduce;
+> measured throughput plateaus near 1,700 pts/s burst and 421 pts/s sustained,
+> which puts the continental total at 4.5-18 h rather than 36 minutes. See
+> "Elevation throughput does not reproduce" below. The resample and profile
+> rates are unaffected and were re-confirmed.
+
 ### Getting there needed two changes, and one of them I got wrong first
 
 `BATCH_CHUNK` was 100 and chunks were issued **sequentially**; only the EPQS
@@ -343,22 +355,209 @@ collected and raised as a `RuntimeWarning` naming the first error. **A fallback
 path that silently absorbs a total failure of the primary is not a fallback, it
 is a way to not find out.**
 
-### The stage that does not exist yet
+### The stage that did not exist — traversal (done 2026-09-20)
 
 NARN gives a **graph**, not routes: 95,936 segments averaging 2.9 km, joined at
-92,787 nodes. The simulator needs continuous corridors with monotonic chainage.
-So there is a stage before `resample` that has no implementation:
+92,787 nodes. `routegen/narn.py` is the stage between that and `resample`, and
+it is deliberately thin. NARN segments are adapted into `Way` objects, so the
+corridor walk already written for the Overpass area pull
+(`network._grow_corridor`) applies unchanged. Driver:
+`scripts/build_narn_corridors.py`. Tests: `route_generator/tests/test_narn.py`,
+16 of them, all offline.
 
-**traverse the graph into corridors.** The `SUBDIV` field is the natural unit —
-2,492 named subdivisions, which is exactly how a railroad divides its own
-network, and it gives corridors real identities. Open questions: how to order
-segments within a subdivision (node adjacency gives it, but direction needs
-fixing), what to do where a subdivision branches, and whether to cut long
-subdivisions into route-length pieces or keep them whole and sample windows
-from them as the scenario randomizer already does.
+NARN turned out to be *better* input than OSM for this, not merely different.
+`FRFRANODE`/`TOFRANODE` are authoritative, so the coordinate-fallback and
+gap-bridging heuristics in `centerline.py` never fire — connectivity is read,
+not inferred. The whole continental traversal is **93 s**, offline.
 
-That is the next piece of work, and it is a graph problem rather than a data
-problem — everything it needs is already on disk.
+#### The decisions, and why
+
+**Unit of traversal: `(RROWNER1, SUBDIV)`, not `SUBDIV`.** 2,492 subdivision
+names but 3,212 owner+name groups, so names are reused across railroads and the
+name alone would weld unrelated track together. Median group is 33.5 km, which
+already sits inside the 22–49 km band the old five-corridor set occupied.
+
+**Geometry direction was verified, not assumed.** Vertices run
+`FRFRANODE → TOFRANODE`: checked on 4,994 junction pairs — segment A's last
+vertex against segment B's first, where A ends at the node B starts from — with
+zero exceptions. Without that the node ids and the coordinates could disagree
+and `Way.reversed()` would silently corrupt a corridor.
+
+**A branch ends a chain; it is not resolved.** 1,138 of 3,212 groups contain a
+degree-≥3 node. Both arms come out as separate corridors with real identities.
+Picking "the" through-route would put a heuristic back into a pipeline whose
+whole justification was that NARN states topology explicitly.
+
+**Disconnected components are never stitched.** 430 groups are multi-component.
+These are either a reused subdivision name in two places or a genuine hole in
+NARN's geometry; the walk cannot tell, and cannot cross a gap, so both come out
+as separate corridors. That is the right answer either way, but it does mean two
+unrelated corridors can carry the same base name with different piece indices.
+
+**Segments with no `SUBDIV` are excluded.** 5,230 segments, 10,433 km. They
+carry no parent-line identity, so a corridor built from them could not be named
+or reserved for a split. The cost is real: a corridor terminates early wherever
+such trackage would have connected it.
+
+**Cut long chains; drop short ones.** `min_length_m = 15,000`, because
+`DATA_SCHEMA` wants 300–600 s runs and the randomizer clips duration so the
+consist cannot leave the route — below ~15 km a full-length scenario does not
+fit. `max_length_m = 60,000`, because the whole route array is resident per
+scenario and disk, not compute, binds at Phase C scale.
+
+**Cuts land on segment boundaries — with a vertex-level fallback.** Cutting at a
+way boundary keeps `way_id` provenance intact and leaves every piece a whole
+number of NARN segments, traceable to its `FRAARCID` set. The first
+implementation did *only* that, and **337 of 5,564 corridors came out over the
+cap, up to 178 km**, because NARN's segment-length tail is long: remote Canadian
+and Mexican route runs to 178 km in a single segment, and a single segment has
+no interior boundary to cut at. `split_way` now subdivides any segment longer
+than a quarter of the cap at its own vertices, keeping the parent `FRAARCID`,
+and the cap is enforced as a hard bound rather than a target. Result: **0 over
+cap**. A two-vertex segment still cannot be split and is returned whole — none
+exist at this scale, but the function does not pretend otherwise.
+
+**Track class from `TRACKS` and `PASSNGR`.** NARN has no line speed, so
+`derive_profile` falls back to an FRA freight class. Single track keeps **class
+4 (60 mph)** — exactly the fallback `data/v1` and `data/v2` were built with, so
+single-track `route_vmax`, and the overspeed statistics measured against it,
+stay comparable across the rebuild. Two or more tracks, or any passenger code,
+promotes to class 5 (80 mph); an absent or zero track count demotes to class 3
+(40 mph), because an unknown track count is not evidence of a fast railroad.
+This is the one place the traversal invents physical information, and it sets
+`route_vmax` everywhere.
+
+**Structure flags are all False.** NARN carries no
+bridge/tunnel/cutting/embankment tags. They are provenance only — nothing in the
+RHS reads them — so they are left absent rather than guessed. See the tunnel
+finding below for why their absence nonetheless costs something.
+
+#### What came out
+
+| | |
+|---|---|
+| corridors | **5,621** — US 4,350 · Canada 935 · Mexico 336 |
+| track retained | 248,892 km of 274,145 |
+| length | min 15.0 km, median 47.6 km, max 60.0 km, none over cap |
+| groups | 3,212 — 1,856 simple paths, 1,138 branched, 430 multi-component |
+| chains grown | 8,522, of which 1,423 cut and 5,850 dropped as too short |
+| traversal time | 93 s, offline |
+
+The km balance closes: 248,892 retained + 14,594 dropped short + 10,433 with no
+subdivision = 273,919 against NARN's own 274,145, a 0.08% residual between the
+`KM` attribute and a haversine recomputation of the geometry.
+
+Corridors have real identities at last: `bnsf_raton_p0_56km`,
+`up_moffat_tunnel_p2_56km`, `rrrr_tennessee_pass_p0_39km`, `bnsf_cajon_p0_52km`.
+5,621 is far more than the splits need. **Corridor supply is no longer the
+constraint.**
+
+---
+
+### Carrying corridors through the pipeline
+
+`scripts/build_narn_routes.py` runs corridors through the four existing stages
+unchanged and writes the DATA_SCHEMA §F route tensor. The Phase A QA gate is
+applied **between** elevation and profile — it reads sampled elevation, so it
+cannot gate ahead of the spend — and a failing corridor is recorded and skipped
+rather than smoothed into range.
+
+Measured on a 12-corridor pilot (hand-picked to span the topology cases and both
+extremes of terrain) and a 60-corridor deterministic sample spread evenly
+through the index.
+
+#### Elevation throughput does not reproduce
+
+The 16,427 pts/s recorded above on 2026-09-17, and the "36 minutes for the whole
+continent" that follows from it, **do not reproduce**. Measured 2026-09-20 on
+the identical code path — `method="batch"`, zero EPQS fallback, so this is not
+the silent-fallback bug returning:
+
+| points in one call | 1,000 | 5,000 | 20,000 | 60,732 |
+|---|---|---|---|---|
+| pts/s | 204 | 596 | 1,367 | **1,680** |
+
+Throughput rises with batch size and plateaus near 1,700 pts/s. Raising
+`batch_workers` from 16 to 64 buys only 1.5x (1,287 → 1,952 pts/s on 20,000
+points), so the service is rate-limiting rather than latency-bound — the
+opposite of the regime the 16-worker setting was tuned in. Sustained throughput
+is lower still: the 60-corridor run averaged **421 pts/s** over 679 s.
+
+**Revised continental projection: 4.5 h at the burst rate, ~18 h at the
+sustained one — not 0.46 h.** I have not established the cause and am not
+claiming a regression in our code; the honest statement is that the earlier
+figure is not reproducible today, and the earlier note's own instruction to
+re-measure before trusting a throughput number applies to its own number too.
+
+This does not block anything: a few hundred corridors, which is all the splits
+need, is 10–20 minutes. But because throughput depends on batch size, sampling
+per corridor (~5,000 points) runs at roughly half the plateau rate. **Batching
+elevation across corridors is the obvious next optimization and is not done.**
+
+#### 3DEP is a US dataset, and the rejections say so
+
+The 60-corridor sample rejected 6, a 10% rate. Split by country it is not a rate
+at all, it is a boundary:
+
+| country | sampled | rejected |
+|---|---|---|
+| US | 48 | **0** |
+| Canada | 9 | **5** (56%) |
+| Mexico | 3 | **1** (33%) |
+
+3DEP is a USGS product. The non-US network — 935 Canadian and 336 Mexican
+corridors, 23% of the total — has no usable elevation from this source, and the
+QA gate is the thing that noticed. **Restrict the build to `COUNTRY == 'US'`
+unless a non-US DEM is sourced** (Canada's CDEM is the obvious candidate). That
+still leaves 4,350 corridors, which is far more than needed, so this costs
+nothing in practice — but it must be stated rather than left as an unexplained
+10% failure rate, and it means the "North American" network is a US network
+until a second DEM is added.
+
+#### The tunnel finding
+
+The raw-elevation gate also rejects corridors it was not designed for. In Phase
+A it caught `route_line2`, whose DEM data was simply broken. On US mountain
+route it is catching **tunnels**, where 3DEP correctly returns the mountain
+surface above the bore instead of the track inside it.
+
+The signature is unmistakable and it is not noise. On `up_moffat_tunnel_p0_56km`
+(6.0% of steps over 1 m, against a 5% tolerance) the jumps are not spread along
+the corridor — 224 of 336 fall in one 5.7 km stretch spanning 152 m of
+elevation, and 71 more in a second 2.6 km stretch spanning 88 m. That is a
+surface profile over a bore, not a track profile.
+
+Rejected on this basis: both Tennessee Pass pieces, and Moffat Tunnel pieces p0,
+p3 and p4. These are exactly the steep, tunnelled mountain corridors the
+`ood_grade` split wants. **The gate is behaving correctly and the data is
+genuinely unusable as sampled** — but "reject it" is the wrong remedy when the
+cause is a tunnel rather than bad data, because it systematically removes
+mountain route. Options, none taken yet: interpolate elevation linearly across a
+detected tunnel run, source tunnel portal elevations, or accept the corridor
+with the tunnel stretch flagged. This needs a decision before `ood_grade` is
+built.
+
+#### The 2.5% clip binds on real mountain grade
+
+Phase A cut `grade_clip` from 4% to 2.5% and chose an 800 m smoothing window. On
+the flat-to-rolling corridors that survive the gate the settings are excellent —
+across the 54 passing corridors of the sample, median rms grade **0.45%**, p90
+0.79%, worst 0.97%, and the clamp binds on more than 1% of length for only 3 of
+54 (worst 3.63%). Against `route_line2` sitting at the old 4% clamp for 22.7% of
+its length, that is the Phase A fix working.
+
+But **`bnsf_raton_p3_56km` — the Raton Pass summit piece — sits at the 2.5%
+clamp for 25.4% of its length** (rms 1.73%, p95 2.50%). That is `route_line2`'s
+pathology with the opposite cause: Raton's ruling grade is genuinely about 3.5%,
+so the clip is truncating real terrain rather than DEM noise.
+`bnsf_cajon_p1_29km` (rms 1.92%) and `up_moffat_tunnel_p1_51km` come close
+without binding much.
+
+`grade_clip = 0.025` was selected against a corridor set that contained no real
+mountain grade, and should not be carried onto one that does. The clip and the
+raw-elevation tolerance both need re-tuning against the corridors that matter
+for `ood_grade` — the same `tune_grade_smoothing.py` exercise, run on a mountain
+sample instead of the Pueblo five.
 
 ---
 

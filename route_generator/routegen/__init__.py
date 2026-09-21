@@ -40,6 +40,14 @@ from .profile import (
     save_profile_npz,
     validate_profile,
 )
+from .narn import (
+    build_corridors,
+    corridor_id,
+    load_narn,
+    segment_to_way,
+    subdivision_groups,
+    traverse_group,
+)
 from .resample import resample_feature
 from .network import extract_corridors, group_corridors, nearest_corridor
 from .osm import (
@@ -69,6 +77,12 @@ __all__ = [
     "centerline_records",
     "centerline_to_geojson",
     "resample_feature",
+    "build_corridors",
+    "corridor_id",
+    "load_narn",
+    "segment_to_way",
+    "subdivision_groups",
+    "traverse_group",
     "derive_profile",
     "validate_profile",
     "profile_to_geojson",
