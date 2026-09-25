@@ -1,5 +1,5 @@
 % ===========================================================================
-% Committee progress update, September 2026. About 15 minutes, 12 slides.
+% Committee progress update, September 2026. About 15 minutes, 14 slides.
 % Shares the style of the defense deck (preamble.tex) and reuses the Chapter 8
 % architecture diagrams from ../figures/tikz.
 %
@@ -263,77 +263,180 @@
   \end{columns}
 \end{frame}
 
-% --- 8. Result: velocity generalizes --------------------------------------
-\begin{frame}{Result: Velocity Holds Up on Longer Trains}
-  \vspace{0.3em}
-  {\small Trained on trains of 10 to 80 vehicles. Tested on trains of 121 to 150,
-   which it never saw: 1.5 to 15 times longer.}
+% --- 8. How the results are measured ---------------------------------------
+\begin{frame}{How the Results Are Measured}
+  \vspace{0.2em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.50\textwidth}
+      {\small\textbf{The test}}
+      \begin{itemize}\setlength\itemsep{0.3em}
+        \footnotesize
+        \item Trained on trains of 10 to 80 cars. Tested on trains of 121 to
+              150 cars that it never saw.
+        \item \textbf{Rollout:} the model predicts 0.25\,s ahead, then starts
+              the next step from its own prediction. 200 steps covers 50\,s.
+        \item \textbf{Error:} the worst vehicle (or coupler) in the train,
+              compared with the simulator's true trajectory. The typical
+              (median) value over many random starting points is reported.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      {\small\textbf{The reference: ``hold''}}
+      \begin{itemize}\setlength\itemsep{0.3em}
+        \footnotesize
+        \item Keep the starting state and never update it.
+        \item Its error is therefore \alert{how much the train actually
+              changed}. It measures how much there was to predict; it is a
+              scale, not a competing model.
+        \item Results are stated as \textbf{model error as a share of the
+              actual change}: 0\% is perfect, 100\% is no better than
+              standing still.
+      \end{itemize}
+    \end{column}
+  \end{columns}
 
-  \vspace{0.7em}
+  \vspace{0.8em}
+  \begin{beamercolorbox}[wd=\textwidth,sep=6pt]{block body}
+    \footnotesize Real comparison models (constant-acceleration extrapolation,
+    a physics-correction MLP, a transformer) are planned for the evaluation
+    chapter and have not been run yet.
+  \end{beamercolorbox}
+\end{frame}
+
+% --- 9. Result: speed ----------------------------------------------------------
+\begin{frame}{Result: Speed Stays Accurate on Longer Trains}
+  \vspace{0.3em}
   \centering
   {\footnotesize
-  \begin{tabular}{@{}lcccc@{}}
+  \begin{tabular}{@{}lccc@{\hspace{2.2em}}ccc@{}}
     \toprule
-     & \multicolumn{2}{c}{\textbf{Validation, 10--80 cars}} & \multicolumn{2}{c}{\textbf{Unseen, 121--150 cars}} \\
-    \cmidrule(r){2-3}\cmidrule(l){4-5}
-    Velocity error & Model & vs.\ baseline & Model & vs.\ baseline \\
+     & \multicolumn{3}{c}{\textbf{Trained sizes, 10--80 cars}}
+     & \multicolumn{3}{c}{\textbf{Unseen sizes, 121--150 cars}} \\
+    \cmidrule(r{2.2em}){2-4}\cmidrule{5-7}
+    Rollout & Actual change & Model error & Share
+            & Actual change & Model error & Share \\
     \midrule
-    One step, RMSE (m/s$^2$)         & 0.017 & 7.8$\times$ better & 0.020 & \textbf{7.4$\times$ better} \\
-    After 200 steps, 50\,s (m/s)     & 0.066 & 27$\times$ better  & 0.118 & \textbf{11$\times$ better} \\
+    1 step, 0.25\,s  & 0.016 & 0.004 & 23\%  & 0.028 & 0.011 & 39\% \\
+    50 steps, 12.5\,s & 0.48  & 0.028 & 5.7\% & 0.53  & 0.061 & 11\% \\
+    200 steps, 50\,s  & 1.78  & 0.066 & \textbf{3.7\%} & 1.31 & 0.118 & \textbf{9.0\%} \\
     \bottomrule
   \end{tabular}}
 
-  \vspace{0.9em}
-  \begin{minipage}{0.92\textwidth}\small
-    Baselines: predicting no change (one step) and holding the starting state
-    (200 steps). Stable rollouts needed two training techniques together: noise
-    added to the inputs, and training on the model's own earlier predictions.
-    \alert{Doubling training time nearly halved the 200-step error}, so the
-    model is not yet converged.
+  \vspace{0.3em}
+  \srcline{Speed of the worst vehicle, in m/s. ``Actual change'' is the error of holding the starting state.}
+
+  \vspace{0.8em}
+  \begin{minipage}{0.94\textwidth}\small
+    \begin{itemize}\setlength\itemsep{0.35em}
+      \item After 50\,s, the model's speed error is \textbf{0.066\,m/s} on
+            familiar train lengths and \textbf{0.118\,m/s} on trains up to 15
+            times longer: under a tenth of how much the speed actually changed.
+      \item The one-step share is higher only because a train barely changes
+            in a quarter second. The long rollouts are what a simulation uses.
+      \item Doubling training time nearly halved the 200-step error, so the
+            model is not yet fully trained.
+    \end{itemize}
   \end{minipage}
 \end{frame}
 
-% --- 9. Result: shape does not -------------------------------------------
+% --- 10. Result: coupler shape ---------------------------------------------
 \begin{frame}{Result: Coupler Shape Does Not Hold Up on Longer Trains}
   \vspace{0.3em}
   \begin{columns}[T,onlytextwidth]
-    \begin{column}{0.46\textwidth}
-      \vspace{0.3em}
-      {\footnotesize
-      \begin{tabular}{@{}lcc@{}}
-        \toprule
-        Shape error, 200 steps & Model & vs.\ hold \\
-        \midrule
-        Validation, 10--80 cars   & 5.8\,mm  & 6.8$\times$ better \\
-        Unseen, 121--150 cars     & 39\,mm   & \alert{1.2$\times$ better} \\
-        \bottomrule
-      \end{tabular}}
-
-      \vspace{0.7em}
-      {\footnotesize Coupler shape sets coupler force, and the safety limit
-       in the control chapter is a limit on coupler force. This is the result
-       that most affects the remaining work.}
-    \end{column}
     \begin{column}{0.50\textwidth}
-      {\small\textbf{Three explanations tested and ruled out}}
-      \begin{itemize}\setlength\itemsep{0.35em}
-        \footnotesize
-        \item \textbf{Not too few message-passing rounds.} Error is even along
-              the train, not larger far from the ends.
-        \item \textbf{Not a steady drift.} Removing the drift made results
-              worse on validation and no better on long trains.
-        \item \textbf{Not caused by velocity error.} Giving the model perfect
-              velocities removed only 9\% of the shape error.
-      \end{itemize}
-      \vspace{0.3em}
-      {\footnotesize Per-step accuracy is similar on both sets. On long
-       trains the errors \alert{reinforce instead of cancelling}: a stability
-       problem, not an accuracy problem.}
+      \begin{tikzpicture}
+        \begin{axis}[
+            width=\linewidth, height=5.4cm,
+            ybar, bar width=16pt, ymin=0, ymax=60,
+            symbolic x coords={trained, unseen},
+            xtick={trained, unseen},
+            xticklabels={{Trained sizes\\10--80 cars}, {Unseen sizes\\121--150 cars}},
+            xticklabel style={font=\scriptsize, align=center},
+            yticklabel style={font=\scriptsize},
+            ylabel={\scriptsize Worst-Coupler Error After 50\,s (mm)},
+            ymajorgrids, grid style={chartGrid},
+            axis x line*=bottom, axis y line*=left,
+            enlarge x limits=0.45,
+            nodes near coords, nodes near coords style={font=\tiny},
+            legend style={font=\scriptsize, draw=none, at={(0.5,-0.24)}, anchor=north, legend columns=2, /tikz/every even column/.append style={column sep=0.8em}},
+            legend image code/.code={\fill (0cm,-0.08cm) rectangle (0.28cm,0.12cm);},
+          ]
+          \addplot[fill=chartBlue, draw=none] coordinates {(trained,5.8) (unseen,41.0)};
+          \addplot[fill=uniSlate!45, draw=none] coordinates {(trained,39.8) (unseen,49.2)};
+          \legend{Model error, Actual change}
+        \end{axis}
+      \end{tikzpicture}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \small
+      \textbf{Coupler shape} is how far each coupler is stretched or
+      compressed. Past the 20\,mm of slack, every extra millimetre adds force.
+
+      \vspace{0.6em}
+      On familiar lengths the model's error is \textbf{15\%} of the actual
+      change. On the long trains it is \alert{\textbf{83\%}}: almost as large
+      as the change itself.
+
+      \vspace{0.6em}
+      The control chapter limits \textbf{coupler force}, on long trains, over
+      long stretches of time. This is the result that most affects the
+      remaining work.
     \end{column}
   \end{columns}
 \end{frame}
 
-% --- 10. Open problems ---------------------------------------------------
+% --- 11. Why the shape result fails ------------------------------------------
+\begin{frame}{Why Coupler Shape Fails: Errors Build Up Instead of Cancelling}
+  \vspace{0.1em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.50\textwidth}
+      {\small\textbf{Three explanations tested and ruled out}}
+      \begin{itemize}\setlength\itemsep{0.3em}
+        \footnotesize
+        \item \textbf{Too few message-passing rounds?} No: error is even along
+              the train, not larger far from the ends.
+        \item \textbf{A slow stretch of the whole train?} No: removing it made
+              familiar lengths 47\% worse and long trains no better.
+        \item \textbf{Caused by the speed error?} No: with perfectly correct
+              speeds, only 9\% of the shape error went away.
+      \end{itemize}
+      \vspace{0.3em}
+      {\footnotesize Per step, the model is nearly as accurate on long trains
+       (17\% worse). The problem appears only over many steps.}
+    \end{column}
+    \begin{column}{0.47\textwidth}
+      \begin{tikzpicture}
+        \begin{axis}[
+            width=\linewidth, height=4.6cm,
+            ybar, bar width=14pt, ymin=0, ymax=50,
+            symbolic x coords={trained, unseen},
+            xtick={trained, unseen},
+            xticklabels={{38 cars}, {150 cars}},
+            xticklabel style={font=\scriptsize},
+            yticklabel style={font=\scriptsize},
+            ylabel={\scriptsize Shape Error After 50\,s (mm)},
+            ymajorgrids, grid style={chartGrid},
+            axis x line*=bottom, axis y line*=left,
+            enlarge x limits=0.45,
+            nodes near coords, nodes near coords style={font=\tiny},
+            legend style={font=\scriptsize, draw=none, at={(0.5,-0.2)}, anchor=north, legend columns=1}, legend cell align=left,
+            legend image code/.code={\fill (0cm,-0.08cm) rectangle (0.28cm,0.12cm);},
+          ]
+          \addplot[fill=chartBlue, draw=none] coordinates {(trained,1.27) (unseen,44)};
+          \addplot[fill=uniSlate!45, draw=none] coordinates {(trained,5.7) (unseen,22)};
+          \legend{Actual, If step errors were independent}
+        \end{axis}
+      \end{tikzpicture}\par
+      {\footnotesize On a familiar length the errors \textbf{cancel}; on a long
+       train they \alert{build on each other}. A stability problem, not an
+       accuracy problem.}
+    \end{column}
+  \end{columns}
+  \vspace{0.2em}
+  \srcline{Right: one diagnostic run on a 38-car and a 150-car train.}
+\end{frame}
+
+% --- 12. Open problems ---------------------------------------------------
 \begin{frame}{Open Problems}
   \vspace{0.4em}
   \begin{enumerate}\setlength\itemsep{0.7em}
@@ -345,7 +448,7 @@
     \item \textbf{The national rail network is not yet split into routes.} It is
           a graph of 95,936 segments; turning it into corridors is the next
           piece of code. Everything above waits on it.
-    \item \textbf{Coupler shape on long trains} (previous slide), which matters
+    \item \textbf{Coupler shape on long trains} (slides 10 and 11), which matters
           most for the control chapter.
   \end{enumerate}
 
@@ -357,7 +460,7 @@
   \end{minipage}
 \end{frame}
 
-% --- 11. Decisions --------------------------------------------------------
+% --- 13. Decisions --------------------------------------------------------
 \begin{frame}{Questions for the Committee}
   \vspace{0.5em}
   \begin{enumerate}\setlength\itemsep{1.0em}
@@ -371,7 +474,7 @@
   \end{enumerate}
 \end{frame}
 
-% --- 12. Plan -------------------------------------------------------------
+% --- 14. Plan -------------------------------------------------------------
 \begin{frame}{Plan}
   \vspace{0.4em}
   \begin{columns}[T,onlytextwidth]
