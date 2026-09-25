@@ -51,7 +51,13 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "route_generator"))
 
 from routegen.elevation import elevate_feature, sample_elevations  # noqa: E402
-from routegen.profile import derive_profile, profile_to_geojson, save_profile_npz  # noqa: E402
+from routegen.profile import (  # noqa: E402
+    _fill_invalid,
+    derive_profile,
+    detect_tunnel_runs,
+    profile_to_geojson,
+    save_profile_npz,
+)
 from routegen.resample import resample_feature  # noqa: E402
 
 # Phase A settings, selected against stated criteria by tune_grade_smoothing.py
@@ -84,7 +90,14 @@ PILOT_IDS = [
 
 
 def elevation_qa(z: np.ndarray) -> dict:
-    """The Phase A gate, on the raw sampled elevation before any smoothing."""
+    """The Phase A gate, on sampled elevation before any smoothing.
+
+    Applied to the *structure-corrected* elevation, not the raw samples. The
+    gate asks whether the elevation is usable as a track profile; a tunnel is
+    unusable as sampled but recoverable, so correcting first and gating after
+    is what separates "this corridor is broken" from "this corridor has a
+    tunnel in it". See detect_tunnel_runs in routegen.profile.
+    """
     dz = np.abs(np.diff(z))
     frac = float((dz > 1.0).mean()) if dz.size else 0.0
     return {
@@ -160,10 +173,22 @@ def main() -> int:
         t_elev = time.time() - t1
         n_pts_total += n_pts
 
-        qa = elevation_qa(np.asarray(z, float))
+        z = np.asarray(z, float)
+        s_m = np.asarray(rs["properties"]["s_m"], float)
+        # NARN carries no structure tags, so recover them from the elevation
+        # itself before gating -- otherwise every tunnelled mountain corridor
+        # is rejected for having a tunnel in it.
+        tunnel = detect_tunnel_runs(z, s_m)
+        z_corr = _fill_invalid(z, s_m, tunnel | ~np.isfinite(z))
+
+        qa = elevation_qa(z_corr)
+        qa_raw = elevation_qa(z)
         rec = {"corridor_id": cid, "n_points": n_pts,
                "length_km": float(index[cid]["length_m"]) / 1000.0 if cid in index else None,
-               "elevation_qa": qa, "resample_s": round(t_res, 2),
+               "elevation_qa": qa, "elevation_qa_raw": qa_raw,
+               "tunnel": {"n_samples": int(tunnel.sum()),
+                          "length_m": float(tunnel.sum()) * args.ds_m},
+               "resample_s": round(t_res, 2),
                "elevation_s": round(t_elev, 2)}
 
         if not qa["pass"]:
@@ -171,11 +196,16 @@ def main() -> int:
             rec["status"] = "rejected_raw_elevation"
             records.append(rec)
             print("[%3d/%d] %-34s REJECT  %.1f%% of steps over 1 m"
-                  % (k, len(ids), cid, qa["frac_over_1m"] * 100))
+                  "  (raw %.1f%%, %.1f km flagged tunnel)"
+                  % (k, len(ids), cid, qa["frac_over_1m"] * 100,
+                     qa_raw["frac_over_1m"] * 100, tunnel.sum() * args.ds_m / 1000.0))
             continue
 
         t2 = time.time()
-        elev = elevate_feature(rs, np.asarray(z, float), est)
+        elev = elevate_feature(rs, z, est)
+        # Store the raw samples and the flag, not the corrected elevation, so
+        # the artifact stays honest and derive_profile applies the one fill.
+        elev["properties"]["is_tunnel"] = tunnel.tolist()
         prof = derive_profile(elev, smooth_window_m=args.smooth_window_m,
                               grade_clip=args.grade_clip)
         save_profile_npz(prof, str(out / "routes" / ("%s.npz" % cid)))
@@ -186,10 +216,11 @@ def main() -> int:
         rec["status"] = "ok"
         records.append(rec)
         print("[%3d/%d] %-34s ok  %6d pts  rms %.2f%%  p95 %.2f%%  max %.2f%%  "
-              "at-clip %.1f%%  (%.1fs elev)"
+              "at-clip %.1f%%  tun %.1fkm  (%.1fs elev)"
               % (k, len(ids), cid, n_pts, rec["grade"]["rms_pct"],
                  rec["grade"]["p95_pct"], rec["grade"]["max_pct"],
-                 rec["grade"]["frac_at_clip"] * 100, t_elev))
+                 rec["grade"]["frac_at_clip"] * 100,
+                 tunnel.sum() * args.ds_m / 1000.0, t_elev))
 
     elapsed = time.time() - t_all
     ok = [r for r in records if r["status"] == "ok"]
@@ -199,6 +230,8 @@ def main() -> int:
         "rejected_ids": [r["corridor_id"] for r in rejected],
         "ds_m": args.ds_m, "smooth_window_m": args.smooth_window_m,
         "grade_clip": args.grade_clip, "raw_jump_tol": RAW_JUMP_TOL,
+        "n_tunnel_corridors": sum(1 for r in records if r["tunnel"]["n_samples"] > 0),
+        "tunnel_detection": "routegen.profile.detect_tunnel_runs",
         "n_points_total": n_pts_total, "elapsed_s": round(elapsed, 1),
         "elevation_pts_per_s": round(
             n_pts_total / sum(r["elevation_s"] for r in records), 0)

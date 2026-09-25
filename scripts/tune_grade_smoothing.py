@@ -48,7 +48,11 @@ for p in (_REPO_ROOT, _ROUTEGEN):
     if str(p) not in sys.path:
         sys.path.insert(0, str(p))
 
-from routegen.profile import derive_profile  # noqa: E402
+from routegen.profile import (  # noqa: E402
+    _fill_invalid,
+    derive_profile,
+    detect_tunnel_runs,
+)
 
 #: Share of a corridor allowed to sit at the clip before the field is treated
 #: as noise-dominated rather than steep.
@@ -72,9 +76,27 @@ ELEVATED = _ROUTEGEN / "elevated_routes"
 
 
 def elevation_qa(feature: dict) -> dict:
-    """Is the raw elevation usable at all, before any smoothing is applied?"""
+    """Is the elevation usable at all, before any smoothing is applied?
+
+    Measured after structure correction, so that a corridor is judged on
+    whether it can be made into a track profile rather than on whether it was
+    sampled as one. Tunnels are taken from the Part-1 ``is_tunnel`` flag where
+    it exists (OSM tags them) and detected from the elevation where it does
+    not (NARN does not) -- the same correction derive_profile applies, applied
+    in the same order the gate should see it.
+    """
+    coords = feature["geometry"]["coordinates"]
+    props = feature.get("properties", {})
+    n = len(coords)
     z = np.array([(c[2] if len(c) > 2 and c[2] is not None else np.nan)
-                  for c in feature["geometry"]["coordinates"]], dtype=float)
+                  for c in coords], dtype=float)
+    s = np.asarray(props.get("s_m", np.arange(n) * 10.0), dtype=float)
+
+    tagged = np.array(props.get("is_tunnel", [False] * n), dtype=bool)
+    tagged |= np.array(props.get("is_bridge", [False] * n), dtype=bool)
+    tunnel = tagged if tagged.any() else detect_tunnel_runs(z, s)
+    z = _fill_invalid(z, s, tunnel | ~np.isfinite(z))
+
     z = z[np.isfinite(z)]
     dz = np.abs(np.diff(z))
     frac = float((dz > 1.0).mean())
@@ -82,6 +104,7 @@ def elevation_qa(feature: dict) -> dict:
         "median_step_m": float(np.median(dz)),
         "frac_over_1m": frac,
         "roughness_m": float(np.median(np.abs(np.diff(z, 2)))),
+        "n_tunnel": int(tunnel.sum()),
         "pass": frac <= RAW_JUMP_TOL,
     }
 

@@ -537,6 +537,81 @@ detected tunnel run, source tunnel portal elevations, or accept the corridor
 with the tunnel stretch flagged. This needs a decision before `ood_grade` is
 built.
 
+#### Decided 2026-09-24: the remedy was already written, and switched off
+
+The first option was not new work. `derive_profile` step (1) has always
+interpolated elevation across tunnels and bridges:
+
+```python
+invalid = ~np.isfinite(z_raw) | is_bridge | is_tunnel
+z_corr = _fill_invalid(z_raw, s, invalid)
+```
+
+It reads `is_tunnel` from Part-1 properties. OSM tags structures. **NARN does
+not** — `narn.py` says so in as many words — so the flag comes back all-False
+and the correction is a silent no-op on every NARN corridor. And the ordering
+compounded it: `build_narn_routes.py` gated on raw elevation and `continue`d
+before `derive_profile` was ever called, so the fix sat behind a gate that
+rejected the corridors it was written for.
+
+Two changes, both small:
+
+1. **`routegen.profile.detect_tunnel_runs`** recovers the flag from the
+   elevation itself. Three conditions must hold together, each ruling out a
+   different false positive:
+   - local jump density over a 500 m window ≥ 25% (healthy track is 0.7–1.5%;
+     the two stretches on `up_moffat_tunnel_p0` measured 39% and 27%);
+   - contiguous run length in [300 m, 15 km] — the upper bound past Cascade,
+     the longest US rail tunnel, so a corridor-wide defect cannot qualify;
+   - **the sampled surface sits above the portal-to-portal chord** by ≥ 5 m.
+     This is the condition that does the real work, because it is *signed*: a
+     mountain over a bore is always an over-estimate, while DEM noise has no
+     preferred sign. It is also why linear interpolation is the right
+     correction and not merely a convenient one — a tunnel is bored at
+     near-constant grade, so the chord is close to the true rail profile.
+2. **The gate moved after the correction**, in `build_narn_routes.py` and in
+   `tune_grade_smoothing.py` (which carried its own copy). A corridor is now
+   judged on whether it can be made into a track profile, not on whether it was
+   sampled as one. The raw measurement is kept alongside as `elevation_qa_raw`.
+
+The stored artifact keeps the raw samples plus the flag, not the corrected
+elevation, so `derive_profile` applies the one fill and nothing is smoothed
+twice.
+
+**Measured on the five committed corridors**, which is real 3DEP with a real
+DEM defect in it:
+
+| corridor | flagged | jump fraction raw → corrected |
+|---|---|---|
+| route_line0 | 0 | 0.71% → 0.71% |
+| route_line3 | 0 | 1.50% → 1.50% |
+| route_line4 | 0 | 1.11% → 1.11% |
+| route_line5 | 0 | 1.00% → 1.00% |
+| **route_line2** | 87 (0.87 km of 33) | **19.32% → 18.50%** |
+
+No false positives on the four healthy corridors. `route_line2` picks up a
+small spurious run but **stays rejected at 18.5% against the 5% tolerance** —
+that is the property that matters, since the whole risk of correcting before
+gating is smuggling a broken corridor back in. 12 tests in
+`route_generator/tests/test_tunnel_detect.py`, the last two against the
+committed corridors rather than synthetic stand-ins.
+
+**A limitation, stated rather than discovered later.** Detection keys on jump
+density, which is also what the gate keys on, so a bore whose sampled surface
+happens to be *smooth* is not detected. It is also not rejected, so nothing is
+lost that was previously had — but it does bias the grade field, and catching
+it would need a structure source rather than the elevation signature. Pinned by
+a test so the property is deliberate.
+
+**Not yet validated against tagged tunnels.** The obvious check — run the
+detector on corridors with real OSM `is_tunnel` arrays and see whether it
+recovers them — cannot be done on what is committed: all five Pueblo corridors
+have **zero** tunnel samples (they carry 11–307 bridge samples and no tunnels).
+So the evidence here is a clean negative control plus synthetic positives, not
+a positive control on real tunnels. The first real test is the mountain sample
+on the workstation, where `up_moffat_tunnel_p0`'s 5.7 km stretch either comes
+back as one run or does not.
+
 #### The 2.5% clip binds on real mountain grade
 
 Phase A cut `grade_clip` from 4% to 2.5% and chose an 800 m smoothing window. On

@@ -50,10 +50,19 @@ Three findings came out of the pilot that change what happens next:
    raw-elevation gate; 5 of 9 Canadian and 1 of 3 Mexican did. Restrict to
    `COUNTRY == 'US'` (4,350 corridors, still far more than needed) unless a
    second DEM is sourced. "North American" is a US network until then.
-2. **Tunnels fail the gate.** 3DEP correctly returns the mountain surface above
-   a bore, so Tennessee Pass and three Moffat Tunnel pieces are rejected — the
-   steep corridors `ood_grade` most wants. Needs a decision: interpolate across
-   detected tunnel runs, source portal elevations, or accept with a flag.
+2. ~~**Tunnels fail the gate.**~~ ✅ **decided and implemented 2026-09-24.**
+   3DEP correctly returns the mountain surface above a bore, so Tennessee Pass
+   and three Moffat Tunnel pieces were rejected — the steep corridors
+   `ood_grade` most wants. The remedy turned out to be already written and
+   switched off: `derive_profile` has always interpolated across `is_tunnel`,
+   but NARN carries no structure tags, so the flag was all-False and the
+   correction a no-op — behind a gate that rejected those corridors first.
+   `routegen.profile.detect_tunnel_runs` now recovers the flag from the
+   elevation signature, and the gate runs after the correction rather than
+   before. No false positives on the four healthy committed corridors;
+   `route_line2` stays rejected at 18.5% against the 5% tolerance. Not yet
+   validated against real tagged tunnels — none of the committed corridors has
+   any. Full record in `ROUTE_PIPELINE_NOTE.md`.
 3. **The 2.5% clip binds on real mountain grade.** `bnsf_raton_p3_56km` sits at
    the clamp for 25.4% of its length, and Raton's ruling grade genuinely is
    ~3.5%. The clip was tuned on a corridor set with no real mountain grade.
@@ -66,11 +75,30 @@ but batching elevation across corridors is the obvious unclaimed optimization.
 
 ### Next action, unambiguous
 
-**Settle the tunnel and grade-clip decisions, then build the split corridor
-set.** Both are prerequisites for an honest `ood_grade`, both are cheap, and the
-measurements that frame them are in `ROUTE_PIPELINE_NOTE.md`. Then pick the
-corridors for `train`/`val`/`test_id`/`ood_grade`/`ood_corridor`/`control_eval`
-out of the 4,350 US corridors and elevate just those.
+**Re-tune the grade clip on a mountain sample, then build the split corridor
+set.** The tunnel decision is done (item 2 above), which matters for ordering:
+re-tuning the clip first would have tuned it on a sample with Tennessee Pass
+and three Moffat pieces rejected — the steepest corridors missing — which is
+the Phase A mistake ("selected against a corridor set that contained no real
+mountain grade") repeated one level up. Now that the tunnelled corridors
+survive the gate, the sample the clip is tuned on actually contains the grade
+it has to represent.
+
+On the clip itself the recommendation is to stop using it as an artifact
+filter. It is doing two jobs — bound grade to physically real values, and
+suppress DEM artifacts — and it is bad at the second, because artifacts and
+real mountain grade differ in **length**, not magnitude: `route_line0`'s
+residual at-clip runs have median 135 m, while Raton's genuine ~3.5% ruling
+grade holds for kilometres. So set `grade_clip` from physics (~4% clears every
+active North American adhesion ruling grade) and give artifact suppression to
+the minimum-length filter this file already proposed. Note that relaxing the
+clip costs none of the Phase A protection: `route_line2` is caught by the
+raw-elevation gate, which is upstream and independent of the clip — the clip
+is not what catches it.
+
+Then pick the corridors for
+`train`/`val`/`test_id`/`ood_grade`/`ood_corridor`/`control_eval` out of the
+4,350 US corridors and elevate just those.
 
 After that: the overspeed second cause (control profiles are sampled
 independently of terrain — a randomizer fix, not a route fix), then the Phase C

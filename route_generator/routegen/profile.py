@@ -305,3 +305,106 @@ def save_profile_npz(result: Dict, path: str) -> str:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     np.savez_compressed(path, **profile_to_npz_dict(result))
     return path
+
+
+# --------------------------------------------------------------------------- #
+# Tunnel detection from the elevation signature
+# --------------------------------------------------------------------------- #
+# Why this exists: step (1) of derive_profile already interpolates elevation
+# across tunnels, but it reads the ``is_tunnel`` flag from Part-1 properties.
+# OSM tags structures; NARN does not (see narn.py), so on a NARN corridor the
+# flag is all-False and the correction is a silent no-op. 3DEP then returns the
+# mountain surface above a bore, the raw-elevation QA gate sees a cliff, and the
+# corridor is rejected -- systematically removing the steep tunnelled mountain
+# route the ood_grade split most wants.
+#
+# So: recover the flag from the elevation itself. Three conditions have to hold
+# together, and each rules out a different false positive:
+#
+#   1. Local jump density. Inside a bore the sampled surface climbs away from
+#      the track, so >1 m steps cluster. Healthy track runs 0.7-1.5%; the two
+#      tunnelled stretches measured on up_moffat_tunnel_p0 run 39% and 27%.
+#   2. Contiguous run length, bounded at both ends. A tunnel is a local feature.
+#      route_line2's DEM was broken along a fifth of the corridor, diffusely --
+#      that is not a tunnel and must stay rejected. The upper bound is set past
+#      the longest US rail tunnel (Cascade, 12.5 km).
+#   3. The surface sits ABOVE the portal-to-portal chord. This is the condition
+#      that actually separates a tunnel from noise, because it is signed: a
+#      mountain over a bore is always an over-estimate, never an under-estimate,
+#      while DEM noise has no preferred sign.
+#
+# Condition 3 is also why linear interpolation is the right correction rather
+# than merely a convenient one: a tunnel is bored at near-constant grade, so the
+# portal-to-portal chord is close to the true rail profile through it.
+
+JUMP_M = 1.0              # a step larger than this is "a jump" (3DEP vert. error ~1 m)
+DENSITY_WINDOW_M = 500.0  # window over which jump density is measured
+DENSITY_TOL = 0.25        # jump fraction inside the window marking a candidate
+MIN_RUN_M = 300.0         # shorter than this is not worth correcting as a tunnel
+MAX_RUN_M = 15000.0       # longer than this is a broken corridor, not a bore
+MIN_RISE_M = 5.0          # median height of surface over chord, for condition 3
+
+
+def _runs(mask: np.ndarray):
+    """Yield ``(start, stop)`` half-open index pairs of each True run in ``mask``."""
+    if mask.size == 0:
+        return
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], mask.view(np.int8), [0]))))
+    for a, b in zip(edges[::2], edges[1::2]):
+        yield int(a), int(b)
+
+
+def detect_tunnel_runs(
+    z: np.ndarray,
+    s: np.ndarray,
+    *,
+    jump_m: float = JUMP_M,
+    density_window_m: float = DENSITY_WINDOW_M,
+    density_tol: float = DENSITY_TOL,
+    min_run_m: float = MIN_RUN_M,
+    max_run_m: float = MAX_RUN_M,
+    min_rise_m: float = MIN_RISE_M,
+) -> np.ndarray:
+    """Flag samples where the DEM is reading a surface above a bore.
+
+    Returns a boolean mask over ``z``, suitable for the ``is_tunnel`` property
+    that :func:`derive_profile` interpolates across. Pure NumPy, no network.
+
+    The mask marks the *interior* of each detected run; the endpoints are kept
+    valid so they can serve as the portals the fill interpolates between.
+    """
+    z = np.asarray(z, dtype=float)
+    s = np.asarray(s, dtype=float)
+    n = z.size
+    out = np.zeros(n, dtype=bool)
+    if n < 3:
+        return out
+
+    ds = float(np.median(np.diff(s))) if n > 1 else 10.0
+    if not np.isfinite(ds) or ds <= 0:
+        return out
+
+    # (1) jump density in a sliding window, measured on steps and carried to samples
+    jump = (np.abs(np.diff(z)) > jump_m).astype(float)
+    win = max(3, int(round(density_window_m / ds)))
+    kernel = np.ones(win) / win
+    pad = win // 2
+    density = np.convolve(np.pad(jump, pad, mode="edge"), kernel, mode="same")[pad:pad + jump.size]
+    candidate = np.zeros(n, dtype=bool)
+    candidate[:-1] = density >= density_tol
+    candidate[1:] |= density >= density_tol
+
+    for a, b in _runs(candidate):
+        length = float(s[b - 1] - s[a])
+        # (2) bounded extent
+        if not (min_run_m <= length <= max_run_m):
+            continue
+        # (3) the surface must sit above the portal-to-portal chord
+        chord = np.linspace(z[a], z[b - 1], b - a)
+        rise = float(np.median(z[a:b] - chord))
+        if rise < min_rise_m:
+            continue
+        # Keep the portals as interpolation anchors; flag the interior.
+        if b - a > 2:
+            out[a + 1:b - 1] = True
+    return out
