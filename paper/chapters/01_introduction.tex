@@ -3,7 +3,7 @@
 
 \section{Background: Longitudinal Train Dynamics}
 
-Longitudinal train dynamics (LTD) concern the motion and force distribution through the length of a train. A freight train is a distributed mechanical system, often consisting of tens to hundreds of individual coupled masses. The system involves complex and highly non-linear interactions between locomotives, freight cars, and the track profile. Modern simulations of these system interactions rely on detailed physical models which require solving differential equations for each vehicle, resulting in high computational cost. Rapid scenario exploration can be impossible due to the computational resource demand.
+Longitudinal train dynamics (LTD) concern the motion and force distribution through the length of a train. A freight train is a distributed mechanical system, often consisting of tens to hundreds of individual coupled masses. The system involves complex and highly non-linear interactions between locomotives, freight cars, and the track profile, and most of that nonlinearity sits in the couplers: slack, asymmetric stiffness in buff and draft, and damping, acting as stiff elements between very large masses. Modern simulations of these interactions rely on detailed physical models which solve differential equations for each vehicle, and the stiffness of the couplers forces the numerical solver to take small internal steps. The result is a high computational cost, and rapid scenario exploration can be impractical because of it.
 
 % ---------------------------------------------------------------------
 % NOTE (citation audit, Aug 2026): the previous version of this table
@@ -33,32 +33,58 @@ Longitudinal train dynamics (LTD) concern the motion and force distribution thro
 
 % TODO: Include figure showing typical train consist and force diagram
 
+\Cref{tab:computational_cost} collects the costs reported in the literature. Two features of it matter for what follows. The first is scale: a whole-trip optimization study that must evaluate many candidate driving plans is measured in months of sequential computation. The second is where the cost concentrates. In the study of \cite{Wu2018ComputingSchemesLTD}, roughly two thirds of the solver's runtime was spent evaluating coupler forces, which is to say on the same stiff, nonlinear interactions that force the solver's step to be small in the first place.
+
 \section{Surrogate Modeling}
 
-High-fidelity physics simulators are essential for understanding complex physical systems, however the computational expense of using such simulators can put serious speed limits on evaluation. This is the case especially in modern analysis or control problems, where complex simulations can require hundreds to thousands of hours of CPU time to simulate multi-body systems. These models are invaluable for theory validation, but they are completely impractical when there exists a need for rapidly repeated scenario evaluation. 
+High-fidelity physics simulators are essential for understanding complex physical systems, but their cost places a hard limit on how they can be used. They are invaluable for validating theory and for studying a single scenario in detail. They are impractical wherever the same simulation must be repeated many times with slightly different inputs, which is exactly the pattern of control design, operational planning, and optimization: each candidate plan is a full simulation, and the number of candidates is large.
 
-Surrogate modeling addresses this problem by learning an approximate mapping of the inputs and system response outputs. This learned model retains the underlying physics at an approximated level, but more importantly can reduce evaluation cost by several orders of magnitude. Trained surrogate models can typically output an accurate prediction in milliseconds or less. This enables rapid simulation of a complex system that would normally consume many CPU hours. 
+Surrogate modeling addresses this problem by learning an approximate model of the simulator from its own outputs, one that can be evaluated at a small fraction of the original cost. The simulator is not discarded. It generates the data from which the surrogate is trained, and it remains the reference against which the surrogate is judged. What changes is which of the two is called in the inner loop of an optimization.
 
-Surrogate models do not replace deterministic physics models, but rather complement them. High-fidelity simulations allow for the data generation needed to build a surrogate model, and also serve as the physical grounding which couples with the surrogate to produce a rapid yet physically informed simulation environment.
+How the physics enters such a model is the central design choice, and there are two broad options. A learned model can sit alongside the known equations and correct their output, or the known equations can be built into the structure of the learned model, so that the parts of the dynamics that are exactly known are never learned at all. This thesis takes the second route, and in the strongest form available for this problem. Two properties of a coupled vehicle chain make that possible.
 
+The first is that its structure is given. A consist is a chain of vehicles joined by couplers, and the force on any vehicle depends only on the two couplers attached to it. Treated as a graph, with vehicles as nodes and couplers as edges, the train already has the shape of a message-passing neural network \cite{battaglia2018relational}: the coupler law is a function on edges and the force balance is an update on nodes. A model built this way has no fixed input length. The number of vehicles is a property of the input rather than of the architecture, so a single model can be applied to a train of any length, including lengths it was never trained on.
 
+The second is that most of the state evolves by relations that are known exactly. Position is the integral of velocity. The brake and traction actuators follow first-order lags whose commands are known in advance and whose solution is available in closed form. Of the four dynamic channels carried per vehicle, only velocity, and with it the fine shape of each coupler's extension, genuinely requires a learned model. The surrogate developed here is therefore a \emph{graph network simulator}, after \cite{sanchez2020gns}: it advances the state of the whole consist by one fixed step of $0.25$\,s, with the network predicting only the mean acceleration of each vehicle over the step and a small per-coupler correction to its extension, while position and the actuator states are reconstructed exactly. Adding the learned model to the physics would have left every channel to the network; building the physics into the step removes two channels from it entirely, and narrows what is learned to two scalars per vehicle. The physics imposed on the model goes up, not down.
 
-% TODO: Add discussion of decision support use cases (energy planning, safety margins)
-% TODO: Reference figure showing uncertainty bands in coupler force predictions
+The fixed step is also where the speed advantage comes from. A learned update is not bound by the stability limit of the explicit scheme it replaces \cite{stachenfeld2022coarse}, so it can take a step at which the reference integrator could not. Between two stored samples the reference integrator evaluates its right-hand side fifty times; the surrogate replaces all fifty with a single network evaluation. Because that ratio is fixed by the integrator's own configuration, the saving can be stated without appeal to any particular hardware comparison.
+
+\section{Decision Support and Fuel-Optimal Control}
+
+A fast model is useful for forecasting: it can answer what a given driving plan will do to fuel use, trip time, and in-train forces, many times over and at low cost. The more demanding use, and the one that shapes the design in this thesis, is control. A model that is also differentiable with respect to its inputs can report not only the outcome of a plan but how that outcome would change if the plan were adjusted, and that is the quantity an optimization routine needs in order to improve the plan by itself.
+
+The target application is therefore fuel-optimal driving of a freight consist: choosing traction and braking commands that reduce trip energy while respecting speed limits and keeping coupler forces within safe bounds, using model-predictive control with the surrogate as its internal model. This places two requirements on the surrogate beyond speed. It must be differentiable end to end, which the fixed-step formulation helps rather than hinders, since no adaptive solver sits between the control plan and the predicted trajectory. And its coupler-force predictions must be trustworthy enough to serve as a safety constraint, because that is the quantity whose violation matters most.
+
+Uncertainty enters in the same narrow role. Vehicle masses, resistance coefficients and coupler parameters are never known exactly, but this thesis does not build a full calibrated forecast of every output. Uncertainty is folded into the coupler-force safety margin that the controller is required to respect, and it is evaluated in that role (\cref{sec:uncertainty_sources}).
 
 \section{Thesis Objective and Contributions}
 
-This thesis presents a physics-transformer hybrid architecture that combines deterministic, reduced-order physics models of the longitudinal train dynamics with a data-driven transformer model. This architecture will enable rapid scenario evaluation while retaining physical constraints.
+This thesis develops a fast, differentiable, train-agnostic surrogate of freight-train longitudinal dynamics, and the infrastructure needed to train and evaluate it. Its contributions are:
 
 \begin{enumerate}
-    \item A modular schema that integrates physics-based feature generation with transformer-based scenario modeling
-    \item Probabilistic output formulation representing quantile regression and exceedance probability estimation
-    \item Validation methodology demonstrating improved accuracy and reduced computation load compared to physics-only baselines
-    \item Ablation studies analyzing the contribution of physics integration and attention factorization
+    \item \textbf{A graph formulation of longitudinal train dynamics.} The consist is represented as node (vehicle) and edge (coupler) tensors, so that the simulator's outputs, the training targets, and the surrogate share one layout for any number of vehicles, and consist length becomes a property of the input rather than of the model.
+    \item \textbf{A reference simulator and a real-terrain data pipeline.} A longitudinal dynamics simulator built and validated one physical effect at a time, from single-vehicle traction through nonlinear slack couplers, per-vehicle route sampling, and power-limited traction with actuator lag; and a pipeline that turns open track-geometry and elevation data into the route profiles along which it is driven.
+    \item \textbf{A graph network simulator for longitudinal dynamics.} A message-passing network that advances the whole consist by one learned fixed step, with physics imposed channel by channel: position kinematic, actuator lags exact, and only the mean acceleration and a per-coupler shape correction learned. One network evaluation replaces fifty evaluations of the reference right-hand side.
+    \item \textbf{An evaluation of structural generalization.} A comparison against zero-output, hold-the-state, constant-acceleration and physics-residual baselines, with a transformer variant as an ablation, on trajectory fidelity, trip-level summaries, and generalization to consist lengths and corridors not seen in training.
+    \item \textbf{A fuel-optimal control demonstration.} Model-predictive control using the surrogate's gradients to reduce trip energy on held-out routes subject to speed-limit and coupler-force constraints.
 \end{enumerate}
 
-% TODO: Refine contribution list based on final results
+% TODO: Refine contributions 4 and 5 once results are reported. Contribution 4
+% is phrased as an evaluation, not an outcome, on purpose: the result is a split
+% claim (velocity extrapolates to unseen consist lengths, coupler shape does not)
+% and should be stated here in that form, matching the abstract.
+% See paper/THESIS_AUDIT_2026-09-22.md, section 6.
+
+\section{Scope}
+
+The simulator's parameters are illustrative rather than calibrated to a specific real train. The claims of this thesis therefore concern fidelity to the reference simulator, structural generalization across consist size and route, and control performance under that model. They are not claims about fidelity to real rolling stock, which would require measured data this work does not use.
+
+An earlier statement of this work \cite{james2027trb} proposed a physics-residual formulation, in which a network learns a correction to the known force-balance right-hand side; \cref{sec:arch_step} gives the measurements that led to its replacement by the fixed-step formulation described above.
 
 \section{Organization of Thesis}
 
-This thesis is organized as follows. \Cref{ch:related} reviews related work in train dynamics, surrogate modeling, and transformer architectures. \Cref{ch:problem} formulates the problem mathematically, defining inputs, outputs, and uncertainty sources. \Cref{ch:framework} presents the framework architecture, including the physics layer, transformer surrogate, and hybrid integration strategy. \Cref{ch:training} describes data generation and training methodology. \Cref{ch:eval} presents evaluation results and validation studies. \Cref{ch:discussion} discusses implications and limitations. \Cref{ch:conclusion} concludes with future work directions.
+\Cref{ch:related} reviews related work: classical longitudinal dynamics and its computational cost, data-driven and hybrid modeling in rail, transformer and neural-operator models of dynamical systems, graph networks for physical simulation, and probabilistic forecasting. \Cref{ch:problem} formulates the prediction and control problem, defines the node and edge tensors, and states the surrogate as a learned fixed step on that tensor state. \Cref{ch:refsim} documents the reference simulator that generates the training data, \cref{ch:routes} the pipeline that builds real-terrain route profiles for it, \cref{ch:raillab} RailLab, the desktop console used to explore both, and \cref{ch:gpu_dataset} the batched GPU integrator and the two 10,000-scenario datasets built with it.
+
+\Cref{ch:architecture} presents the surrogate architecture and the measurements that fix its design. The chapters that follow present the training regime that keeps a single-step model stable over long rollouts, the evaluation against baselines and on held-out consists and corridors, and the control demonstration, before a discussion of implications and limitations and a concluding chapter on future work.
+% TODO: Replace the paragraph above with \cref references once chapters 9
+% onward exist.

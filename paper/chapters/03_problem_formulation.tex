@@ -86,9 +86,26 @@ Thus the edge tensor is in part an explicit bookkeeping of quantities that satis
 for the algebraic channels, while \cref{eq:tensor_node_evolution} carries the true differential degrees of freedom.
 If additional internal coupler or draft-gear states were introduced in future work, \cref{eq:tensor_edge_map} would be supplemented by differential equations for the corresponding rows of $\mathbf{E}(t)$, i.e.\ a nontrivial $\mathcal{F}_e$ on those components alongside $\mathcal{F}_n$.
 
-The surrogate model built later in this thesis does not try to learn $\mathcal{F}_n$ from a blank slate.
-Instead, it starts from this known physics right-hand side and learns a correction on top of it, so that the predicted rate of change takes the form $\mathcal{F}_n + \Delta\mathcal{F}_\theta$, where $\Delta\mathcal{F}_\theta$ is a small learned term produced by a graph neural network.
-Building the physics into the model this way, rather than treating it as just another input feature or as a soft penalty added to the loss, gives the surrogate a strong head start and keeps its behavior anchored to something physically sensible even for consists and routes it has not seen during training.
+The surrogate model built later in this thesis does not learn $\mathcal{F}_n$, and it does not learn a correction to it.
+It works one \emph{step} at a time rather than one derivative at a time: given the state at $t_k$, it predicts the state at $t_{k+1}=t_k+h$ directly, for a fixed step $h$ matched to the spacing at which trajectories are stored.
+Writing $\mathbf{s}_k$ for the dynamic state at time $t_k$, the model takes the form
+\begin{equation}
+    \mathbf{s}_{k+1}
+    = \mathcal{S}_\theta\bigl(\mathbf{s}_k, \mathbf{E}(t_k), \mathcal{U}, \mathcal{R};\, h\bigr),
+    \label{eq:tensor_step_operator}
+\end{equation}
+in which \cref{eq:tensor_node_evolution} appears only as the relation the training \emph{data} satisfy, not as a term the model evaluates at run time.
+
+Within that step the four dynamic channels are not treated alike, and the division of labour is the substance of the design.
+Position obeys $\dot{x}_i = v_i$ exactly, so it is recovered kinematically from the velocities at the two ends of the step rather than learned.
+The brake and traction lag states obey $\dot{z} = (u - z)/\tau$ with the command $u$ known in advance, which is integrable in closed form across the step; giving them to a network would be asking it to learn a first-order lag it can simply be told.
+Only velocity is genuinely learned: the network predicts the \emph{mean} acceleration of each vehicle over the step, together with a small correction on the per-coupler extension, which the kinematic reconstruction cannot recover from endpoint velocities alone.
+
+Two consequences are worth stating here, because they shape everything that follows.
+The first is that two of the four dynamic channels leave the network entirely and a third is mostly imposed, so what is learned narrows to two scalars per vehicle rather than a correction on every channel: the physics in this model is structural, not additive.
+The second is that the step is the unit of computation.
+The reference integrator takes many internal steps between stored samples, and the surrogate replaces all of them with a single evaluation, which is where its speed advantage comes from and why that advantage can be quoted from the integrator's own configuration rather than from a hardware comparison.
+\Cref{sec:arch_anchor,sec:arch_channels} give the measurements that fix which channel is anchored on what; the point here is only that the formulation is a \emph{learned step} on the tensor state, with physics imposed channel by channel.
 
 \subsection{Forecasting objective and simulator operator}
 \label{sec:forecasting_objective}
@@ -107,8 +124,10 @@ The goal of this thesis is not just to match individual trajectories point by po
 The surrogate needs to be accurate enough that its outputs, especially coupler forces and trip energy, can be trusted for planning and for staying within safety margins.
 Where uncertainty matters, it mainly shows up as a margin that the surrogate and the downstream control algorithm must respect, rather than as a full calibrated probability distribution reported over every output.
 
-The surrogate introduced later in this thesis approximates $F$ using a message-passing graph neural network that operates directly on the node and edge tensors defined above, learning a correction to the known physics rather than replacing it (\cref{sec:tensor_dynamics_form}).
+The surrogate introduced later in this thesis approximates $F$ by iterating the learned step of \cref{eq:tensor_step_operator}, using a message-passing graph neural network that operates directly on the node and edge tensors defined above (\cref{sec:tensor_dynamics_form}).
 Because the surrogate must eventually be used to choose control actions, not just predict outcomes for a fixed plan, it is also built to be differentiable: it can be evaluated many times in a batch, and the gradient of its outputs with respect to the control plan can be computed directly.
+The step formulation helps here rather than hindering.
+A fixed update around a single network evaluation leaves no adaptive solver in the gradient path, so the sensitivity of a trajectory to the control plan is obtained by differentiating a known, fixed composition of steps.
 That property is what later makes it possible to use the surrogate as the model inside a fuel-optimal control routine, instead of only as a fast forecasting tool.
 
 \section{Input definitions}
@@ -179,6 +198,7 @@ Typical summaries used throughout this thesis include
 All such metrics are post-processing maps on $(\mathbf{X},\mathbf{E}_{\mathrm{hist}})$ and therefore remain consistent with the tensorized representation.
 
 \subsection{Risk metrics}
+\label{sec:risk_metrics}
 
 For uncertainty-aware forecasting, risk is expressed as probabilities and quantiles of tensor-derived observables.
 For threshold $\tau$ and quantity $Z$ (for example $F_{\max}$ or $|F_j(t)|$), the exceedance probability is
@@ -232,18 +252,17 @@ Training data are generated by the reference simulator documented in \cref{ch:re
     \bigl(\route^{(k)},\consist^{(k)},\controlplan^{(k)},\mathbf{X}^{(k)},\mathbf{E}_{\mathrm{hist}}^{(k)},\mathbf{s}^{(k)}\bigr)
     \right\}_{k=1}^{M}.
 \end{equation}
-The surrogate $f_\theta$ maps structured inputs to trajectory and summary predictions in the same tensor layout, predicting a correction on top of the known physics right-hand side (\cref{sec:tensor_dynamics_form}) rather than the dynamics outright.
+The surrogate $f_\theta$ maps structured inputs to trajectory and summary predictions in the same tensor layout, by iterating the learned step of \cref{eq:tensor_step_operator}.
 A generic training objective is
 \begin{equation}
     \mathcal{L}(\theta)=
     \lambda_X \mathcal{L}_X +
     \lambda_E \mathcal{L}_E +
-    \lambda_S \mathcal{L}_S +
-    \lambda_Q \mathcal{L}_{Q} +
-    \lambda_P \mathcal{L}_{P},
+    \lambda_S \mathcal{L}_S,
     \label{eq:training_loss}
 \end{equation}
-with rollout losses on node and edge tensors, summary losses, a quantile loss for the safety-relevant margin, and an optional physics-consistency penalty.
+with losses on the node channels, on the edge channels, and on the trip-level summaries.
+Supervision is on the learned quantities only: the imposed channels of \cref{sec:tensor_dynamics_form} are reconstructed exactly and contribute no error to fit.
 
 \subsection{Loss term definitions}
 
@@ -251,22 +270,14 @@ with rollout losses on node and edge tensors, summary losses, a quantile loss fo
 
 \textbf{Summary loss.} $\mathcal{L}_S$ penalizes errors on scalar outputs such as trip energy, arrival time, or peak coupler force.
 
-\textbf{Quantile loss.} For target $y$ and predicted quantile $\hat q_p$, the pinball loss is
-\begin{equation}
-    \rho_p(y,\hat q_p)=
-    \begin{cases}
-        p(y-\hat q_p), & y\ge \hat q_p,\\
-        (1-p)(\hat q_p-y), & y<\hat q_p,
-    \end{cases}
-    \label{eq:pinball_loss}
-\end{equation}
-and $\mathcal{L}_{Q}$ aggregates $\rho_p$ over selected quantile levels. In this thesis it is applied narrowly, to the handful of safety-relevant quantities, chiefly coupler force, consistent with the narrower role of uncertainty described in \cref{sec:uncertainty_sources}, rather than to every predicted channel.
+\textbf{On physical consistency.} No separate physics-consistency penalty appears in \cref{eq:training_loss}, and none is needed.
+Under the channel-wise construction of \cref{sec:tensor_dynamics_form} the kinematic relation between position and velocity, and the actuator lag dynamics, hold by construction at every step rather than approximately and on average.
+A penalty term is the right tool when a model is free to violate a relation and must be discouraged from doing so; here the model cannot express the violation in the first place.
 
-\textbf{Physics-consistency penalty.} $\mathcal{L}_{P}$ is a small, optional penalty on top of the residual architecture described in \cref{sec:tensor_dynamics_form}.
-Because the surrogate already predicts a correction to a known physics right-hand side rather than the full dynamics from scratch, most of the physical plausibility is built into the model's structure and does not need to be enforced after the fact.
-$\mathcal{L}_P$ only needs to catch smaller inconsistencies, for example a coupler-force channel that does not agree with the accelerations of the two vehicles it connects.
+\textbf{On the safety margin.} The coupler-force margin that the control routine relies on (\cref{sec:risk_metrics}) is treated as an evaluation target rather than as a separate distributional head.
+This follows the narrower role assigned to uncertainty in \cref{sec:uncertainty_sources}: what the controller needs is a trustworthy estimate of the peak force a plan will produce, and that is a question about the accuracy of the predicted force channel, not about calibrating a distribution over it.
 
-\textbf{Remark.} A later chapter instantiates these terms for the specific graph neural network architecture and training regime used in this thesis.
+\textbf{Remark.} \Cref{sec:arch_objective} instantiates these terms for the graph neural network used in this thesis, and the training chapter adds the perturbation scheme that makes a single-step model stable when iterated over long horizons.
 
 \section{Conceptual pipeline}
 
@@ -313,4 +324,4 @@ The learning task is hard for four reasons: the inputs are high-dimensional and 
 This thesis addresses the last of these narrowly, folding uncertainty into a coupler-force safety margin rather than building a full calibrated forecast of every output (\cref{sec:uncertainty_sources}).
 
 The next chapter documents the reference simulator that generates the data used throughout the rest of this thesis.
-The chapter after that introduces the surrogate model itself: a graph neural network that learns a correction to the known physics and is trained to be differentiable, so that it can later serve as the model inside a fuel-optimal control routine.
+\Cref{ch:architecture} introduces the surrogate model itself: a graph neural network that advances the tensor state one fixed step at a time, with position and actuator dynamics imposed rather than learned, and that is differentiable end to end, so that it can later serve as the model inside a fuel-optimal control routine.

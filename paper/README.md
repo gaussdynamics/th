@@ -13,11 +13,9 @@ thesis/
 │   ├── 01_introduction.tex
 │   ├── 02_related_work.tex
 │   ├── 03_problem_formulation.tex
-│   ├── 04_framework_architecture.tex
-│   ├── 05_data_and_training.tex
-│   ├── 06_evaluation_and_validation.tex
-│   ├── 07_discussion.tex
-│   └── 08_conclusion_future_work.tex
+│   ├── 04_reference_simulator.tex
+│   ├── 05_route_acquisition.tex
+│   └── 06_raillab.tex
 ├── figures/                    # Figure files (PDF, PNG, etc.)
 ├── tables/                     # Table source files (if separate)
 ├── refs/                       # Bibliography

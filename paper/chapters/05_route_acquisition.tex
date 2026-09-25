@@ -11,6 +11,8 @@ The pipeline is organized as four stages plus an export step, each with its own 
 \end{equation*}
 It is built to run in batches: a route is fetched and checked, good routes are collected, and a dataset is generated for that batch, rather than attempting to process an entire national rail network in one pass.
 
+Five corridors were acquired this way, and the datasets used later in the thesis are built on them. One of the five was later rejected. Its raw elevation turned out to be wrong before any processing was applied, and \cref{sec:route_raw_qa} describes the check that now catches this kind of failure. The last part of the chapter (\cref{sec:route_scaling}) describes the attempt to scale acquisition beyond a handful of corridors, why the original crawl failed at that scale, and the national rail network dataset that replaced it.
+
 \begin{figure}[h]
 \centering
 \caption{Overview of the route acquisition pipeline, from raw OpenStreetMap track data to the route-tensor fields consumed by the reference simulator.}
@@ -22,7 +24,7 @@ It is built to run in batches: a route is fetched and checked, good routes are c
 
 \subsection{Why acquisition has to be area-first}
 
-Railway lines are not tidy, self-contained objects in OpenStreetMap (OSM). Track is mapped as many short, disconnected segments called ways, and while OSM does define route relations that are supposed to group these ways into a single named line, coverage for United States freight corridors is incomplete and a given relation does not reliably correspond to one clean, walkable corridor. Waiting for well-formed relations to exist would leave large parts of the network unusable.
+Railway lines are not tidy, self-contained objects in OpenStreetMap (OSM) \cite{osm}. Track is mapped as many short, disconnected segments called ways, and while OSM does define route relations that are supposed to group these ways into a single named line, coverage for United States freight corridors is incomplete and a given relation does not reliably correspond to one clean, walkable corridor. Waiting for well-formed relations to exist would leave large parts of the network unusable.
 
 \begin{figure}[htbp]
     \centering
@@ -73,7 +75,7 @@ Two details matter here. First, step-valued features, speed limit, way identifie
 \section{Stage 2: Elevation}
 \label{sec:route_elevation}
 
-Each resampled point is next given a ground elevation from the USGS 3DEP digital elevation model (DEM), producing a three-dimensional route as a sequence of longitude, latitude, and elevation triples. Elevation is queried in batches against 3DEP's image-service endpoint, since it accepts many points per request, with a slower per-point service used as a fallback for any vertex the batch call cannot resolve. Requests retry with backoff when the service is busy or briefly unavailable. Any point elevation cannot be determined for is left as a missing value rather than guessed, and every earlier per-vertex field from acquisition and resampling is preserved alongside the new elevation data.
+Each resampled point is next given a ground elevation from the USGS 3DEP digital elevation model (DEM) \cite{usgs3dep}, producing a three-dimensional route as a sequence of longitude, latitude, and elevation triples. Elevation is queried in batches against 3DEP's image-service endpoint, since it accepts many points per request, with a slower per-point service used as a fallback for any vertex the batch call cannot resolve. Batches hold 1000 points, the most the service returns in one response, and are sent as POST requests, since a request of that size is too long to carry in a URL. Up to sixteen batches run concurrently. Because each request is limited by network latency rather than by server work, throughput scales almost linearly with the number of concurrent requests, reaching about 16,000 points per second. A batch that fails is reported as a failure rather than silently passed to the per-point fallback, which would otherwise hide a broken batch path behind a pipeline that still works, only several hundred times more slowly. Requests retry with backoff when the service is busy or briefly unavailable. Any point elevation cannot be determined for is left as a missing value rather than guessed, and every earlier per-vertex field from acquisition and resampling is preserved alongside the new elevation data.
 
 \begin{figure}[htbp]
     \centering
@@ -89,6 +91,58 @@ Each resampled point is next given a ground elevation from the USGS 3DEP digital
     \label{fig:route_elevation_profile}
 \end{figure}
 
+\section{Checking the raw elevation}
+\label{sec:route_raw_qa}
+
+A grade field can be wrong in two ways. The elevation can be correct but too noisy for the chosen smoothing window, in which case a wider window fixes it. Or the elevation can be wrong at the source, because the samples do not lie on the track: the mapped centreline has drifted off the real alignment, or the elevation model does not resolve a cutting or embankment and reports the ground beside it. No smoothing window repairs the second case. Smoothing incorrect values only averages them, and widening the window far enough to hide the error also flattens the real terrain on every healthy corridor.
+
+The two cases can be told apart before any smoothing is done, by looking at the raw elevation directly. \Cref{tab:route_raw_qa} gives three measures of raw roughness for the five corridors. The key one is the share of 10\,m steps whose elevation changes by more than a metre. A one-metre change over ten metres is a 10\% grade, far steeper than any freight main line, so a corridor where this happens on a large share of steps is not following the track.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lccc}
+        \toprule
+        Corridor & Median $|\Delta z|$ per step & Steps with $|\Delta z| > 1$\,m & Second-difference roughness \\
+        \midrule
+        \texttt{route\_line0} & 0.077\,m & 0.7\% & 0.021\,m \\
+        \texttt{route\_line2} & 0.234\,m & \textbf{19.3\%} & 0.143\,m \\
+        \texttt{route\_line3} & 0.047\,m & 1.5\% & 0.040\,m \\
+        \texttt{route\_line4} & 0.039\,m & 1.1\% & 0.036\,m \\
+        \texttt{route\_line5} & 0.045\,m & 1.0\% & 0.041\,m \\
+        \bottomrule
+    \end{tabular}
+    \caption{Roughness of the raw elevation, before any smoothing, for the five acquired corridors on a 10\,m grid. \texttt{route\_line2} exceeds a one-metre step on nearly a fifth of its length, against 0.7--1.5\% for the others. Its bridge and tunnel share is under 1\%, so structure correction does not explain the difference.}
+    \label{tab:route_raw_qa}
+\end{table}
+
+The expected explanation for the poor grade field on \texttt{route\_line2}, an rms grade of 2.46\% against about 0.9\% elsewhere, was too little smoothing. The table shows that it was not. The raw elevation is already wrong before smoothing, and a search for a window wide enough to hide it settled on 1200\,m, a value that would have erased real terrain on the other four corridors to rescue one broken one.
+
+The pipeline therefore checks the raw elevation first. A corridor on which more than 5\% of steps change by more than a metre is rejected, and the smoothing window is chosen only over the corridors that pass. \texttt{route\_line2} fails the check and is removed, leaving four corridors. The window is then set to the narrowest value, 800\,m, at which the grade limit stops binding on every remaining corridor.
+
+The grade limit was lowered from 4\% to 2.5\% at the same time, and its role changed. A limit of 4\% is well above the grades freight main lines are built to, so it clipped the broken corridor's grade without drawing attention to it. At 2.5\%, reaching the limit is itself a sign of an error in the data, and the fraction of a corridor that reaches it is reported. \Cref{tab:route_grade_stats} gives the resulting grade statistics.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lcccc}
+        \toprule
+        Corridor & rms grade & 95th percentile & Maximum & Share at limit \\
+        \midrule
+        \texttt{route\_line0} (49\,km) & 0.86\% & 1.45\% & 2.50\% & 1.0\% \\
+        \texttt{route\_line3} (29\,km) & 0.72\% & 1.25\% & 1.47\% & 0.0\% \\
+        \texttt{route\_line4} (27\,km) & 0.39\% & 0.75\% & 1.23\% & 0.0\% \\
+        \texttt{route\_line5} (22\,km) & 0.58\% & 0.87\% & 1.17\% & 0.0\% \\
+        \bottomrule
+    \end{tabular}
+    \caption{Grade statistics for the four corridors that pass the raw-elevation check, with an 800\,m smoothing window and a 2.5\% grade limit.}
+    \label{tab:route_grade_stats}
+\end{table}
+
+\texttt{route\_line0} still reaches the limit on 1.0\% of its length, in short runs with a median length of 135\,m. A real ruling grade is held for kilometres, so these runs are residual artifacts rather than terrain. They fall within the tolerance, and a filter on the minimum length of a grade excursion would be a more physical fix than further smoothing.
+
+The effect on simulated trains is direct. In scenarios run on the old grade field, the fastest overspeed reached 67.8\,m/s, a freight train travelling at about 245\,km/h, and these extreme cases came from the false grades of \texttt{route\_line2}. On the corrected corridors the worst case falls to 25.7\,m/s. The share of scenarios exceeding the speed limit by more than 5\,m/s does not change, which shows it has a separate cause. That cause lies in how driving commands are generated, not in the terrain, and it is discussed with the dataset.
+
+The two datasets described in \cref{ch:gpu_dataset} were generated before this check existed, and both include \texttt{route\_line2}; \cref{sec:dataset_limitations} states what that means for results measured on them.
+
 \section{Stage 3: Deriving the route profile}
 \label{sec:route_profile_derivation}
 
@@ -100,7 +154,7 @@ On a bridge or inside a tunnel, the DEM reports the elevation of the structure o
 
 \subsection{Smoothing and differentiating together}
 
-Raw DEM elevation carries roughly a meter of error, which is small compared to elevation itself but large compared to elevation's rate of change. Differentiating the raw signal directly would produce a grade estimate that is almost entirely noise. Instead, a Savitzky-Golay filter is applied, which fits a local polynomial through a moving window of points and yields a smoothed elevation value and its analytic derivative from the same operation, rather than smoothing and differentiating as two separate, error-compounding steps. Grade is then computed as $\sin\theta = \sin(\arctan(\mathrm{d}z/\mathrm{d}s))$, with a physically motivated clamp on the maximum grade to guard against any remaining artifacts.
+Raw DEM elevation carries roughly a meter of error, which is small compared to elevation itself but large compared to elevation's rate of change. Differentiating the raw signal directly would produce a grade estimate that is almost entirely noise. Instead, a Savitzky-Golay filter \cite{savitzky1964smoothing} is applied, which fits a local polynomial through a moving window of points and yields a smoothed elevation value and its analytic derivative from the same operation, rather than smoothing and differentiating as two separate, error-compounding steps. Grade is then computed as $\sin\theta = \sin(\arctan(\mathrm{d}z/\mathrm{d}s))$, with a clamp on the maximum grade. The width of the smoothing window and the value of the clamp were both set by the corridor check described in \cref{sec:route_raw_qa}: an 800\,m window and a limit of 2.5\%.
 
 Curvature is derived the same way. The horizontal coordinates are projected into a local planar frame, and the first and second Savitzky-Golay derivatives of that planar path give
 \begin{equation}
@@ -111,12 +165,12 @@ clamped to a minimum turning radius for the same reason grade is clamped.
 
 \subsection{Speed limit and output}
 
-Speed limit is converted from the map's tagged value into meters per second where available, and falls back to a Federal Railroad Administration track-class-based estimate where OSM coverage is missing. The finished profile is written in two forms: a GeoJSON file for visual inspection, and a compact array file holding exactly the fields \texttt{route\_s}, \texttt{route\_sin\_theta}, \texttt{route\_kappa}, and \texttt{route\_vmax}, matching the route-tensor layout used for dataset generation (\cref{ch:refsim}). As a final check, the array file is used to construct an actual route-profile object and sample it, confirming the file behaves correctly before it is trusted for later stages.
+Speed limit is converted from the map's tagged value into meters per second where available, and falls back to an estimate based on the Federal Railroad Administration's track classes \cite{fra_track_classes} where OSM coverage is missing. The finished profile is written in two forms: a GeoJSON file for visual inspection, and a compact array file holding exactly the fields \texttt{route\_s}, \texttt{route\_sin\_theta}, \texttt{route\_kappa}, and \texttt{route\_vmax}, matching the route-tensor layout used for dataset generation (\cref{ch:refsim}). As a final check, the array file is used to construct an actual route-profile object and sample it, confirming the file behaves correctly before it is trusted for later stages.
 
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=0.92\textwidth]{thesis_imgs_7_15/route_generator/route_grade_curvature.png}
-    \caption{The three derived fields the simulator consumes, plotted against chainage in kilometres: grade $\sin\theta(s)$ as a percentage (top), the curvature proxy $\kappa(s)$ (bottom left), and the speed limit $v_{\max}(s)$ (bottom right). The noisier grade over the first 20\,km is the urban approach, where frequent bridges, junctions, and short mapped segments degrade the elevation signal; beyond it the line settles onto a sustained climb near one percent. The speed limit is a step field, here rising where the line leaves restricted urban trackage.}
+    \caption{The three derived fields the simulator consumes for \texttt{route\_line0}, plotted against chainage in kilometres: grade $\sin\theta(s)$ as a percentage (top), the curvature proxy $\kappa(s)$ (bottom left), and the speed limit $v_{\max}(s)$ (bottom right). Fields are shown after the corridor check of \cref{sec:route_raw_qa}, with an 800\,m smoothing window and a 2.5\% grade limit. The noisier grade over the first 20\,km is the urban approach, where frequent bridges, junctions, and short mapped segments degrade the elevation signal; beyond it the line settles onto a sustained climb near one percent. The grade reaches the 2.5\% limit only in two short runs, near the start and near 12.7\,km, which are residual artifacts rather than terrain. The speed limit is a step field, here rising where the line leaves restricted urban trackage.}
     \label{fig:route_grade_curvature}
 \end{figure}
 
@@ -125,15 +179,33 @@ Speed limit is converted from the map's tagged value into meters per second wher
 
 Finished routes are collected into a single export bundle: one array file per route, an index summarizing each route's location, endpoints, length, and grade and curvature statistics, and a manifest recording what each channel means and how the route was produced. This bundle is the handoff point between route acquisition and dataset generation; its array files drop directly onto the reference simulator's route-profile input with no further conversion.
 
-\section{Keeping large queries from failing}
-\label{sec:route_reliability}
+\section{Scaling beyond a handful of corridors}
+\label{sec:route_scaling}
 
-Pulling all track in a large or dense area from OpenStreetMap's Overpass query service in one request tends to time out. Three measures address this and are on by default. Queries exclude service track and industrial, tourism, and military spurs, which both matches the intended scope of freight main lines and substantially reduces the volume of data returned in dense metro areas. The initial seed query for a crawl is split into a grid of small requests rather than one large one, with the outward crawl then expanding in small steps from there. Every request retries on timeout or server error with exponential backoff and jitter, and rotates across known mirror servers when one is unavailable.
+Five corridors are enough to build and test the pipeline, but not enough to support a strong claim about generalization to unseen routes, or to hold out a genuinely steep corridor for evaluation. The next step was therefore a larger, regional corridor set, and the pipeline was extended for it.
 
-\section{Two ways to build a dataset}
-\label{sec:route_workflows}
+\subsection{The batch crawl}
 
-For a handful of routes, the interactive application is enough: fetch an area, inspect the corridors, click the ones that look right, and export. For a larger dataset, the recommended path is to first verify the pipeline on a few known areas interactively, checking that lines render as continuous single corridors, gaps are short and located at bridges, branch points sit at genuine junctions, and a corridor's traced length is plausible against an independent map. Once that trust is established, a headless batch runner crawls a curated list of seed points into a deduplicated dataset. Lines pulled from overlapping seeds are deduplicated by their shared underlying map identifiers, keeping the longest version of any line pulled more than once, and the whole run is resumable from a cache so a full national-scale pull does not have to restart from nothing after an interruption.
+For more than a few routes, a headless batch runner replaces the interactive application. It takes a curated list of seed points, runs the area-first acquisition and bounded outward crawl of \cref{sec:route_acquisition_stage1} from each, and merges the results into one dataset. Lines pulled from overlapping seeds are deduplicated by their shared map identifiers, keeping the longest version of any line pulled more than once, and the run caches each seed so it can resume after an interruption. Several measures keep individual queries to the Overpass service from timing out: service track and industrial, tourism, and military spurs are excluded at query time, the initial query for each seed is split into a grid of small requests, and every request retries with exponential backoff and can rotate across mirror servers.
+
+A regional run of 22 seeds within 900\,km of Pueblo, Colorado, chosen to include steep crossings such as Raton Pass and Tennessee Pass, did not complete. It failed on five consecutive seeds with server-busy errors over 4.5 hours. The choice of server had been based on the time to answer a single test query, and a single query does not predict a sustained crawl: a server that answers one request quickly may throttle heavily once hundreds arrive. Retries and backoff do not help when the limit is the server's tolerance for the workload itself.
+
+\subsection{The North American Rail Network}
+
+The crawl was replaced by a different source of track geometry. The U.S. Department of Transportation's Bureau of Transportation Statistics publishes the North American Rail Network, a national dataset of rail line segments covering the United States, Canada, and Mexico, as a queryable feature service \cite{narn}. It removes the two hardest parts of the OSM path.
+
+\begin{itemize}
+    \item \textbf{Topology is explicit.} Every segment records the node it starts from and the node it ends at, so the network is already a graph. The OSM path had to reconstruct connectivity from fragment endpoints, which is where its gaps and branch-ordering problems came from.
+    \item \textbf{Track is already classified.} Each of the 302,771 segments carries a network class assigned by the data's maintainers. Main-line track accounts for 95,936 segments; the rest are yard tracks, industrial leads, passing sidings, and out-of-service or abandoned line. The mainline filter that the OSM path approximated with tag rules is given directly.
+\end{itemize}
+
+It also carries attributes OSM did not reliably provide, including the owning railroad, the subdivision name, and the number of tracks, so corridors can be identified by their real names rather than by labels such as \texttt{route\_line2}. No rate limiting was observed. The full main-line network, 95,936 segments and 274,145\,km of track, was downloaded in 13.5 minutes.
+
+The network does not include line speeds, so speed limits still come from OSM, queried per corridor rather than crawled. Elevation still comes from 3DEP. With the batched elevation queries of \cref{sec:route_elevation}, the rest of the pipeline is fast enough for the whole network: resampling, elevation, and profile derivation for all 274,145\,km at 10\,m spacing, about 27 million points, are projected to take roughly 36 minutes, almost all of it in elevation queries.
+
+\subsection{What remains}
+
+The network is a graph of segments averaging 2.9\,km in length, not a set of routes. The simulator needs continuous corridors with a single, increasing chainage, so one stage is still missing before resampling: traversing the graph into corridors. Railroad subdivisions are the natural unit, since they are how railroads divide their own networks, and the dataset names 2,492 of them. How to order segments within a subdivision, and how to handle subdivisions that branch, are open questions. This stage has not been implemented, and the datasets used in this thesis are built on the OSM corridors described earlier in the chapter.
 
 \section{Testing and design choices}
 \label{sec:route_design}
@@ -144,4 +216,4 @@ A few choices run through the whole pipeline. Acquisition and assembly are pure 
 
 \section{Chapter summary}
 
-This chapter documented the pipeline that turns raw OpenStreetMap track data and public elevation data into the route profiles this thesis relies on: area-based acquisition and graph-based corridor extraction, fragment stitching back into whole lines, resampling onto a uniform grid, elevation fusion, and Savitzky-Golay-based derivation of grade, curvature, and speed limit. The output, arrays of \texttt{route\_s}, \texttt{route\_sin\_theta}, \texttt{route\_kappa}, and \texttt{route\_vmax}, is exactly what the reference simulator in \cref{ch:refsim} consumes and what later chapters use to generate training data for the surrogate. Because this pipeline draws on real corridors rather than invented ones, it is also what makes it possible to hold out whole real corridors for the generalization experiments described in later chapters, rather than only holding out synthetic variations of the same underlying route.
+This chapter documented the pipeline that turns raw OpenStreetMap track data and public elevation data into the route profiles this thesis relies on: area-based acquisition and graph-based corridor extraction, fragment stitching back into whole lines, resampling onto a uniform grid, elevation fusion, a check on the raw elevation, and Savitzky-Golay-based derivation of grade, curvature, and speed limit. The raw-elevation check rejected one of the five acquired corridors, whose elevation samples did not lie on the track, and set the smoothing window and grade limit over the four that remain. For a larger corridor set, the OSM crawl was replaced by the North American Rail Network, which supplies explicit topology and track classification for the whole continent; converting that network into corridors is the remaining step. The output, arrays of \texttt{route\_s}, \texttt{route\_sin\_theta}, \texttt{route\_kappa}, and \texttt{route\_vmax}, is exactly what the reference simulator in \cref{ch:refsim} consumes and what later chapters use to generate training data for the surrogate. Because this pipeline draws on real corridors rather than invented ones, it is also what makes it possible to hold out whole real corridors for the generalization experiments described in later chapters, rather than only holding out synthetic variations of the same underlying route.
