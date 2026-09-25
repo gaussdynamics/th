@@ -1,0 +1,216 @@
+% ===========================================================================
+% ACT V -- Route Acquisition and Terrain Data  (Ch. 5)   Slides 41-48b
+% Budget: 6 minutes. Supporting infrastructure, not the contribution -- keep
+% it moving. Slides 48 and 48b were rewritten 2026-09-22 against branch
+% surrogate-gns, where the corridor problem was diagnosed and largely fixed.
+% ===========================================================================
+
+\actdivider{5}{Routes and Terrain}
+
+% --- 41. Why routes had to be built --------------------------------------
+\begin{frame}{Rail Corridors Must Be Rebuilt from Map Data}
+  \vspace{0.1em}
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.44\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.80\textheight,keepaspectratio]%
+        {../thesis_imgs_7_15/route_generator/ORM_base.png}
+    \end{column}
+    \begin{column}{0.53\textwidth}
+      \begin{itemize}\setlength\itemsep{0.7em}
+        \item Mainline corridors (orange) run through a dense tangle of yard and
+              service track (brown), meeting at junctions.
+        \item A corridor is not stored as one map object. It must be
+              \textbf{assembled from many short segments}.
+        \item Routes in this thesis come from \alert{real elevation and
+              alignment data}, so grades and curves resemble an actual rail
+              corridor rather than an invented profile.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 42. The pipeline -----------------------------------------------------
+\begin{frame}{The Pipeline, in Five Stages}
+  \vspace{1.2em}
+  \centering
+  \scalebox{0.74}{\routePipeline}
+
+  \vspace{1.8em}
+  \begin{minipage}{0.90\textwidth}\small
+    Each stage is checked before the next is added, as with the simulator. Once
+    an error in the grade reaches the simulator, it cannot be told apart from
+    real terrain.
+  \end{minipage}
+\end{frame}
+
+% --- 43. Acquisition ------------------------------------------------------
+\begin{frame}{Stage 1: Corridor Extraction}
+  \vspace{0.3em}
+  \centering
+  \includegraphics[width=0.90\linewidth,height=0.56\textheight,keepaspectratio]%
+    {../thesis_imgs_7_15/route_generator/route_aq_page1.png}
+
+  \vspace{0.5em}
+  \begin{minipage}{0.92\textwidth}\footnotesize
+    Map data is downloaded for an area first. Corridors are then recovered:
+    yards and spurs are filtered out, the search expands outward up to a limit,
+    fragments are joined, and corridors below a minimum length are discarded.
+  \end{minipage}
+\end{frame}
+
+% --- 44. Resampling -------------------------------------------------------
+\begin{frame}{Stage 1.5: Resampling to a Uniform Grid}
+  \vspace{0.1em}
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.55\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.70\textheight,keepaspectratio]%
+        {../thesis_imgs_7_15/route_generator/route_resample.png}
+    \end{column}
+    \begin{column}{0.42\textwidth}
+      \small
+      A 49.1\,km corridor rewritten onto a uniform \textbf{10\,m grid}:
+      4,920 points.
+
+      \vspace{0.8em}
+      \alert{713 of them are interpolated} across long source segments rather
+      than sitting on a mapped vertex.
+
+      \vspace{0.8em}
+      These points stay flagged in later stages, so it is always clear where
+      the geometry is estimated rather than mapped.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 45. Elevation --------------------------------------------------------
+\begin{frame}{Stage 2: Elevation, and Looking at It}
+  \vspace{0.3em}
+  \centering
+  \includegraphics[width=0.78\linewidth,height=0.60\textheight,keepaspectratio]%
+    {../thesis_imgs_7_15/route_generator/routes_elevated.png}
+
+  \vspace{0.4em}
+  \begin{minipage}{0.90\textwidth}\footnotesize
+    The elevation is checked visually before grade is computed. A corridor
+    joined incorrectly, or one that jumps between parallel tracks, is obvious in
+    3D but \textbf{not visible in a grade plot}.
+  \end{minipage}
+\end{frame}
+
+% --- 46. From elevation to grade -----------------------------------------
+\begin{frame}{Stage 3: From Elevation to Grade}
+  \vspace{0.3em}
+  \centering
+  \includegraphics[width=0.94\linewidth,height=0.46\textheight,keepaspectratio]%
+    {../thesis_imgs_7_15/route_generator/route_elevation_profile.png}
+
+  \vspace{0.6em}
+  \begin{minipage}{0.92\textwidth}\small
+    The line climbs from roughly 1430\,m to 1740\,m over 49\,km. Errors of about
+    a metre in the elevation data are small compared with that climb. They are
+    large compared with the \alert{elevation change between neighbouring 10\,m
+    samples}, which is what grade measures. The pipeline therefore corrects
+    bridges and tunnels first, then smooths and differentiates in one step.
+  \end{minipage}
+\end{frame}
+
+% --- 47. The three fields -------------------------------------------------
+\begin{frame}{The Three Fields the Simulator Consumes}
+  \vspace{0.2em}
+  \centering
+  \scalebox{0.80}{\routeFieldsChart}
+
+  \vspace{0.2em}
+  \begin{minipage}{0.92\textwidth}\footnotesize
+    Line~0, after the corridor fix on the next slide. The first 15\,km, through
+    the urban area, is noisy. After that the grade stays near one percent.
+  \end{minipage}
+\end{frame}
+
+% --- 48. The corridor set: diagnosis and fix -----------------------------
+\begin{frame}{Finding and Removing a Bad Corridor}
+  \vspace{0.1em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.54\textwidth}
+      \vspace{0.6em}
+      \rawElevQAChart
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \vspace{0.2em}
+      \small
+      The first suspected cause was too little smoothing. \alert{That was not
+      the cause.}
+
+      \vspace{0.6em}
+      Line~2's \emph{raw} elevation is wrong before any smoothing: 19.3\% of its
+      10\,m steps jump more than a metre. Real track cannot climb a metre every
+      10\,m over a fifth of its length, so \textbf{these samples are not on the
+      track}.
+
+      \vspace{0.6em}
+      Smoothing cannot repair this. It only averages the incorrect values.
+    \end{column}
+  \end{columns}
+
+  \vspace{0.4em}
+  \begin{minipage}{0.96\textwidth}\footnotesize
+    The fix is a quality check on the raw elevation, applied \emph{before}
+    smoothing. Line~2 is rejected, the smoothing window increases from 200\,m to
+    800\,m, and the grade limit drops from 4\% to \textbf{2.5\%}. The limit now
+    works as an error alarm rather than a filter: 4\% is far steeper than freight
+    main lines are built, so the old limit let a broken corridor pass for months.
+  \end{minipage}
+\end{frame}
+
+% --- 48b. What the fix bought, and the wider corridor set ----------------
+\begin{frame}{Results of the Fix, and a Larger Corridor Set}
+  \vspace{0.2em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.46\textwidth}
+      {\small\textbf{The Four Surviving Corridors}}
+      \vspace{0.4em}
+
+      {\footnotesize
+      \begin{tabular}{@{}lrrr@{}}
+        \toprule
+        \textbf{Corridor} & \textbf{rms} & \textbf{p95} & \textbf{Max} \\
+        \midrule
+        Line 0 (49 km) & 0.86\% & 1.45\% & 2.50\% \\
+        Line 3 (29 km) & 0.72\% & 1.25\% & 1.47\% \\
+        Line 4 (27 km) & 0.39\% & 0.75\% & 1.23\% \\
+        Line 5 (22 km) & 0.58\% & 0.87\% & 1.17\% \\
+        \bottomrule
+      \end{tabular}}
+
+      \vspace{0.7em}
+      {\footnotesize
+      The worst overspeed falls from \textbf{67.8 to 25.7\,m/s}. The 245\,km/h
+      freight trains came from Line~2's false grades.
+
+      \vspace{0.4em}
+      Runs over the limit by $>$5\,m/s are unchanged (13.3\% to 13.5\%).
+      \alert{This has a second cause}: driving commands are generated
+      without regard to the terrain.}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      {\small\textbf{A Much Larger Corridor Set}}
+      \vspace{0.5em}
+
+      {\footnotesize The OpenStreetMap search failed five times in a row over
+      4.5 hours. It was replaced by the USDOT/BTS North American Rail Network,
+      which records how segments connect, labels yard track, and gives
+      corridors real names (\emph{Moffat Tunnel, Union Pacific}) instead of
+      \texttt{route\_line2}.}
+
+      \vspace{0.6em}
+      \begin{center}
+        \stattile{95,936}{Main-Line Segments \textbullet\ 274,145 km}
+      \end{center}
+
+      \vspace{0.4em}
+      {\footnotesize Next step: extract corridors from this network.}
+    \end{column}
+  \end{columns}
+\end{frame}

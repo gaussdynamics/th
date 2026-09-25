@@ -1,0 +1,92 @@
+% ===========================================================================
+% STYLE A -- "Metropolis"
+% Flat, modern, sans-serif. No chrome, no navigation bar, no logos.
+% The default choice for technical defenses in ML-adjacent fields.
+% Compile: pdflatex style_a_metropolis.tex   (twice, for the overlays)
+% ===========================================================================
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{metropolis}
+\usepackage[sfdefault]{FiraSans}
+\usepackage[T1]{fontenc}
+\usepackage{FiraMono}
+\usepackage{amsmath,amssymb}
+\usepackage{tikz}
+\usepackage{appendixnumberbeamer}
+
+% --- palette --------------------------------------------------------------
+\definecolor{mTeal}{HTML}{1B7F79}
+\definecolor{mInk}{HTML}{23373B}
+\definecolor{mGrey}{HTML}{7D8B8F}
+\definecolor{mPaper}{HTML}{FAFAFA}
+\definecolor{mCar}{HTML}{DCE3E4}
+
+\setbeamercolor{normal text}{fg=mInk,bg=mPaper}
+\setbeamercolor{alerted text}{fg=mTeal}
+\setbeamercolor{frametitle}{bg=mInk,fg=mPaper}
+\setbeamercolor{progress bar}{fg=mTeal}
+\setbeamercolor{title separator}{fg=mTeal}
+
+\metroset{block=fill,numbering=fraction,progressbar=frametitle}
+\setbeamertemplate{frametitle}[default][left]
+
+% --- figure colours -------------------------------------------------------
+\colorlet{fbCar}{mCar}
+\colorlet{fbLoco}{mTeal!25}
+\colorlet{fbAccent}{mTeal}
+\colorlet{fbLine}{mInk}
+\colorlet{fbMuted}{mGrey}
+\input{figures.tex}
+
+\title{A Graph Neural Surrogate for Longitudinal Train Dynamics}
+\subtitle{Toward fuel-optimal control of freight consists}
+\author{George James}
+\institute{School of Engineering, Colorado State University Pueblo}
+\date{\today}
+
+\begin{document}
+
+% --- Slide 1: title -------------------------------------------------------
+\maketitle
+
+% --- Slide 2: what LTD actually are --------------------------------------
+\begin{frame}{A freight train is not a rigid body}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.40\textwidth}
+      \begin{itemize}\setlength\itemsep{0.7em}
+        \item Tens to hundreds of coupled masses, each sampling its
+              \alert{own} grade and curvature.
+        \item Couplers carry \alert{slack} --- free travel before any
+              force is transmitted.
+        \item What the operator cares about: \textbf{fuel},
+              \textbf{arrival time}, \textbf{peak coupler force}.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.58\textwidth}
+      \centering
+      \vspace{0.3em}
+      \scalebox{0.72}{\trainFBD}
+
+      \vspace{1.6em}
+      \[ m_i\dot v_i = F_{\mathrm{ext},i} + F_{i-1} - F_i \]
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- Slide 3: slack is the whole problem (3-step build) ------------------
+\begin{frame}{Slack is the whole problem}
+  \centering
+  \vspace{-0.3em}
+  \scalebox{0.80}{%
+    \only<1>{\slackScene{1}}%
+    \only<2>{\slackScene{2}}%
+    \only<3>{\slackScene{3}}%
+  }
+
+  \vspace{0.2em}
+  \only<3>{%
+    \small A run-in/run-out event is what breaks a knuckle ---
+    and it is a \alert{derivative discontinuity} that wrecks adaptive solvers.}
+\end{frame}
+
+\end{document}

@@ -27,6 +27,16 @@
 % Colors
 \usepackage{xcolor}
 
+% Diagrams (architecture figures in figures/tikz/)
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, calc, fit, backgrounds,
+                decorations.pathreplacing, shapes.geometric}
+% Figure palette: one color per role, used consistently across the diagrams.
+\definecolor{archLearned}{HTML}{C8553D}   % produced by the network
+\definecolor{archImposed}{HTML}{2E6F95}   % imposed exactly by known physics
+\definecolor{archInput}{HTML}{6B7B8C}     % inputs and features
+\definecolor{archFill}{HTML}{F3F5F7}      % neutral box fill
+
 % Page geometry
 \usepackage[margin=1in]{geometry}
 

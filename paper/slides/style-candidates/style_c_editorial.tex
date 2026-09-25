@@ -1,0 +1,147 @@
+% ===========================================================================
+% STYLE C -- "Editorial"
+% Dark, figure-forward, near-zero chrome. Large type, thin rules, generous
+% margins; figures run edge to edge. Designed for a room with a good projector
+% where the images carry the talk.
+% Compile: pdflatex style_c_editorial.tex   (twice, for the overlays)
+% ===========================================================================
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{default}
+\usepackage[T1]{fontenc}
+\usepackage[defaultsans]{lato}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{amsmath,amssymb}
+\usepackage{tikz}
+\usepackage{appendixnumberbeamer}
+
+% --- palette --------------------------------------------------------------
+\definecolor{edInk}{HTML}{12171C}      % background
+\definecolor{edPaper}{HTML}{ECEFF1}    % primary text
+\definecolor{edAmber}{HTML}{E8A33D}    % the single accent
+\definecolor{edSteel}{HTML}{8A9AA6}    % secondary text
+\definecolor{edPanel}{HTML}{1E262E}    % raised surfaces
+
+\setbeamercolor{normal text}{fg=edPaper,bg=edInk}
+\setbeamercolor{structure}{fg=edAmber}
+\setbeamercolor{alerted text}{fg=edAmber}
+\setbeamercolor{frametitle}{fg=edPaper,bg=edInk}
+\setbeamercolor{itemize item}{fg=edAmber}
+
+\setbeamerfont{frametitle}{size=\Large,series=\mdseries}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{itemize item}{\color{edAmber}\raisebox{0.15em}{\rule{0.9em}{1.2pt}}}
+
+% frametitle: title, then a hairline, then a wide left margin
+\setbeamertemplate{frametitle}{%
+  \vskip0.7em
+  \hspace{0.055\paperwidth}%
+  \begin{minipage}{0.89\paperwidth}
+    \usebeamerfont{frametitle}\color{edPaper}\insertframetitle\par
+    \vskip0.45em
+    {\color{edAmber}\rule{2.2em}{1.4pt}}%
+    {\color{edSteel!45}\rule{\dimexpr\linewidth-2.2em\relax}{0.5pt}}
+  \end{minipage}
+  \vskip0.45em
+}
+
+% footline: slide number only, small, right
+\setbeamertemplate{footline}{%
+  \hfill\color{edSteel!70}\scriptsize\insertframenumber
+  \hspace{0.05\paperwidth}\vskip0.9em
+}
+
+\setbeamersize{text margin left=0.055\paperwidth,text margin right=0.055\paperwidth}
+
+% --- figure colours -------------------------------------------------------
+\colorlet{fbCar}{edPanel}
+\colorlet{fbLoco}{edAmber!30!edPanel}
+\colorlet{fbAccent}{edAmber}
+\colorlet{fbLine}{edPaper}
+\colorlet{fbMuted}{edSteel}
+\input{figures.tex}
+
+\title{A Graph Neural Surrogate for Longitudinal Train Dynamics}
+\author{George James}
+\date{\today}
+
+\begin{document}
+
+% --- Slide 1: title -------------------------------------------------------
+{%
+\setbeamertemplate{footline}{}
+\begin{frame}[plain]
+  \vspace{1.1em}
+  \hspace{0.055\paperwidth}%
+  \begin{minipage}{0.86\paperwidth}
+    {\color{edSteel}\footnotesize\textsc{Doctoral Defense}\hfill
+     \textsc{Colorado State University Pueblo}}\\[0.35em]
+    {\color{edSteel!45}\rule{\linewidth}{0.5pt}}
+
+    \vspace{1.5em}
+    {\color{edPaper}\fontsize{22}{26}\selectfont
+     A Graph Neural Surrogate for\\[0.15em]
+     Longitudinal Train Dynamics\par}
+
+    \vspace{0.7em}
+    {\color{edAmber}\rule{3.2em}{1.6pt}}
+
+    \vspace{0.7em}
+    {\color{edSteel}\normalsize Toward fuel-optimal control of freight consists\par}
+
+    \vspace{1.7em}
+    {\color{edPaper}\normalsize George James\par}
+    {\color{edSteel}\footnotesize School of Engineering \quad\textbullet\quad \today\par}
+  \end{minipage}
+\end{frame}
+}
+
+% --- Slide 2: what LTD actually are --------------------------------------
+\begin{frame}{A freight train is not a rigid body}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.36\textwidth}
+      \begin{itemize}\setlength\itemsep{0.45em}
+        \item Tens to hundreds of coupled masses.
+        \item Each vehicle sees its \alert{own} grade and curvature.
+        \item Couplers carry \alert{slack} --- free travel before force.
+      \end{itemize}
+
+    \end{column}
+    \begin{column}{0.62\textwidth}
+      \centering
+      \vspace{0.2em}
+      \scalebox{0.74}{\trainFBD}
+
+      \vspace{1.2em}
+      {\color{edSteel}\small $m_i\dot v_i = F_{\mathrm{ext},i} + F_{i-1} - F_i$\par}
+
+      \vspace{1.6em}
+      {\color{edSteel!45}\rule{0.85\linewidth}{0.5pt}}
+      \vspace{0.5em}
+
+      {\color{edSteel}\footnotesize What the operator cares about\par}
+      \vspace{0.2em}
+      {\color{edPaper}\small fuel \,\textcolor{edAmber}{/}\, arrival time
+       \,\textcolor{edAmber}{/}\, peak coupler force\par}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- Slide 3: slack is the whole problem (3-step build) ------------------
+\begin{frame}{Slack is the whole problem}
+  \centering
+  \scalebox{0.78}{%
+    \only<1>{\slackScene{1}}%
+    \only<2>{\slackScene{2}}%
+    \only<3>{\slackScene{3}}%
+  }
+
+  \vspace{0.15em}
+  \only<3>{%
+    \begin{minipage}{0.80\textwidth}\centering\small\color{edSteel}
+      A run-in/run-out event is what breaks a knuckle --- and a
+      \textcolor{edAmber}{derivative discontinuity} that wrecks adaptive solvers.
+    \end{minipage}}
+\end{frame}
+
+\end{document}

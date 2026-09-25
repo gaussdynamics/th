@@ -1,0 +1,255 @@
+% ===========================================================================
+% ACT III -- Problem Formulation  (Ch. 3)   Slides 16-27
+% Budget: 8 minutes. The conceptual heart of the talk.
+%
+% Slides 23 and 24 were rewritten 2026-09-22 against branch surrogate-gns:
+% the physics-residual / Neural-ODE design was dropped. See NOTES.md.
+% ===========================================================================
+
+\actdivider{3}{Problem Formulation}
+
+% --- 16. The prediction task ---------------------------------------------
+\begin{frame}{The Prediction Task}
+  \vspace{0.3em}
+  \centering
+  \scalebox{0.78}{\taskMap}
+
+  \vspace{1.0em}
+  \begin{minipage}{0.90\textwidth}\small
+    A forecast answers \emph{what will happen} under one driving plan. An
+    optimizer needs to know \alert{how the outcome changes when the plan
+    changes}, and it asks that question thousands of times.
+  \end{minipage}
+\end{frame}
+
+% --- 17. Classical formulation -------------------------------------------
+\begin{frame}{Classical Longitudinal Formulation}
+  \vspace{0.2em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.44\textwidth}
+      \begin{itemize}\setlength\itemsep{0.5em}
+        \item $N$ vehicles indexed lead to tail, $N-1$ couplers between them.
+        \item Coupler forces come from a force law
+              $F_i = \phi_i(\delta_i, \dot\delta_i)$. It includes the slack and
+              the different stiffness in compression (buff) and tension (draft).
+        \item End conditions $F_{-1} = F_{N-1} = 0$.
+      \end{itemize}
+      \vspace{0.5em}
+      \begin{beamercolorbox}[wd=0.96\linewidth,sep=6pt,center]{block body}
+        $\dot x_i = v_i$ \\[0.35em]
+        $m_i \dot v_i = F_{\mathrm{ext},i} + F_{i-1} - F_i$
+      \end{beamercolorbox}
+    \end{column}
+    \begin{column}{0.54\textwidth}
+      \centering
+      \vspace{1.4em}
+      \scalebox{0.70}{\trainFBD[1]}
+
+      \vspace{1.2em}
+      \srcline{These equations are standard. The contribution is how they are organized for learning.}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 18. Why a graph, not a sequence -------------------------------------
+\begin{frame}{Why a Graph, Not a Sequence}
+  \vspace{0.4em}
+  \centering
+  \only<1>{\scalebox{0.74}{\padWaste{1}}}%
+  \only<2>{\scalebox{0.74}{\padWaste{2}}}
+
+  \vspace{0.8em}
+  \begin{minipage}{0.90\textwidth}\small
+    \only<1>{The chain shape is already in the equations: each coupler depends
+      only on the two vehicles adjacent to it.}
+    \only<2>{Because the model works on the graph directly, it
+      \alert{handles any train length without padding}. Train length is the
+      variable this thesis aims to generalize over.}
+  \end{minipage}
+\end{frame}
+
+% --- 19. Node tensor ------------------------------------------------------
+\begin{frame}{The Node Tensor $\mathbf{H}$: One Row per Vehicle}
+  \vspace{0.6em}
+  \centering
+  \scalebox{0.86}{\nodeTensor}
+
+  \vspace{1.0em}
+  \begin{minipage}{0.88\textwidth}\small
+    $\mathbf{H}(t) \in \mathbb{R}^{N \times d_n}$. Four channels change over time;
+    seven are constants for each vehicle. The \textbf{constant columns are stored
+    once}, not at every time step. This choice matters again in Act~VI.
+  \end{minipage}
+\end{frame}
+
+% --- 20. Edge tensor ------------------------------------------------------
+\begin{frame}{The Edge Tensor $\mathbf{E}$: One Row per Coupler}
+  \vspace{0.6em}
+  \centering
+  \scalebox{0.86}{\edgeTensor}
+
+  \vspace{1.0em}
+  \begin{minipage}{0.88\textwidth}\small
+    $\mathbf{E}(t) \in \mathbb{R}^{(N-1) \times d_e}$ can be computed directly from
+    the node state: $\mathbf{E} = \mathcal{G}_e(\mathbf{H}, \mathbf{p})$. Only
+    $\mathbf{H}$ holds quantities that must be integrated over time.
+    \alert{$\mathbf{E}$ is stored anyway}, and Act~VII (slide~69) shows why.
+  \end{minipage}
+\end{frame}
+
+% --- 21. Rollout tensor ---------------------------------------------------
+\begin{frame}{The Rollout Tensor}
+  \vspace{0.2em}
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.40\textwidth}
+      \centering
+      \scalebox{0.92}{\rolloutTensor}
+    \end{column}
+    \begin{column}{0.56\textwidth}
+      \begin{itemize}\setlength\itemsep{0.6em}
+        \item Simulator output, training target and surrogate prediction all
+              share \textbf{one layout}.
+        \item Coupler histories stack the same way,
+              $\mathbf{E}_{\mathrm{hist}} \in \mathbb{R}^{T \times (N-1) \times d_e}$.
+        \item Because the layout is shared, no conversion code is needed
+              between the simulator and the model.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 22. Dynamics in tensor form -----------------------------------------
+\begin{frame}{Dynamics in Tensor Form}
+  \vspace{0.8em}
+  \centering
+  \begin{beamercolorbox}[wd=0.86\textwidth,sep=10pt,center]{block body}
+    $\displaystyle \frac{\mathrm{d}}{\mathrm{d}t}\,\mathrm{vec}\bigl(\mathbf{H}_{\mathrm{dyn}}(t)\bigr)
+      = \mathcal{F}_n\bigl(\mathbf{H}, \mathbf{E}, \mathcal{U}, \mathcal{R}; t\bigr)$
+    \\[0.8em]
+    $\mathbf{E}(t) = \mathcal{G}_e\bigl(\mathbf{H}(t), \mathbf{p}\bigr)$
+  \end{beamercolorbox}
+
+  \vspace{1.2em}
+  \begin{minipage}{0.88\textwidth}\small
+    This rearranges the state and parameters. It does \textbf{not} change the
+    force balances.
+
+    \vspace{0.5em}
+    Possible extension: modeling the internal state of the draft gear would add
+    equations $\mathcal{F}_e$ for the edge rows. This is left for future work.
+  \end{minipage}
+\end{frame}
+
+% --- 23. What the surrogate predicts (REWRITTEN) -------------------------
+\begin{frame}{What the Surrogate Predicts}
+  \vspace{0.4em}
+  \centering
+  \scalebox{0.88}{%
+    \only<1>{\imposedLearned{1}}%
+    \only<2>{\imposedLearned{2}}%
+    \only<3>{\imposedLearned{3}}%
+  }
+
+  \vspace{1.1em}
+  \begin{minipage}{0.90\textwidth}\small
+    \only<1>{The surrogate does not learn a correction to the physics equations.
+      It learns \textbf{one fixed time step} of the same tensor state, from $s_k$
+      to $s_{k+1}$ over $0.25$\,s.}
+    \only<2>{Position is computed from velocity with the trapezoid rule. The
+      brake and traction lags use the \textbf{exact} solution of
+      $\dot z = (u - z)/\tau$. Neither is learned.}
+    \only<3>{\alert{This design imposes more physics than a correction-based
+      design, not less.} Two of the four channels are removed from the network
+      entirely. Act~VII gives the measurements behind this split.}
+  \end{minipage}
+\end{frame}
+
+% --- 24. Differentiability (REVISED) -------------------------------------
+\begin{frame}{The Model Must Be Differentiable}
+  \vspace{0.2em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.48\textwidth}
+      \brakeBlendChart
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \curvatureChart
+    \end{column}
+  \end{columns}
+
+  \vspace{0.3em}
+  \begin{minipage}{0.94\textwidth}\footnotesize
+    The controller uses the model to \emph{choose} the commands $\mathcal{U}$, so
+    the model must provide $\partial\,\text{outputs}/\partial\mathcal{U}$: how
+    each output changes when a command changes. The simulator is kept
+    \alert{smooth for a related reason}: a jump in its equations becomes a jump
+    in the training data that the learned step would have to reproduce. The
+    brake term uses a smooth $\tanh$ blend instead of a sign function, and the
+    smooth AREMA curvature law replaces the R\"ockl formula, which jumps at
+    $R = 300$\,m.
+  \end{minipage}
+\end{frame}
+
+% --- 25. Inputs in detail ------------------------------------------------
+\begin{frame}{Route Fields Are Sampled per Vehicle}
+  \vspace{0.6em}
+  \centering
+  \scalebox{0.72}{\consistOnGrade}
+
+  \vspace{1.0em}
+  \begin{minipage}{0.88\textwidth}\small
+    Grade $\sin\theta(s)$, curvature $\kappa(s)$ and speed limit $v_{\max}(s)$ are
+    defined along the track distance $s$ and evaluated at $s = x_i(t)$ for
+    \textbf{each vehicle separately}. For this reason, per-vehicle route sampling
+    is a separate stage of the reference simulator.
+  \end{minipage}
+\end{frame}
+
+% --- 26. Outputs and objective -------------------------------------------
+\begin{frame}{Outputs, Objective, and Evaluation Targets}
+  \vspace{0.5em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.31\textwidth}
+      {\small\textbf{Trajectory Level}}
+      \begin{itemize}\setlength\itemsep{0.3em}
+        \item[] {\footnotesize Position, velocity and acceleration per vehicle}
+        \item[] {\footnotesize Force at every coupler}
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.31\textwidth}
+      {\small\textbf{Aggregate}}
+      \begin{itemize}\setlength\itemsep{0.3em}
+        \item[] {\footnotesize Trip energy}
+        \item[] {\footnotesize Trip time and distance travelled}
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.33\textwidth}
+      {\small\textbf{Risk}}
+      \begin{itemize}\setlength\itemsep{0.3em}
+        \item[] {\footnotesize Peak coupler force}
+        \item[] {\footnotesize Margin to the operating limit}
+      \end{itemize}
+    \end{column}
+  \end{columns}
+
+  \vspace{1.3em}
+  \begin{minipage}{0.92\textwidth}\small
+    Trip-level accuracy is \textbf{evaluated directly}, not assumed from
+    trajectory accuracy. Small errors at each step can add up, and a controller
+    needs the correct trip energy to compare driving plans.
+  \end{minipage}
+\end{frame}
+
+% --- 27. The pipeline -----------------------------------------------------
+\begin{frame}{The Pipeline, End to End}
+  \vspace{1.0em}
+  \centering
+  \scalebox{0.64}{\pipelineFig{0}}
+
+  \vspace{1.6em}
+  \begin{minipage}{0.90\textwidth}\small
+    The rest of the talk walks this left to right: the reference simulator
+    (Act~IV), the routes feeding it (Act~V), the corpus it produced (Act~VI),
+    the surrogate trained on that corpus (Acts~VII--IX), and the controller it
+    enables (Act~X).
+  \end{minipage}
+\end{frame}

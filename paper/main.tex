@@ -28,15 +28,26 @@
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 
-Freight-train longitudinal dynamics (LTD) simulators capture nonlinear slack couplers, per-vehicle grade and curvature, actuator lag, and power-limited traction with high fidelity, but their computational cost --- tens to hundreds of CPU-hours per scenario --- makes them impractical for the repeated evaluation that control design and operational planning require. This thesis develops a fast, train-agnostic surrogate of longitudinal train dynamics that serves as a differentiable simulation backbone for fuel-optimal control of freight consists.
+Freight-train longitudinal dynamics (LTD) simulators capture nonlinear slack couplers, per-vehicle grade and curvature, actuator lag, and power-limited traction with high fidelity, but their computational cost --- minutes of CPU time per kilometre of simulated track, and months of sequential compute for a whole-trip optimization study --- makes them impractical for the repeated evaluation that control design and operational planning require. This thesis develops a fast, train-agnostic surrogate of longitudinal train dynamics that serves as a differentiable simulation backbone for fuel-optimal control of freight consists.
 
-The consist is represented as a chain graph, with vehicles as nodes and couplers as edges, using a tensorized node/edge state ($\mathbf{H}$, $\mathbf{E}$) that generalizes across arbitrary train length without padding or masking. A message-passing graph neural network learns a physics-residual correction to a known force-balance right-hand side, integrated as a neural ODE, so predictions inherit the consist's chain topology and remain differentiable end to end for downstream control. This design targets structural generalization: models trained on one range of consist sizes and route conditions should extrapolate to unseen train lengths and corridors, rather than relying on the fixed-length token handling that sequence models require.
+The consist is represented as a chain graph, with vehicles as nodes and couplers as edges, using a tensorized node/edge state ($\mathbf{H}$, $\mathbf{E}$) that generalizes across arbitrary train length without padding or masking. A message-passing graph neural network advances that state by one fixed $0.25$\,s step: a graph network simulator, rather than a learned derivative wrapped in a numerical solver. The network predicts only the mean acceleration of each vehicle over the step, together with a per-coupler shape correction; position follows from the kinematic trapezoid, and the brake and traction lag states from the exact solution of their first-order dynamics. A single network evaluation therefore replaces fifty right-hand-side evaluations of the reference integrator, and what is learned narrows to two scalars per vehicle rather than a correction on every state channel. Predictions inherit the consist's chain topology and remain differentiable end to end for downstream control. This design targets structural generalization: a model trained on one range of consist sizes and route conditions should extrapolate to unseen train lengths and corridors, rather than relying on the fixed-length token handling that sequence models require.
 
-Training data are produced by a reference LTD simulator, developed and validated stage by stage (single-vehicle traction, linear and nonlinear slack couplers, $N$-vehicle assemblies, per-vehicle route sampling, and actuator/power-limited traction), driven along real-terrain route profiles derived from elevation and alignment data. The surrogate is evaluated against physics-only and physics-residual MLP baselines, and against a transformer variant demoted to an ablation, on trajectory fidelity, trip-level summary accuracy (energy, arrival time, peak coupler force), and generalization across held-out consist sizes, grades, and corridors.
+Training data are produced by a reference LTD simulator, developed and validated stage by stage (single-vehicle traction, linear and nonlinear slack couplers, $N$-vehicle assemblies, per-vehicle route sampling, and actuator/power-limited traction), driven along real-terrain route profiles derived from elevation and alignment data. The surrogate is evaluated against zero-output, hold-the-state and constant-acceleration baselines, against a physics-residual MLP, and against a transformer variant demoted to an ablation, on trajectory fidelity, trip-level summary accuracy (energy, arrival time, peak coupler force), and generalization across held-out consist sizes, grades, and corridors.
 
 The trained surrogate then serves as the world model for a fuel-optimal control demonstration: minimizing trip energy on held-out real routes subject to speed limits and coupler-force safety constraints, using model-predictive control that exploits the surrogate's analytic gradients. Throughout, we are explicit that simulator parameters are illustrative rather than calibrated to a specific real train, so the claims concern fidelity to the reference simulator, structural generalization across consist size and route, and control performance under that model --- not fidelity to real rolling stock.
 
-% TODO: Insert quantitative results (accuracy, speedup, generalization gaps, control energy savings) once Ch. 6-7 experiments are complete.
+% TODO: Insert quantitative results once the experiments are complete.
+% Available now: velocity-channel accuracy, one-step and over a 200-step
+% rollout, on validation and on held-out consist sizes; and the speedup, which
+% is traceable to the integrator's own configuration (50 RHS evaluations per
+% stored transition) rather than to a hardware comparison.
+% Not available: coupler-shape extrapolation to unseen consist lengths, and the
+% whole control demonstration.
+%
+% NOTE when those numbers go in: the generalization sentence in paragraph 2 is
+% currently phrased as a design *target*, which is still honest. It must become
+% the split claim once results are reported -- velocity extrapolates to unseen
+% consist lengths, coupler shape does not. See paper/THESIS_AUDIT_2026-09-22.md.
 
 % Acknowledgments (optional)
 \chapter*{Acknowledgments}
@@ -66,19 +77,22 @@ The trained surrogate then serves as the world model for a fuel-optimal control 
 \input{chapters/04_reference_simulator}
 \input{chapters/05_route_acquisition}
 \input{chapters/06_raillab}
-%\input{chapters/04_framework_architecture}
-%\input{chapters/05_data_and_training}
-%\input{chapters/06_evaluation_and_validation}
-%\input{chapters/07_discussion}
-%\input{chapters/08_conclusion_future_work}
+\input{chapters/07_gpu_integrator_dataset}
+\input{chapters/08_surrogate_architecture}
+% Chapters 7 onward (architecture, training, evaluation, control, discussion,
+% conclusion) are not yet written. The old skeletons were deleted 2026-09-23;
+% see THESIS_AUDIT_2026-09-22.md, section 1.
 
 % ============================================================================
 % Back Matter
 % ============================================================================
 
-%\backmatter
+\backmatter
 
 % Bibliography
-%\printbibliography
+% heading=bibintoc so the reference list appears in the table of contents,
+% matching the \addcontentsline treatment given to the Abstract and
+% Acknowledgments in the front matter.
+\printbibliography[heading=bibintoc]
 
 \end{document}

@@ -1,0 +1,62 @@
+% Which state channels the network produces and which are imposed, against a
+% design that learns a correction on every channel.
+% Used by fig:arch_channels in chapters/08_surrogate_architecture.tex.
+\begin{tikzpicture}[
+    font=\small,
+    >={Stealth[length=2.2mm]},
+    ch/.style={draw=black!60, fill=white, rounded corners=2pt, line width=0.6pt,
+               text width=2.7cm, minimum height=0.95cm, align=center},
+    how/.style={draw=#1, fill=#1!10, rounded corners=2pt, line width=0.8pt,
+                minimum height=0.95cm, text width=6.9cm, align=left, font=\footnotesize,
+                inner sep=4pt},
+    old/.style={draw=archLearned, fill=archLearned!10, rounded corners=2pt, line width=0.8pt,
+                minimum height=0.95cm, minimum width=3.3cm, align=center, font=\footnotesize},
+    hdr/.style={font=\small\bfseries, align=center},
+]
+\def\dy{1.3}
+
+% ---- headers -----------------------------------------------------------------
+\node[hdr] at (0, 1.0) {State channel};
+\node[hdr] at (4.15, 1.0) {Correction-based design};
+\node[hdr] at (10.4, 1.0) {This design};
+
+% ---- rows ------------------------------------------------------------------
+\foreach \y/\name/\sym in {0/{Velocity}/{v_i}, 1/{Coupler stretch}/{\delta_j},
+                          2/{Position}/{x_i}, 3/{Brake lag}/{z_{\mathrm{brk},i}},
+                          4/{Traction lag}/{z_{\mathrm{trac},i}}} {
+  \node[ch] (c\y) at (0, {-\y*\dy}) {\name\\[-2pt]\footnotesize $\sym$};
+}
+
+% correction-based column: everything carries a learned correction
+\foreach \y in {0,2,3,4} {
+  \node[old] (o\y) at (4.15, {-\y*\dy}) {physics $+$ learned correction};
+}
+\node[font=\footnotesize\itshape, text=black!55, align=center] (o1) at (4.15, {-1*\dy})
+    {derived from positions};
+
+% this design
+\node[how=archLearned] (n0) at (10.4, 0)
+    {\textbf{learned:} mean acceleration over the step,\\
+     $v_{k+1} = v_k + h\,\bar a_i$};
+\node[how=archLearned] (n1) at (10.4, {-1*\dy})
+    {\textbf{imposed, plus a learned correction:}\\
+     trapezoid on the closing rate, plus $c_j$};
+\node[how=archImposed] (n2) at (10.4, {-2*\dy})
+    {\textbf{imposed:} centroid by trapezoid,\\
+     shape rebuilt from the stretches $\delta_j$};
+\node[how=archImposed] (n3) at (10.4, {-3*\dy})
+    {\textbf{imposed:} exact solution of $\dot z = (u - z)/\tau$};
+\node[how=archImposed] (n4) at (10.4, {-4*\dy})
+    {\textbf{imposed:} exact solution of $\dot z = (u - z)/\tau$};
+
+\foreach \y in {0,...,4} {
+  \draw[black!25, line width=0.5pt] (c\y.east) -- (o\y.west);
+  \draw[black!25, line width=0.5pt] (o\y.east) -- (n\y.west);
+}
+
+% ---- footer: what the network outputs --------------------------------------
+\node[font=\footnotesize, align=center, text=archLearned] at (4.15, {-4*\dy-1.05})
+    {network output: a correction on\\every channel of every vehicle};
+\node[font=\footnotesize, align=center, text=archLearned] at (10.4, {-4*\dy-1.05})
+    {network output: one scalar per vehicle ($\bar a_i$)\\and one per coupler ($c_j$)};
+\end{tikzpicture}

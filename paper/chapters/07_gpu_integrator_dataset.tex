@@ -1,0 +1,293 @@
+\chapter{GPU Integrator and Dataset Build}
+\label{ch:gpu_dataset}
+
+\Cref{ch:refsim} built the reference simulator and \cref{ch:routes} built the routes it runs on. Together they can produce one scenario at a time: a consist, a route and a set of driving commands go in, and a trajectory comes out. Training a surrogate needs thousands of such scenarios, spanning consists from ten to one hundred and fifty vehicles, and this chapter describes how they were produced.
+
+The chapter has two halves. The first shows that the reference simulator, as written, could not produce a dataset of the required size, and describes the batched GPU integrator that replaced it for data generation: how it is built, how it was checked against the reference, and what it costs to run. The second describes the dataset itself: how scenarios are sampled, how they are stored, how the two corpora were built and validated, and the known problems in them.
+
+One point about scope is worth making at the start. The GPU integrator is needed to generate the data and to measure the surrogate's speedup against a fair reference. It is not part of the surrogate. Under the formulation of \cref{sec:tensor_dynamics_form}, the model never evaluates the physics right-hand side during training or inference; the right-hand side appears only in the data the model is trained on.
+
+\section{Why the reference simulator could not build the dataset}
+\label{sec:gpu_why}
+
+The reference simulator of \cref{ch:refsim} evaluates its right-hand side in NumPy and integrates it with SciPy's adaptive \texttt{solve\_ivp}. To estimate the cost of a dataset, it was run on 66 scenarios: three consist sizes, two routes, and the eleven driving regimes described in \cref{sec:dataset_regimes}, each simulating 120\,s with a wall-clock budget of 30\,s per run. \Cref{tab:numpy_benchmark} gives the result.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lccl}
+        \toprule
+        Consist size $N$ & Runs completed & Median wall clock & Notes \\
+        \midrule
+        11  & 16 of 22 & 4.0\,s   & 3 regimes exceeded 30\,s \\
+        60  & 4 of 22  & 28.1\,s  & 18 of 22 exceeded 30\,s \\
+        130 & 0 of 22  & $>30$\,s & every run exceeded 30\,s \\
+        \bottomrule
+    \end{tabular}
+    \caption{Cost of the NumPy reference simulator on 120\,s scenarios, with a 30\,s wall-clock budget per run. At $N = 130$ no run finished within budget.}
+    \label{tab:numpy_benchmark}
+\end{table}
+
+At $N = 130$, the size range the held-out long-consist split depends on, not one run finished. The dataset also needs runs of 300 to 600\,s, long enough to cross varied terrain, which multiplies the cost again. A rough estimate for 10,000 scenarios of 300\,s was 170 CPU-hours, with the large consists effectively excluded.
+
+Two causes account for the cost. The first is that the right-hand side loops over vehicles in Python, so each evaluation at $N = 130$ performs 130 interpreted iterations, and a run needs tens of thousands of evaluations. The second is the coupler slack. The force law of Stage~3 changes slope abruptly at the edge of the slack, and the adaptive solver reduces its step whenever any coupler crosses that edge. On a long consist some coupler is almost always crossing. The per-regime medians show the effect directly: the smooth regimes (cruise, notch up, power to coast) took about 4\,s, while dynamic-brake descent took 27.3\,s and throttle modulation 15.8\,s. Those slow regimes produce the largest coupler forces, which are the forces the safety constraint concerns, so they cannot be sampled less often to save time.
+
+\section{A batched integrator on the GPU}
+\label{sec:gpu_port}
+
+\subsection{Design}
+
+The replacement is a PyTorch implementation of the same right-hand side, written so that one evaluation handles a whole batch of scenarios at once. State is held as tensors of shape $B \times N$, for $B$ scenarios of $N$ vehicles each, and the per-vehicle loop becomes a set of operations over whole tensors. Coupler forces, route sampling at each vehicle's position, resistance, traction and braking are all computed this way, so the cost of an evaluation no longer grows with the number of vehicles through the interpreter.
+
+The adaptive solver is replaced by the classical fourth-order Runge--Kutta method with a fixed step of $\Delta t = 0.02$\,s. This makes the cost of a run fixed in advance at $\lceil \text{duration}/\Delta t \rceil$ steps, whatever the driving regime. A regime full of slack events costs the same as a steady cruise, and a run can no longer stall. The per-scenario wall-clock limit that the NumPy benchmark required is therefore not needed. States are recorded every 0.25\,s, so each stored transition spans 12.5 integration steps, or fifty evaluations of the right-hand side. That ratio is the one quoted in \cref{sec:tensor_dynamics_form} for the surrogate's single step.
+
+The coupler law keeps its exact piecewise form. The port's contract allowed the slack transition to be smoothed if fixed-step error at slack crossings proved unacceptable. It did not, as the next subsection shows, so no smoothing was applied.
+
+\subsection{Agreement with the reference}
+
+The port was held to an acceptance contract of 60 tests, written before the port existed, which compare it against the NumPy simulator on fifteen reference scenarios. These include one scenario for each driving regime and several built to be difficult, such as a consist that cycles repeatedly in and out of slack. The main tolerance is 0.05\,m/s on vehicle velocity. Beyond velocity, the contract requires that couplers engage and release at the same times as in the reference in at least 98\% of samples, and that peak coupler force agree within 5\%, on every scenario; both hold. The 135 existing tests of the reference simulator were left unmodified and continue to pass.
+
+Two properties of the NumPy reference were reproduced exactly rather than corrected, so that the two implementations describe the same model. The grade force applies a sine to a field that already stores $\sin\theta$, computing $mg\sin(\sin\theta)$ rather than $mg\sin\theta$. At the grades in these routes the two differ by about one part in $10^{5}$, far below anything the dataset resolves. The Davis resistance also uses a hard sign function of velocity, which is discontinuous at standstill. Both are recorded here because they are properties of the data-generating model, and correcting them in one implementation but not the other would break the comparison.
+
+\subsection{Step size}
+
+The step was chosen by sweeping $\Delta t$ against the reference scenarios in double precision. Ten of the fifteen reference trajectories were generated with a tight solver tolerance, and on those the error falls steadily as the step shrinks (\cref{tab:gpu_step_size}). The other five were generated at the solver's default tolerance, and on those the error stops falling below $\Delta t = 0.01$\,s and rises again at $0.005$\,s. The remaining difference there is error in the reference, not in the port, so those five cannot justify a smaller step.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{cc}
+        \toprule
+        $\Delta t$ (s) & Maximum velocity error (m/s) \\
+        \midrule
+        0.05  & 0.0120 \\
+        0.02  & 0.0063 \\
+        0.01  & 0.0040 \\
+        0.005 & 0.0025 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Maximum velocity error of the GPU integrator against the ten tightly integrated reference scenarios, in double precision.}
+    \label{tab:gpu_step_size}
+\end{table}
+
+The error falls roughly in proportion to the step rather than to its fourth power. This is expected: the error is dominated by the slack transition and the Davis sign discontinuity, not by the truncation error of the method, so refining the step buys less than the method's order suggests. The step of $0.02$\,s sits eight times inside the tolerance, and halving it would cost 1.8 times more for a 1.6-fold reduction in error that the tolerance does not require.
+
+\subsection{Launch overhead and CUDA graphs}
+
+A first version ran each integration step as a sequence of separate GPU operations. Profiling at $B = 64$, $N = 130$ showed 661 operation launches per step, with the GPU idle about 92\% of the time: the cost was the overhead of issuing work, not the work itself. Two changes removed it (\cref{tab:gpu_launch}). Redundant operations were removed first, for example by sharing one index lookup between route fields sampled on the same grid, which gave a 1.6-fold gain. The larger gain came from recording one complete integration step as a CUDA graph, a sequence of GPU operations captured once and replayed as a single launch. Replaying the recorded step gave a further 10.1-fold gain.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lc}
+        \toprule
+        Configuration & Wall clock \\
+        \midrule
+        Separate operations, before removing redundancy & 61.5\,s \\
+        Separate operations, after removing redundancy  & 38.2\,s \\
+        Recorded step replayed as a CUDA graph          & 3.79\,s \\
+        \bottomrule
+    \end{tabular}
+    \caption{Effect of launch overhead on the GPU integrator, for $B = 64$ scenarios of $N = 130$ vehicles and 120\,s of simulated time.}
+    \label{tab:gpu_launch}
+\end{table}
+
+PyTorch's own compiler offers a mode intended for this situation, but it failed during rollouts, inside its own bookkeeping, because a rollout keeps one output tensor for every stored sample. Recording the step directly avoided the problem and has two further advantages: the state lives in fixed buffers that the recorded step updates in place, so a replay never returns control to the host, and nothing depends on a compiler toolchain at run time. The recorded path is used only for rollouts that do not need gradients. Rollouts that do use the ordinary path, since recording would fix the gradient computation into static buffers.
+
+\subsection{Precision}
+
+The port's specification assumed that double precision would be impractical, since the GPU used here performs double-precision arithmetic at about one sixty-fourth of its single-precision rate. The measurement contradicted this (\cref{tab:gpu_precision}). Double precision cost about 20\% more, not 64 times more, because the integrator is limited by per-step overhead rather than by arithmetic, so doubling the width of the arithmetic changes little.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{cccc}
+        \toprule
+        $B$ & $N$ & Single / double precision (s) & Ratio \\
+        \midrule
+        64  & 130 & 4.21 / 5.03 & 1.20 \\
+        256 & 130 & 4.54 / 5.49 & 1.21 \\
+        256 & 200 & 4.58 / 5.66 & 1.24 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Cost of double precision relative to single precision for 120\,s of simulated time.}
+    \label{tab:gpu_precision}
+\end{table}
+
+The accuracy margin in single precision, by contrast, was thin. On the worst reference scenario, rounding error alone used 60\% of the 0.05\,m/s velocity tolerance over a 40\,s run, and dataset scenarios are ten times longer. Both corpora were therefore integrated in double precision and stored in single precision. Reducing the precision of the stored output is a separate decision from integrating in reduced precision, and it halves the size on disk without spending the error budget on rounding.
+
+\subsection{Throughput}
+\label{sec:gpu_throughput}
+
+\Cref{tab:gpu_throughput} gives wall-clock time on one RTX 4090 for 120\,s of simulated time, against batch size and consist size.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{rcr@{\hspace{3em}}rc}
+        \toprule
+        \multicolumn{3}{c}{$N = 130$, varying $B$} & \multicolumn{2}{c}{$B = 64$, varying $N$} \\
+        \cmidrule(r{2em}){1-3} \cmidrule{4-5}
+        $B$ & Wall clock & ms per scenario & $N$ & Wall clock \\
+        \midrule
+        1   & 3.28\,s & 3,282 & 11  & 3.72\,s \\
+        16  & 3.65\,s & 228   & 30  & 3.80\,s \\
+        64  & 3.71\,s & 58    & 60  & 3.77\,s \\
+        128 & 3.79\,s & 30    & 130 & 3.71\,s \\
+        256 & 4.01\,s & 16    & 200 & 3.76\,s \\
+        \bottomrule
+    \end{tabular}
+    \caption{Wall clock of the GPU integrator for 120\,s of simulated time, in single precision, against batch size $B$ (left) and consist size $N$ (right).}
+    \label{tab:gpu_throughput}
+\end{table}
+
+Wall clock is nearly flat in both directions. Running 256 scenarios instead of one takes 22\% longer, and going from 11 to 200 vehicles makes no measurable difference. Time is set by the number of graph replays, one per integration step, and the GPU is far from fully used even at $B = 256$ and $N = 200$. Two consequences follow. Per-scenario cost falls almost in proportion to batch size, so dataset generation should use the largest batch that fits in memory. And a consist of 150 vehicles costs no more to simulate than one of 11, which removes the obstacle that made the long-consist split impossible to generate.
+
+Against the NumPy simulator, which needs at least 89.2\,s for a 120\,s scenario at $N = 130$ on one core, the GPU integrator is 1,538 times faster at $B = 64$ and 5,682 times faster at $B = 256$. The NumPy figure is a lower bound, projected from a fixed-step count; the adaptive solver it actually uses needs more evaluations than that in the regimes with frequent slack events, so the true ratio is larger.
+
+\section{Scenario generation}
+\label{sec:dataset_generation}
+
+\subsection{Driving regimes}
+\label{sec:dataset_regimes}
+
+The simplest way to generate driving commands is to draw each point of a traction and brake profile at random. Most profiles drawn that way combine commands no operator would give, such as full traction with heavy braking, and very few resemble the structured manoeuvres a controller will later produce. Commands are instead generated from eleven manoeuvre types, or regimes: startup, notch up, cruise, throttle modulation, power to coast, coast, coast to brake, dynamic-brake descent, brake release, stretch braking, and emergency braking. Each regime has a fixed shape whose timing and levels are randomized. Regimes are weighted so that steady running and throttle modulation dominate, with emergency braking rare but present, since it produces the most extreme coupler forces.
+
+Traction and brake are never commanded together, with two intended exceptions. Stretch braking holds light brake against light traction to keep the slack stretched, a real handling technique and exactly the kind of combined command the surrogate needs to see. In an emergency application the brake is applied while traction is still falling, so the two overlap for a few seconds. The rule is enforced by a check applied after each profile is generated rather than relied on by construction, and a sample of 5,500 profiles showed no violations.
+
+Building this check exposed three errors that would have entered the dataset unnoticed. Random variation added to the commands of remote locomotives lifted zero commands slightly above zero, reintroducing traction during braking; the variation is now proportional, so zero stays zero. Random timing variation could reorder the points of a profile, which in one case turned an emergency application into a restoration of power under full braking; the variation is now bounded so that order cannot change. And remote locomotives could be given an entirely different manoeuvre from the lead, so a mid-train unit could pull while the head end braked; they now follow the lead's manoeuvre with a delay.
+
+\subsection{Randomized scenarios}
+
+Each scenario samples a consist from a library of 500, a route, a regime, and the following conditions:
+
+\begin{itemize}
+    \item a starting position anywhere on the route with room to run, and a duration clipped so the consist cannot run off the end;
+    \item an initial speed of up to 90\% of the speed limit at the starting position;
+    \item an initial slack state (neutral, stretched, bunched, or random), always strictly inside the slack so no coupler force is present at the start;
+    \item actuator states already settled at the profile's initial command, so a run opens mid-manoeuvre rather than with an artificial ramp;
+    \item an adhesion condition (dry, wet or low), applied as a multiplier on the maximum tractive force of powered vehicles.
+\end{itemize}
+
+Two degenerate cases are handled explicitly. A consist starting at rest with no brake applied rolls backward down any real grade before traction builds, so standing starts are placed only on track flatter than 0.5\%. And profiles that brake within the first 20\,s are given a minimum starting speed, so a run does not stop in its first seconds and remain stationary for the rest of the window.
+
+\section{Dataset format}
+\label{sec:dataset_format}
+
+Each scenario is written as one compressed array file holding the channels of the node and edge tensors of \cref{sec:tensor_state_rep}, organized by whether they change over time (\cref{tab:dataset_contents}).
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{llp{7.2cm}}
+        \toprule
+        Array & Shape & Contents \\
+        \midrule
+        \texttt{state}        & $[T, N, 4]$   & position, velocity, and brake and traction lag states per vehicle \\
+        \texttt{node\_static} & $[N, 7]$      & mass, three Davis coefficients, traction flag, maximum traction and brake force \\
+        \texttt{edge\_dynamic} & $[T, N{-}1, 3]$ & coupler extension, extension rate, and force \\
+        \texttt{edge\_static} & $[N{-}1, 6]$  & nominal spacing, slack half-width, and draft and buff stiffness and damping \\
+        \texttt{edge\_index}  & $[2, N{-}1]$  & chain connectivity \\
+        \texttt{u\_trac}, \texttt{u\_brk} & $[T, N]$ & traction and brake commands per vehicle \\
+        \bottomrule
+    \end{tabular}
+    \caption{Arrays stored for each scenario. Each file also holds the initial state, the integrator constants needed to recompute the right-hand side, trip-level summaries, and a metadata record.}
+    \label{tab:dataset_contents}
+\end{table}
+
+Two decisions keep the format compact. The node tensor has eleven channels, but seven of them are constants for each vehicle, so they are stored once rather than at every time step. And route fields are stored once per corridor rather than in each scenario, since one corridor is shared by about 2,000 scenarios. The edge channels, by contrast, are stored at every step even though they can be computed from the node state, because they serve as training targets; they are marked in the file as derived.
+
+Four files describe each build as a whole: a configuration record with the sampling ranges, random seed, integrator settings and code version; an index with one row of 43 metadata fields per scenario; normalization statistics for every channel, computed over the training split only; and an explicit list of the scenarios in each split.
+
+\section{The two corpora}
+\label{sec:dataset_corpora}
+
+Two corpora were built from the same seed and the same code, differing only in the curvature law (\cref{tab:dataset_corpora}). Because they share every scenario, the difference between them isolates the effect of curve resistance.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lcc}
+        \toprule
+         & \texttt{data/v1} & \texttt{data/v2} \\
+        \midrule
+        Curvature law & off & linear (AREMA), $c_\kappa = 1$ \\
+        Scenarios & 10,000 & 10,000 \\
+        Size on disk & 12.4\,GB & 12.4\,GB \\
+        Integration time & 1,336\,s & 1,389\,s \\
+        \bottomrule
+    \end{tabular}
+    \caption{The two corpora. \texttt{data/v2} is the training corpus; \texttt{data/v1} exists to measure the curvature term.}
+    \label{tab:dataset_corpora}
+\end{table}
+
+Each corpus holds 12.8 million time steps and 753 million vehicle-steps. Consists range from 10 to 150 vehicles, durations from 180 to 599\,s (mean 320\,s), and scenarios cover 500 consists, eleven regimes and five corridors. A full build took about 25 minutes, against the 170 CPU-hours estimated for the NumPy simulator. Batches of 256 scenarios were used; compression costs about a quarter of the build time and halves the size on disk.
+
+\Cref{tab:dataset_splits} gives the splits. Corridor reservations are applied before the consist-level long-consist flag, so a scenario on a reserved corridor cannot enter training through another route.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lrl}
+        \toprule
+        Split & Scenarios & Basis \\
+        \midrule
+        \texttt{train}         & 4,043 & corridors \texttt{route\_line0}, \texttt{route\_line3}, \texttt{route\_line4} \\
+        \texttt{val}           & 517   & random 10\% of eligible scenarios \\
+        \texttt{test\_id}      & 496   & random 10\% of eligible scenarios \\
+        \texttt{ood\_size}     & 955   & consists flagged as long in the consist library \\
+        \texttt{ood\_grade}    & 1,999 & \texttt{route\_line2}, selected as the steepest corridor \\
+        \texttt{ood\_corridor} & 1,990 & \texttt{route\_line5}, held out entirely \\
+        \texttt{control\_eval} & 0     & not buildable with five corridors \\
+        \bottomrule
+    \end{tabular}
+    \caption{Splits of each corpus.}
+    \label{tab:dataset_splits}
+\end{table}
+
+Comparing the two corpora shows that curve resistance cannot be left out. Over 500 scenarios compared in full, the largest velocity difference between the two versions of a scenario is 0.37\,m/s at the median and 1.56\,m/s at the 90th percentile. The median alone is seven times the tolerance the integrator was held to. The mechanism is accumulation, not sensitivity: a force of about 800\,N on a 100\,t car is an acceleration of 0.008\,m/s$^2$, which over 600\,s amounts to 4.8\,m/s. The quantity the safety constraint uses moves much less. Peak coupler force changes by 0.5\% at the median and 4.6\% at the 90th percentile. \texttt{data/v2}, with the linear law of \cref{eq:ltd_curvature}, is therefore the training corpus.
+
+\section{Validation}
+\label{sec:dataset_validation}
+
+A separate program checks each finished build in three ways, and both corpora pass. The first is consistency of the manifests: the index and the split lists describe the same scenarios, splits do not overlap, every referenced file exists, and the normalization statistics come from the training split and contain no zero divisors. The third is a set of distribution summaries (speed-limit violations, reversals, consist sizes and force ranges), so that a build whose inputs went wrong is visible without opening individual files.
+
+The second check is the most important. The right-hand side is rebuilt from nothing but the contents of the scenario file and its route file, in a separate implementation that shares no code with the simulator, and compared with the rate of change implied by the stored trajectory. A bug shared by the simulator and the checker therefore cannot hide, and a missing constant or a reordered column in the stored data would appear as a mismatch.
+
+The rate of change implied by the trajectory is estimated by a central difference on the 0.25\,s output grid, and that estimate carries its own error. To show that the remaining mismatch is this error and not a defect in the data, one scenario was re-sampled at progressively finer output spacing (\cref{tab:dataset_fd_convergence}). Each halving of the spacing reduces the mismatch about fourfold, the behavior expected of a central difference, so the mismatch comes from the estimate rather than from the stored trajectory.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{ccc}
+        \toprule
+        Output spacing (s) & Position rate (m/s) & Velocity rate (m/s$^2$) \\
+        \midrule
+        0.25 & $2.1\times10^{-2}$ & $1.9\times10^{-1}$ \\
+        0.10 & $4.5\times10^{-3}$ & $5.6\times10^{-2}$ \\
+        0.05 & $1.1\times10^{-3}$ & $1.6\times10^{-2}$ \\
+        0.02 & $1.9\times10^{-4}$ & $2.5\times10^{-3}$ \\
+        0.01 & $4.6\times10^{-5}$ & $6.1\times10^{-4}$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Maximum mismatch between the recomputed right-hand side and a central difference of the stored trajectory, for the position and velocity rates of one scenario ($N = 31$, cruise) re-sampled at finer output spacing.}
+    \label{tab:dataset_fd_convergence}
+\end{table}
+
+This has a consequence for anything trained on the data. At the stored spacing of 0.25\,s, the error of a finite-difference estimate of the rate of change is as large as the quantities a model would be asked to learn from it. Where a rate of change is needed, it should be recomputed from the stored arrays using the right-hand side, which the stored constants make possible, rather than estimated from differences between stored states.
+
+Two defects were found and fixed while building the corpora. Both matter beyond the code.
+
+\textbf{Builds were not reproducible from their own seed.} The regime generator seeded its random number generator from Python's built-in hash of the regime name, and Python randomizes string hashes in each new process. The generator was therefore consistent within one run and different in the next, although it was documented as deterministic for a given seed. The existing test could not catch this, because it called the generator twice in the same process, where the hash does not change. The seed now comes from a checksum that is stable across processes, and a new test runs the generator in separate processes with different hash seeds; it was confirmed to fail on the old code before being kept. Both corpora were built after the fix, and the recorded seed reproduces them.
+
+\textbf{The validator ignored the curvature law.} The checker recomputed the right-hand side with the original curvature law regardless of the law used to build the corpus. For the linear law this is wrong by a factor of about 33 at 15\,m/s, but the deliberately loose tolerance of the finite-difference comparison absorbed it, and the first build of \texttt{data/v2} passed validation without its curvature term having been checked at all. The checker now reads the law from the file. The combination of a generous tolerance and a hard-coded assumption is what allowed the error through.
+
+\section{Known limitations of the corpora}
+\label{sec:dataset_limitations}
+
+\textbf{Overspeed.} The simulator does not enforce the speed limit. The limit is information for a controller, not a physical force, so nothing stops a coasting consist from accelerating down a long grade for the whole of a 600\,s run. In \texttt{data/v2}, 72.9\% of scenarios never exceed the limit, 17.8\% exceed it by more than 5\,m/s, 2.4\% by more than 20\,m/s, and the worst reaches 67.8\,m/s. A related 22\% of scenarios roll backward faster than 1\,m/s, largely because standing starts need track flatter than 0.5\% and the corridors often have none. These scenarios are recorded rather than removed: the index stores each scenario's maximum excess over the limit and fraction of time over it, so they can be filtered at training time, and keeping only scenarios within 5\,m/s of the limit retains about 81\% of the corpus. Whether such a scenario is bad data or a useful hard case is a modelling decision, not a question of how the data is stored.
+
+\textbf{The corridor set.} Both corpora were built before the raw-elevation check of \cref{sec:route_raw_qa} existed, on all five acquired corridors and with the earlier smoothing window and 4\% grade limit. They therefore include \texttt{route\_line2}, whose elevation samples do not lie on the track. This has two effects. Much of the overspeed population comes from that corridor's false grades: in a pilot build, 39\% of its scenarios exceeded the limit by more than 5\,m/s, against 2\% on \texttt{route\_line5}. And the \texttt{ood\_grade} split, selected as the steepest corridor, is built on it, so that split tests extrapolation to false grades rather than to real steep terrain, and results on it should be read in that light.
+
+\textbf{No control-evaluation split.} The build supports all seven splits, but with five corridors each held-out corridor costs about a fifth of the corpus, and reserving a third would leave only two corridors for training. The control-evaluation split is therefore empty. Populating it, and replacing \texttt{ood\_grade} with a corridor that is genuinely steep, both require the wider corridor set described in \cref{sec:route_scaling}.
+
+\textbf{No arrival time.} An open-loop scenario has no destination, so the arrival-time summary is undefined throughout and the distance travelled is stored in its place. Arrival time becomes meaningful in the control scenarios, which do have one.
+
+A rebuild on a wider, corrected corridor set is planned. Results reported in later chapters are measured on \texttt{data/v2} as described here, and would need to be re-run on a rebuilt corpus rather than carried over.
+
+\section{Chapter summary}
+
+This chapter replaced the NumPy reference simulator, for the purpose of data generation, with a batched GPU integrator: the same right-hand side, evaluated over whole batches of scenarios with fixed-step fourth-order Runge--Kutta and each step replayed as a single recorded GPU operation. It agrees with the reference within 0.05\,m/s in velocity and 5\% in peak coupler force, its cost does not grow with consist size, and it is more than a thousand times faster than the reference. Double precision proved almost free and was used for integration.
+
+With it, two corpora of 10,000 scenarios each were built in about 25 minutes apiece, from regime-based driving commands and randomized starting conditions, stored in the node and edge layout of \cref{ch:problem}, and checked by an independent re-implementation of the physics. Their known limitations, chiefly the overspeed population, the inclusion of a corridor later rejected, and the empty control-evaluation split, are stated here so that later results can be read against them.

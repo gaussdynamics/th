@@ -449,3 +449,362 @@
   year    = {2007},
   doi     = {10.1198/016214506000001437}
 }
+
+
+% ======================================================================
+% ADDED September 22, 2026
+%
+% Ported verbatim from trb_paper/ltd_surrogate_trb.bib, the audited
+% bibliography this file is deliberately key-compatible with. Two
+% mechanical fixes applied: "and Others" -> "and others", so biblatex
+% renders "et al." rather than a literal author named Others.
+%
+% The first four support the graph-learning section Chapter 2 does not
+% yet have, and the Neural-ODE entry additionally carries the rejected
+% alternative discussed in the architecture chapter.
+%
+% The last five are cited by Chapter 5 in substance but not in form:
+% the chapter describes Savitzky-Golay filtering, OpenStreetMap, USGS
+% 3DEP elevation and FRA track classes without citing any of them.
+%
+% NOT independently re-verified in this pass. The August 2026 audit
+% covered this file's own 34 entries; these nine were audited only as
+% part of the TRB paper. Spot-check before submission -- in particular
+% usgs3dep, whose exact title and year are the least certain.
+% ======================================================================
+
+% --- Graph networks and learned simulators ---------------------------
+
+@article{battaglia2018relational,
+  author  = {Battaglia, Peter W. and Hamrick, Jessica B. and Bapst, Victor and Sanchez-Gonzalez, Alvaro and Zambaldi, Vinicius and Malinowski, Mateusz and Tacchetti, Andrea and Raposo, David and Santoro, Adam and Faulkner, Ryan and others},
+  title   = {Relational Inductive Biases, Deep Learning, and Graph Networks},
+  journal = {arXiv preprint arXiv:1806.01261},
+  year    = {2018}
+}
+
+@inproceedings{sanchez2020gns,
+  author    = {Sanchez-Gonzalez, Alvaro and Godwin, Jonathan and Pfaff, Tobias and Ying, Rex and Leskovec, Jure and Battaglia, Peter W.},
+  title     = {Learning to Simulate Complex Physics with Graph Networks},
+  booktitle = {Proceedings of the 37th International Conference on Machine Learning (ICML)},
+  volume    = {119},
+  pages     = {8459--8468},
+  year      = {2020}
+}
+
+@inproceedings{pfaff2021meshgraphnets,
+  author    = {Pfaff, Tobias and Fortunato, Meire and Sanchez-Gonzalez, Alvaro and Battaglia, Peter W.},
+  title     = {Learning Mesh-Based Simulation with Graph Networks},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2021}
+}
+
+% --- Neural ODEs (related work, and the rejected alternative) --------
+
+@inproceedings{chen2018neuralode,
+  author    = {Chen, Ricky T. Q. and Rubanova, Yulia and Bettencourt, Jesse and Duvenaud, David},
+  title     = {Neural Ordinary Differential Equations},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS)},
+  pages     = {6571--6583},
+  year      = {2018}
+}
+
+% --- Methods and data sources used by the route pipeline -------------
+
+@article{savitzky1964smoothing,
+  author  = {Savitzky, Abraham and Golay, Marcel J. E.},
+  title   = {Smoothing and Differentiation of Data by Simplified Least Squares Procedures},
+  journal = {Analytical Chemistry},
+  volume  = {36},
+  number  = {8},
+  pages   = {1627--1639},
+  year    = {1964}
+}
+
+@article{virtanen2020scipy,
+  author  = {Virtanen, Pauli and Gommers, Ralf and Oliphant, Travis E. and Haberland, Matt and Reddy, Tyler and Cournapeau, David and others},
+  title   = {{SciPy} 1.0: Fundamental Algorithms for Scientific Computing in Python},
+  journal = {Nature Methods},
+  volume  = {17},
+  pages   = {261--272},
+  year    = {2020}
+}
+
+@misc{osm,
+  author       = {{OpenStreetMap contributors}},
+  title        = {{OpenStreetMap}},
+  year         = {2026},
+  howpublished = {\url{https://www.openstreetmap.org}},
+  note         = {Accessed July 2026}
+}
+
+@techreport{usgs3dep,
+  author      = {{U.S. Geological Survey}},
+  title       = {{3D} Elevation Program ({3DEP}) Standards and Specifications},
+  institution = {U.S. Geological Survey},
+  address     = {Reston, VA},
+  year        = {2022}
+}
+
+@misc{fra_track_classes,
+  author       = {{Federal Railroad Administration}},
+  title        = {Track Safety Standards, 49 {CFR} Part 213},
+  year         = {2023}
+}
+
+% ======================================================================
+% ADDED September 22, 2026 — graph learning for physical systems
+%
+% Candidates for the "Graph Networks for Physical Systems" section that
+% Chapter 2 does not yet have. Every entry was verified against a primary
+% source in this pass: PMLR, NeurIPS proceedings, Crossref, the arXiv API,
+% or the publisher PDF. Provenance is noted per entry where it is not
+% obvious.
+%
+% Tier 1 — recommended for the core section:
+%   battaglia2016interaction  objects/relations; the shape of the coupler law
+%   gilmer2017mpnn            names "message passing"; one sentence
+%   stachenfeld2022coarse     learned coarse stepping; positions the speedup
+%   brandstetter2022mppde     the pushforward trick, used by name in training
+%   kim2021stiffneuralode     stiffness is a known failure mode for neural ODEs
+%
+% Tier 1 — rail and structural applications:
+%   zhao2026coupler           reaches the coupler, but diagnostics not dynamics
+%   shao2025ttbgnn            nearest rail application; vertical/lateral axis
+%   lucchetti2025gnss         nearest methodological neighbour; still a preprint
+%
+% Tier 2 — available, cite if the section has room:
+%   um2020solverintheloop     training inside the solver loop
+%   kochkov2021mlcfd          coarse-in-space-with-solver, the road not taken
+%
+% NOTE: several of these are article-number journals (Chaos, Sensors,
+% Computers & Structures). Their "pages" field carries an article number,
+% not a range. That is correct, not a missing value.
+% ======================================================================
+
+% --- Foundations: message passing and graph networks ------------------
+
+@inproceedings{battaglia2016interaction,
+  author        = {Battaglia, Peter W. and Pascanu, Razvan and Lai, Matthew
+                   and Rezende, Danilo Jimenez and Kavukcuoglu, Koray},
+  title         = {Interaction Networks for Learning about Objects, Relations
+                   and Physics},
+  booktitle     = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume        = {29},
+  year          = {2016},
+  eprint        = {1612.00222},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.AI},
+  url           = {https://arxiv.org/abs/1612.00222}
+}
+
+@inproceedings{gilmer2017mpnn,
+  author    = {Gilmer, Justin and Schoenholz, Samuel S. and Riley, Patrick F.
+               and Vinyals, Oriol and Dahl, George E.},
+  title     = {Neural Message Passing for Quantum Chemistry},
+  booktitle = {Proceedings of the 34th International Conference on Machine
+               Learning (ICML)},
+  series    = {Proceedings of Machine Learning Research},
+  volume    = {70},
+  pages     = {1263--1272},
+  year      = {2017},
+  url       = {https://proceedings.mlr.press/v70/gilmer17a.html}
+}
+
+% --- Learned coarse models and large steps ----------------------------
+
+@inproceedings{stachenfeld2022coarse,
+  author        = {Stachenfeld, Kimberly and Fielding, Drummond B.
+                   and Kochkov, Dmitrii and Cranmer, Miles and Pfaff, Tobias
+                   and Godwin, Jonathan and Cui, Can and Ho, Shirley
+                   and Battaglia, Peter and Sanchez-Gonzalez, Alvaro},
+  title         = {Learned Coarse Models for Efficient Turbulence Simulation},
+  booktitle     = {International Conference on Learning Representations (ICLR)},
+  year          = {2022},
+  eprint        = {2112.15275},
+  archivePrefix = {arXiv},
+  url           = {https://arxiv.org/abs/2112.15275}
+}
+
+@article{kochkov2021mlcfd,
+  author  = {Kochkov, Dmitrii and Smith, Jamie A. and Alieva, Ayya
+             and Wang, Qing and Brenner, Michael P. and Hoyer, Stephan},
+  title   = {Machine Learning-Accelerated Computational Fluid Dynamics},
+  journal = {Proceedings of the National Academy of Sciences},
+  volume  = {118},
+  number  = {21},
+  pages   = {e2101784118},
+  year    = {2021},
+  doi     = {10.1073/pnas.2101784118}
+}
+
+% --- Rollout stability: noise injection and pushforward ---------------
+
+@inproceedings{brandstetter2022mppde,
+  author        = {Brandstetter, Johannes and Worrall, Daniel E.
+                   and Welling, Max},
+  title         = {Message Passing Neural {PDE} Solvers},
+  booktitle     = {International Conference on Learning Representations (ICLR)},
+  year          = {2022},
+  eprint        = {2202.03376},
+  archivePrefix = {arXiv},
+  url           = {https://arxiv.org/abs/2202.03376}
+}
+
+% Author order taken from the NeurIPS 2020 proceedings page; several
+% secondary sources transpose Brand and Fei.
+@inproceedings{um2020solverintheloop,
+  author        = {Um, Kiwon and Brand, Robert and Fei, Yun Raymond
+                   and Holl, Philipp and Thuerey, Nils},
+  title         = {Solver-in-the-Loop: Learning from Differentiable Physics to
+                   Interact with Iterative {PDE}-Solvers},
+  booktitle     = {Advances in Neural Information Processing Systems (NeurIPS)},
+  volume        = {33},
+  year          = {2020},
+  eprint        = {2007.00016},
+  archivePrefix = {arXiv},
+  url           = {https://proceedings.neurips.cc/paper/2020/hash/43e4e6a6f341e00671e123714de019a8-Abstract.html}
+}
+
+% --- Continuous-time models: the rejected alternative -----------------
+
+% 093122 is an article number, not a page range.
+@article{kim2021stiffneuralode,
+  author  = {Kim, Suyong and Ji, Weiqi and Deng, Sili and Ma, Yingbo
+             and Rackauckas, Christopher},
+  title   = {Stiff Neural Ordinary Differential Equations},
+  journal = {Chaos: An Interdisciplinary Journal of Nonlinear Science},
+  volume  = {31},
+  number  = {9},
+  pages   = {093122},
+  year    = {2021},
+  doi     = {10.1063/5.0060697}
+}
+
+% --- Rail and structural applications ---------------------------------
+
+% Verified from the publisher PDF. Open access, CC BY. Nodes are sensors,
+% edges are thresholded normalized mutual information; the task is
+% condition monitoring, not forward dynamics.
+@article{zhao2026coupler,
+  author  = {Zhao, Zhirong and Jiang, Zhentian and Xiao, Qian
+             and Zhang, Long and Wang, Jinbo},
+  title   = {Spatio-Temporal Joint Network for Coupler Anomaly Detection Under
+             Complex Working Conditions Utilizing Multi-Source Sensors},
+  journal = {Sensors},
+  volume  = {26},
+  number  = {9},
+  pages   = {2661},
+  year    = {2026},
+  doi     = {10.3390/s26092661}
+}
+
+% 107786 is an article number, not a page range.
+@article{shao2025ttbgnn,
+  author  = {Shao, Zhanjun and Zhang, Peng and Xie, Xiaonan and Wang, Zihe
+             and Peng, Xuan and Liu, Zefeng and Chen, Yufei and Xiang, Ping},
+  title   = {A New Three-Dimensional Model of Train-Track-Bridge Coupled System
+             Based on Meshless Method and Its Graph Neural Network-Based
+             Surrogate Model},
+  journal = {Computers \& Structures},
+  volume  = {315},
+  pages   = {107786},
+  year    = {2025},
+  doi     = {10.1016/j.compstruc.2025.107786}
+}
+
+% Preprint only as of 2026-09-22: no journal_ref or DOI on the arXiv
+% record, and no journal version in Crossref. Re-check before submission.
+@misc{lucchetti2025gnss,
+  author        = {Lucchetti, Alessandro and Cadini, Francesco
+                   and Giglio, Marco and Lomazzi, Luca},
+  title         = {Graph Network-based Structural Simulator: Graph Neural
+                   Networks for Structural Dynamics},
+  year          = {2025},
+  eprint        = {2510.25683},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.LG},
+  url           = {https://arxiv.org/abs/2510.25683}
+}
+
+% Author's own TRB manuscript (trb_paper/ltd_surrogate_trb.tex). Cited once, in
+% Chapter 1, to acknowledge the superseded physics-residual formulation.
+% TODO: confirm submission status and update the note (and entry type) once
+% the paper is accepted or presented.
+@unpublished{james2027trb,
+  author = {James, George and Duong, Trung and Islam, Md and Gulzar, Saqib},
+  title  = {A Differentiable Simulation Testbed for Longitudinal Train
+            Dynamics: Reference Simulator, Real-Terrain Route Pipeline, and
+            Research Console for a Graph Neural Surrogate},
+  year   = {2026},
+  note   = {Manuscript submitted to the Transportation Research Board 106th
+            Annual Meeting}
+}
+
+% National rail network used in Chapter 5 to replace the Overpass crawl.
+% Source URL is the feature service queried by scripts/pull_narn.py on branch
+% surrogate-gns. TODO: verify the dataset title and publisher against the BTS
+% geodata catalogue page before submission.
+@misc{narn,
+  author       = {{Bureau of Transportation Statistics}},
+  title        = {North American Rail Network Lines},
+  year         = {2026},
+  howpublished = {National Transportation Atlas Database, U.S. Department of
+                  Transportation. \url{https://services.arcgis.com/xOi1kZaI0eWDREZv/arcgis/rest/services/NTAD_North_American_Rail_Network_Lines/FeatureServer/0}},
+  note         = {Accessed September 2026}
+}
+
+% ======================================================================
+% ADDED September 24, 2026 — neural-network components, Chapter 8
+%
+% Standard references for the building blocks the architecture chapter
+% explains. Entered from the well-known published records, not yet checked
+% against a primary source in the way the August audit requires.
+% TODO: verify each (publisher page or arXiv) before submission.
+% ======================================================================
+
+@article{hornik1989universal,
+  author  = {Hornik, Kurt and Stinchcombe, Maxwell and White, Halbert},
+  title   = {Multilayer Feedforward Networks Are Universal Approximators},
+  journal = {Neural Networks},
+  volume  = {2},
+  number  = {5},
+  pages   = {359--366},
+  year    = {1989},
+  doi     = {10.1016/0893-6080(89)90020-8}
+}
+
+@inproceedings{he2016resnet,
+  author    = {He, Kaiming and Zhang, Xiangyu and Ren, Shaoqing and Sun, Jian},
+  title     = {Deep Residual Learning for Image Recognition},
+  booktitle = {Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pages     = {770--778},
+  year      = {2016}
+}
+
+@misc{ba2016layernorm,
+  author        = {Ba, Jimmy Lei and Kiros, Jamie Ryan and Hinton, Geoffrey E.},
+  title         = {Layer Normalization},
+  year          = {2016},
+  eprint        = {1607.06450},
+  archivePrefix = {arXiv},
+  primaryClass  = {stat.ML}
+}
+
+@article{elfwing2018silu,
+  author  = {Elfwing, Stefan and Uchibe, Eiji and Doya, Kenji},
+  title   = {Sigmoid-Weighted Linear Units for Neural Network Function Approximation in Reinforcement Learning},
+  journal = {Neural Networks},
+  volume  = {107},
+  pages   = {3--11},
+  year    = {2018},
+  doi     = {10.1016/j.neunet.2017.12.012}
+}
+
+@inproceedings{kingma2015adam,
+  author    = {Kingma, Diederik P. and Ba, Jimmy},
+  title     = {Adam: A Method for Stochastic Optimization},
+  booktitle = {International Conference on Learning Representations (ICLR)},
+  year      = {2015},
+  eprint    = {1412.6980},
+  archivePrefix = {arXiv}
+}

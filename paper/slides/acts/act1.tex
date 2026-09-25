@@ -1,0 +1,213 @@
+% ===========================================================================
+% ACT I -- Opening and Motivation  (Ch. 1)   Slides 1-8
+% Budget: 5 minutes.
+% ===========================================================================
+
+% --- 1. Title ------------------------------------------------------------
+{%
+\setbeamertemplate{footline}{}
+\begin{frame}[plain]
+  \vspace{0.2em}
+  \begin{center}
+    {\color{uniSlate}\footnotesize\textsc{Colorado State University Pueblo}
+     \\[0.15em] \scriptsize School of Engineering}
+
+    \vspace{0.9em}
+    \color{uniCrimson}\rule{0.55\textwidth}{2pt}
+
+    \vspace{0.8em}
+    {\color{uniNavy}\LARGE\bfseries A Graph Neural Surrogate for\\[0.25em]
+     Longitudinal Train Dynamics\par}
+
+    \vspace{0.5em}
+    {\color{uniSlate}\normalsize Toward Fuel-Optimal Control of Freight Consists\par}
+
+    \vspace{0.8em}
+    \color{uniCrimson}\rule{0.55\textwidth}{2pt}
+
+    \vspace{0.8em}
+    {\color{uniInk}\large George James\par}
+    \vspace{0.2em}
+    {\color{uniSlate}\footnotesize Master's Thesis Defense
+      \quad\textbullet\quad \today\par}
+
+    \vspace{0.6em}
+    \scalebox{0.80}{\consistBand}
+  \end{center}
+\end{frame}
+}
+
+% --- 2. What LTD are -----------------------------------------------------
+\begin{frame}{Background: What Longitudinal Train Dynamics Are}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.42\textwidth}
+      \begin{itemize}\setlength\itemsep{0.6em}
+        \item A freight train is a \textbf{distributed} mechanical system:
+              tens to hundreds of coupled masses.
+        \item Each vehicle feels the grade, curvature and resistance
+              at its \textbf{own} position on the route.
+        \item Couplers carry \alert{slack}: free travel before any force
+              is transmitted.
+        \item Quantities that matter in operation: \textbf{fuel},
+              \textbf{arrival time}, \textbf{peak coupler force}.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.56\textwidth}
+      \centering
+      \vspace{0.6em}
+      \scalebox{0.70}{\trainFBD}
+
+      \vspace{1.8em}
+      \begin{beamercolorbox}[wd=0.92\textwidth,sep=6pt,center]{block body}
+        $m_i\dot v_i \;=\; F_{\mathrm{ext},i} + F_{i-1} - F_i$
+      \end{beamercolorbox}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 3. Slack ------------------------------------------------------------
+\begin{frame}{Coupler Slack Makes the Problem Hard}
+  \centering
+  \scalebox{0.74}{%
+    \only<1>{\slackScene{1}}%
+    \only<2>{\slackScene{2}}%
+    \only<3>{\slackScene{3}}%
+  }
+
+  \vspace{0.3em}
+  \only<3>{%
+    \begin{minipage}{0.86\textwidth}\small
+      When slack closes suddenly, the force spike can break a coupler. The
+      same \alert{abrupt change in force} makes the numerical solver take very
+      small time steps, which is why the simulation is slow.
+    \end{minipage}}
+\end{frame}
+
+% --- 4. Published cost ---------------------------------------------------
+\begin{frame}{High-Fidelity Simulation Is Too Slow to Use in a Loop}
+  \vspace{0.3em}
+  \centering
+  \begin{tabular}{@{}llr@{}}
+    \toprule
+    \textbf{Task} & \textbf{Reported Cost} & \textbf{Source} \\
+    \midrule
+    Whole-trip LTD optimization, sequential  & $\sim$18 months
+      & {\footnotesize Wu et al.\ (2016)} \\
+    \quad the same study, run in parallel    & 11 days
+      & {\footnotesize Wu et al.\ (2016)} \\[0.35em]
+    Multibody vehicle--track simulation, 5\,km & $\sim$30 minutes
+      & {\footnotesize Zhou et al.\ (2023)} \\
+    \quad \textbf{learned surrogate, same 5\,km}
+      & \textcolor{uniCrimson}{\textbf{$\sim$8 seconds}}
+      & {\footnotesize Zhou et al.\ (2023)} \\
+    \bottomrule
+  \end{tabular}
+
+  \vspace{1.0em}
+  \begin{minipage}{0.88\textwidth}\small
+    At this cost, any task that needs thousands of simulations is impractical:
+    optimizing a driving plan, testing many scenarios, or running a controller.
+  \end{minipage}
+
+  \vspace{0.7em}
+  \srcline{Figures quoted as reported; not normalized to a common hardware baseline.}
+\end{frame}
+
+% --- 5. Our own benchmark ------------------------------------------------
+\begin{frame}{Our Reference Simulator Has the Same Problem}
+  \vspace{-0.2em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.58\textwidth}
+      \benchRegimeChart
+      \vspace{-0.2em}
+      \centering\benchLegend
+    \end{column}
+    \begin{column}{0.40\textwidth}
+      \vspace{0.2em}
+      {\small Runs completed within the 30-second budget, by consist size:}
+      \vspace{0.5em}
+
+      \begin{center}
+        \stattile{16 / 22}{$N = 11$ \quad median 4.0\,s}
+        \vspace{0.45em}
+        \stattile{4 / 22}{$N = 60$ \quad median 28.1\,s}
+        \vspace{0.45em}
+        \stattile{\textcolor{uniCrimson}{0 / 22}}{$N = 130$ \quad median $>$ 30\,s}
+      \end{center}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.1em}
+  \begin{minipage}{0.95\textwidth}\scriptsize
+    The slowest runs are the ones with frequent slack events, because each event
+    makes the solver shrink its step. These runs also produce the largest coupler
+    forces, which are the forces a safety limit is meant to control.
+  \end{minipage}
+\end{frame}
+
+% --- 6. Surrogate modelling ----------------------------------------------
+\begin{frame}{Surrogate Modeling}
+  \vspace{0.8em}
+  \centering
+  \scalebox{0.86}{\surrogateFlow}
+
+  \vspace{1.4em}
+  \begin{minipage}{0.90\textwidth}\small
+    A surrogate is a fast model trained on simulator output. It gives up a small,
+    measured amount of accuracy for a large gain in speed. It \textbf{does not
+    replace} the simulator: the simulator produces the training data and remains
+    the reference the surrogate is checked against.
+  \end{minipage}
+\end{frame}
+
+% --- 7. Question and contributions ---------------------------------------
+\begin{frame}{Thesis Question and Contributions}
+  \vspace{0.2em}
+  \begin{beamercolorbox}[wd=\textwidth,sep=8pt]{block body}
+    \centering\itshape
+    Can a train-agnostic, differentiable surrogate of longitudinal train
+    dynamics be accurate enough, and fast enough, to sit inside a fuel-optimal
+    control loop?
+  \end{beamercolorbox}
+
+  \vspace{0.8em}
+  \begin{enumerate}\setlength\itemsep{0.45em}
+    \item A \textbf{graph representation} of the train, with vehicles as nodes
+          and couplers as edges, that works for any train length.
+    \item A \textbf{GPU version of the reference simulator} that runs many
+          scenarios in parallel, and two 10,000-scenario datasets built with it.
+    \item A \textbf{graph network simulator} that advances the train by one
+          learned 0.25\,s step, replacing 50 evaluations of the physics
+          equations. It is compared against simple baselines, an MLP and a
+          transformer.
+    \item A \textbf{fuel-optimal control demonstration} (MPC) that uses the
+          surrogate's gradients to improve the driving plan.
+  \end{enumerate}
+\end{frame}
+
+% --- 8. Roadmap ----------------------------------------------------------
+\begin{frame}{Roadmap}
+  \vspace{0.4em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.46\textwidth}
+      \centering
+      \scalebox{0.88}{\actstrip{1}}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      \vspace{1.2em}
+      {\small
+      The talk follows the thesis in order.
+
+      \vspace{0.9em}
+      \textbf{Acts 3--6} cover the formulation, the reference simulator and the
+      dataset. These parts are complete and validated.
+
+      \vspace{0.9em}
+      \textbf{Acts 7--10} are the surrogate itself, its evaluation, and the
+      control demonstration it enables.
+
+      \vspace{0.9em}
+      This strip appears at the start of each act to show where we are.}
+    \end{column}
+  \end{columns}
+\end{frame}

@@ -1,0 +1,392 @@
+% ===========================================================================
+% ACT VI -- Tooling, the GPU Integrator, and the Dataset
+% (Ch. 6 + a chapter that does not exist yet)   Slides 49-62
+% Budget: 8 minutes. The strongest completed quantitative results in the deck.
+%
+% Slide 55 was CORRECTED 2026-09-22: the earlier version claimed the torch port
+% was a dependency of the model. It is not. See NOTES.md.
+% ===========================================================================
+
+\actdivider{6}{Tooling, GPU, and Data}
+
+% --- 49. Why a console ----------------------------------------------------
+\begin{frame}{Why a Graphical Console}
+  \vspace{0.6em}
+  \centering
+  \scalebox{0.70}{\raillabLayers}
+
+  \vspace{1.2em}
+  \begin{minipage}{0.90\textwidth}\small
+    Building a scenario means checking the train and its control commands
+    \textbf{visually} before trusting them, which is easier in a graphical tool
+    than in scripts. One design rule keeps the tool separate: \alert{only the
+    service layer calls the simulation code}. The simulator is unchanged by the
+    application and still runs without it.
+  \end{minipage}
+\end{frame}
+
+% --- 50. Consist screen ---------------------------------------------------
+\begin{frame}{RailLab: Building a Consist}
+  \vspace{0.2em}
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.63\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.74\textheight,keepaspectratio]%
+        {../thesis_imgs_7_15/raillab/raillab_consist.png}
+    \end{column}
+    \begin{column}{0.34\textwidth}
+      \small
+      A library of reusable car types, the ordered train under construction with
+      per-car overrides, and saved trains.
+
+      \vspace{0.8em}
+      The running summary reports car count, total mass, total length and
+      powered vehicles.
+
+      \vspace{0.8em}
+      Backing it: \textbf{10 car types} and roughly \textbf{500 saved
+      consists}.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 51. Controls screen --------------------------------------------------
+\begin{frame}{RailLab: Control Profiles and Distributed Power}
+  \vspace{0.2em}
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.56\textwidth}
+      \centering
+      \includegraphics[width=\linewidth,height=0.76\textheight,keepaspectratio]%
+        {../thesis_imgs_7_15/raillab/raillab_controls.png}
+    \end{column}
+    \begin{column}{0.41\textwidth}
+      \small
+      Randomization bounds and distributed-power settings, with a live preview
+      of the traction command per power role and the shared brake command.
+
+      \vspace{0.9em}
+      \alert{The offset between the three traction traces} is the configured lag
+      of the mid-train and rear helper units behind the head end.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 52. Results screen ---------------------------------------------------
+\begin{frame}{RailLab: A 126-Vehicle Consist, 120 Seconds}
+  \vspace{0.1em}
+  \centering
+  \includegraphics[width=0.74\linewidth,height=0.66\textheight,keepaspectratio]%
+    {../thesis_imgs_7_15/raillab/sim_results.png}
+
+  \vspace{0.3em}
+  \begin{minipage}{0.92\textwidth}\footnotesize
+    Every vehicle's speed above every coupler's force, on the same time axis.
+    \textbf{The spread between vehicle speeds} widens and narrows as slack runs in
+    and out, and the coupler forces below spread out at the same times.
+  \end{minipage}
+\end{frame}
+
+% --- 53. Driving regimes --------------------------------------------------
+\begin{frame}{Driving Regimes Instead of Random Commands}
+  \vspace{0.1em}
+  \centering
+  \scalebox{0.75}{\regimeGrid}
+
+  \vspace{0.1em}
+  \begin{minipage}{0.94\textwidth}\scriptsize
+    Fully random commands mostly describe driving no operator would do. Instead,
+    commands come from \textbf{11 typical manoeuvres}. A check after generation
+    ensures traction and brake are not applied together, with
+    \alert{0 violations across 5,500 profiles}. Two exceptions are intended:
+    \emph{stretch braking} applies brake against traction, and in an
+    \emph{emergency} the two overlap while traction fades.
+  \end{minipage}
+\end{frame}
+
+% --- 54. The NumPy simulator could not build this ------------------------
+\begin{frame}{The NumPy Simulator Could Not Build This Dataset}
+  \vspace{-0.2em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.58\textwidth}
+      \benchRegimeChart
+      \vspace{-0.2em}
+      \centering\benchLegend
+    \end{column}
+    \begin{column}{0.40\textwidth}
+      \vspace{0.2em}
+      {\footnotesize Two causes, both fixed by moving the simulator to the GPU:}
+      \vspace{0.4em}
+
+      \begin{itemize}\setlength\itemsep{0.45em}
+        \item[] {\footnotesize\textbf{1.} The equations used a
+              \textbf{Python loop} over vehicles: 130 slow iterations per
+              evaluation at $N = 130$.}
+        \item[] {\footnotesize\textbf{2.} Force changes abruptly at the edge of
+              the slack, so the solver shrank its step whenever \emph{any}
+              coupler crossed it. On a long train, that is
+              \alert{almost always}.}
+      \end{itemize}
+
+      \vspace{0.4em}
+      {\footnotesize Estimated cost of a 10,000-scenario corpus:
+       \textbf{$\sim$170 CPU-hours}.}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 55. Why the port was needed (CORRECTED) -----------------------------
+\begin{frame}{What the GPU Port Is Required For}
+  \vspace{0.5em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.47\textwidth}
+      \begin{beamercolorbox}[wd=\linewidth,sep=7pt]{block body}
+        {\small\textbf{Required for}}
+      \end{beamercolorbox}
+      \vspace{0.4em}
+      \begin{itemize}\setlength\itemsep{0.4em}
+        \item[] {\footnotesize \textbf{Data generation.} Without it the two
+              10,000-scenario corpora at $N$ up to 150 do not exist.}
+        \item[] {\footnotesize \textbf{The speedup measurement.} The surrogate's
+              speedup must be measured against a fast version of the simulator,
+              or the comparison is unfair.}
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.47\textwidth}
+      \begin{beamercolorbox}[wd=\linewidth,sep=7pt]{block title}
+        {\small\textbf{Not required for}}
+      \end{beamercolorbox}
+      \vspace{0.4em}
+      \begin{itemize}\setlength\itemsep{0.4em}
+        \item[] {\footnotesize \textbf{The model.} An earlier design evaluated
+              the physics equations $F_{\mathrm{phys}}$ in every training step.
+              That design was dropped, and \alert{training no longer evaluates
+              them}.}
+      \end{itemize}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.9em}
+  \begin{minipage}{0.94\textwidth}\footnotesize
+    The port also replaced the adaptive solver with fixed-step RK4. Every run
+    now takes $\lceil \text{duration}/\mathrm{d}t \rceil$ steps \emph{regardless
+    of the driving regime}, so a run can no longer stall and no timeout is
+    needed.
+  \end{minipage}
+\end{frame}
+
+% --- 56. Throughput -------------------------------------------------------
+\begin{frame}{Run Time Does Not Grow with Train Length}
+  \vspace{0.3em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.48\textwidth}
+      \throughputConsist
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \throughputBatch
+    \end{column}
+  \end{columns}
+
+  \vspace{0.6em}
+  \begin{minipage}{0.94\textwidth}\small
+    \alert{Going from 11 to 200 vehicles has no measurable effect on run time.}
+    Run time is set by the number of integration steps, each launched as one
+    pre-recorded GPU operation, not by the amount of arithmetic. The GPU is far
+    from fully used even at $B = 256$ scenarios and $N = 200$ vehicles.
+
+    \vspace{0.4em}
+    \textbf{Consequence for the thesis:} the long-train test set
+    (\texttt{ood\_size}, $N = 150$) can now be generated, so the claim that the
+    model works for any train length can be tested.
+  \end{minipage}
+\end{frame}
+
+% --- 57. Precision --------------------------------------------------------
+\begin{frame}{Numerical Precision, Measured}
+  \vspace{1.0em}
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.31\textwidth}\centering
+      \stattile{1.20$\times$}{Cost of double over single precision. The plan
+        assumed $\sim$64$\times$}
+    \end{column}
+    \begin{column}{0.31\textwidth}\centering
+      \stattile{60\%}{Of the 0.05 m/s velocity tolerance consumed by float32
+        rounding alone}
+    \end{column}
+    \begin{column}{0.31\textwidth}\centering
+      \stattile{f64 $\to$ f32}{Integrate in double, store in single}
+    \end{column}
+  \end{columns}
+
+  \vspace{1.6em}
+  \begin{minipage}{0.92\textwidth}\small
+    Run time is limited by \textbf{per-step overhead, not arithmetic}, so double
+    precision costs little here. The original plan assumed single precision;
+    measuring the cost reversed that choice.
+  \end{minipage}
+\end{frame}
+
+% --- 58. Two corpora ------------------------------------------------------
+\begin{frame}{Two Corpora}
+  \vspace{0.4em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.46\textwidth}
+      {\footnotesize
+      \begin{tabular}{@{}lll@{}}
+        \toprule
+         & \texttt{data/v1} & \texttt{data/v2} \\
+        \midrule
+        Curvature   & off        & \texttt{linear}, $k = 1.0$ \\
+        Scenarios   & 10,000     & 10,000 \\
+        On disk     & 12.4 GB    & 12.4 GB \\
+        Integration & 1336 s     & 1389 s \\
+        \bottomrule
+      \end{tabular}}
+
+      \vspace{0.8em}
+      {\footnotesize \texttt{v2} is the dataset used for training. \texttt{v1} is
+      kept so the effect of the curvature term can be \textbf{measured} on the
+      full dataset.}
+    \end{column}
+    \begin{column}{0.50\textwidth}
+      \begin{center}
+        \stattile{753 million}{Vehicle-Steps per Corpus}
+        \vspace{0.4em}
+        \stattile{$\sim$25 min}{Wall Clock, Against a $\sim$170 CPU-Hour Estimate}
+      \end{center}
+
+      \vspace{0.5em}
+      {\footnotesize $N$ 10--150 \textbullet\ $T$ 721--2,397 \textbullet\
+       duration 180--599 s \textbullet\ 500 consists \textbullet\ 11 regimes
+       \textbullet\ 5 corridors.}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 59. Schema decisions -------------------------------------------------
+\begin{frame}{Two Storage Decisions}
+  \vspace{0.2em}
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.53\textwidth}
+      \centering
+      \scalebox{0.74}{\diskLayout}
+    \end{column}
+    \begin{column}{0.44\textwidth}
+      \small
+      \textbf{Static and dynamic separated.} \texttt{H\_hist} would be
+      $[T,N,11]$, but seven channels never change, so they are stored once
+      rather than at every step.
+
+      \vspace{0.8em}
+      \textbf{Routes referenced, not duplicated.} A corridor is reused across
+      ${\sim}2{,}000$ scenarios.
+
+      \vspace{0.8em}
+      \alert{\texttt{edge\_dynamic} is stored} even though it can be computed
+      from the node state, so it can be used as a training target. Act~VII
+      shows why this matters.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 60. Splits -----------------------------------------------------------
+\begin{frame}{Splits}
+  \vspace{0.4em}
+  \centering
+  {\small
+  \begin{tabular}{@{}lrl@{}}
+    \toprule
+    \textbf{Split} & \textbf{$n$} & \textbf{Basis} \\
+    \midrule
+    \texttt{train}         & 4,043 & corridors line0 / line3 / line4 \\
+    \texttt{val}           &   517 & random 10\% of eligible \\
+    \texttt{test\_id}      &   496 & random 10\% of eligible \\
+    \texttt{ood\_size}     &   955 & consists flagged \texttt{ood\_size} \\
+    \texttt{ood\_grade}    & 1,999 & \texttt{route\_line2}, steepest \\
+    \texttt{ood\_corridor} & 1,990 & \texttt{route\_line5}, wholly held out \\
+    \midrule
+    \texttt{control\_eval} & \textcolor{uniCrimson}{\textbf{0}}
+                           & \textcolor{uniCrimson}{not buildable; see the caveats} \\
+    \bottomrule
+  \end{tabular}}
+
+  \vspace{1.0em}
+  \begin{minipage}{0.92\textwidth}\small
+    Corridor reservations are checked \textbf{before} the consist-level
+    \texttt{ood\_size} flag, so a reserved corridor cannot leak into training.
+  \end{minipage}
+\end{frame}
+
+% --- 61. Validation -------------------------------------------------------
+\begin{frame}{Validation, and One Finding That Changed Training}
+  \vspace{0.2em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.47\textwidth}
+      \vspace{0.5em}
+      \scalebox{0.86}{\fdConvergenceChart}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \vspace{0.2em}
+      \small
+      \textbf{Both datasets pass} three kinds of check. The most important:
+      the equations are re-implemented separately, using \emph{only} the
+      scenario file and its route file, so \alert{a bug in the original code
+      is not repeated in the check}.
+
+      \vspace{0.7em}
+      Each halving of the step size cuts the residual by ${\sim}4\times$, which
+      is second-order convergence. The residual therefore comes from the
+      finite-difference estimate, \textbf{not} from the stored trajectory.
+    \end{column}
+  \end{columns}
+
+  \vspace{0.4em}
+  \begin{minipage}{0.96\textwidth}\footnotesize
+    \textbf{Consequence for training:} the rate of change
+    $\mathrm{d}s/\mathrm{d}t$ should not be estimated from differences between
+    stored states, as the schema originally suggested. At 0.25\,s spacing that
+    error is \alert{as large as the signal the model must learn}. It is
+    recomputed from the equations instead.
+  \end{minipage}
+\end{frame}
+
+% --- 62. Caveats ----------------------------------------------------------
+\begin{frame}{Known Data-Quality Caveats}
+  \vspace{0.3em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.44\textwidth}
+      {\small\textbf{Overspeed, \texttt{data/v2}}}
+      \vspace{0.4em}
+
+      {\footnotesize
+      \begin{tabular}{@{}lr@{}}
+        \toprule
+        Never over the limit & 72.9\% \\
+        Over by $>$ 5 m/s    & 17.8\% \\
+        Over by $>$ 20 m/s   & 2.4\% \\
+        Worst                & 67.8 m/s \\
+        \bottomrule
+      \end{tabular}}
+
+      \vspace{0.7em}
+      {\footnotesize Related: \textbf{22\%} of scenarios roll backward faster
+       than 1\,m/s, for the same reason.}
+    \end{column}
+    \begin{column}{0.52\textwidth}
+      \small
+      The simulator \textbf{intentionally does not enforce} the speed limit
+      (\texttt{route\_vmax}). The limit is information for the controller, not a
+      physical force. A coasting train on a long downgrade can keep speeding up
+      for the full 600 s.
+
+      \vspace{0.7em}
+      Overspeed follows the grade data: 39\% of \texttt{route\_line2} scenarios
+      against 2\% of \texttt{route\_line5}. \alert{The physics is correct but the
+      input was flawed}; Act~V describes the fix.
+
+      \vspace{0.7em}
+      \textbf{These runs are kept.} Whether they are bad data or useful hard
+      cases is decided at training time. Keeping only runs within 5 m/s of the
+      limit retains ${\sim}81\%$.
+    \end{column}
+  \end{columns}
+\end{frame}

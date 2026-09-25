@@ -1,0 +1,160 @@
+% ===========================================================================
+% STYLE B -- "Institutional"
+% Traditional beamer: coloured frametitle bar, university identity, a footline
+% carrying title / section / slide number. Conservative and committee-safe.
+% Built on Metropolis's structural cleanliness is NOT the goal here -- this is
+% deliberately the familiar academic look.
+% Compile: pdflatex style_b_institutional.tex  (twice, for the overlays)
+% ===========================================================================
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\usetheme{default}
+\useinnertheme{rectangles}
+\usepackage[T1]{fontenc}
+\usepackage{sourcesanspro}
+\usepackage{amsmath,amssymb}
+\usepackage{tikz}
+\usepackage{appendixnumberbeamer}
+
+% --- palette --------------------------------------------------------------
+% NOTE: swap these for the official CSU Pueblo values before submission.
+\definecolor{uniNavy}{HTML}{15325B}
+\definecolor{uniCrimson}{HTML}{A6192E}
+\definecolor{uniSlate}{HTML}{5A6B7D}
+\definecolor{uniMist}{HTML}{E8ECF1}
+\definecolor{uniInk}{HTML}{1C2530}
+
+\setbeamercolor{normal text}{fg=uniInk,bg=white}
+\setbeamercolor{structure}{fg=uniNavy}
+\setbeamercolor{alerted text}{fg=uniCrimson}
+\setbeamercolor{frametitle}{bg=uniNavy,fg=white}
+\setbeamercolor{title}{fg=uniNavy}
+\setbeamercolor{block title}{bg=uniMist,fg=uniNavy}
+\setbeamercolor{block body}{bg=uniMist!45,fg=uniInk}
+\setbeamercolor{itemize item}{fg=uniCrimson}
+\setbeamercolor{itemize subitem}{fg=uniSlate}
+
+\setbeamerfont{frametitle}{size=\large,series=\bfseries}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{itemize item}{\raisebox{0.12em}{\rule{0.42em}{0.42em}}}
+\setbeamertemplate{itemize subitem}{\raisebox{0.14em}{\rule{0.30em}{0.30em}}}
+
+% frametitle bar with a crimson rule beneath it
+\setbeamertemplate{frametitle}{%
+  \nointerlineskip
+  \begin{beamercolorbox}[wd=\paperwidth,sep=0pt,leftskip=0.9em,rightskip=0.9em]{frametitle}
+    \vskip0.55em\usebeamerfont{frametitle}\insertframetitle\par\vskip0.45em
+  \end{beamercolorbox}%
+  \nointerlineskip\color{uniCrimson}\rule{\paperwidth}{2.2pt}
+}
+
+% footline: author -- short title -- slide number
+\setbeamertemplate{footline}{%
+  \leavevmode
+  \hbox{%
+    \begin{beamercolorbox}[wd=.30\paperwidth,ht=2.4ex,dp=1.1ex,leftskip=0.9em]{author in head/foot}%
+      \usebeamerfont{author in head/foot}\color{uniSlate}\scriptsize\insertshortauthor
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.55\paperwidth,ht=2.4ex,dp=1.1ex,center]{title in head/foot}%
+      \usebeamerfont{title in head/foot}\color{uniSlate}\scriptsize\insertshorttitle
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.15\paperwidth,ht=2.4ex,dp=1.1ex,rightskip=0.9em plus1fil]{date in head/foot}%
+      \hfill\color{uniSlate}\scriptsize\insertframenumber\,/\,\inserttotalframenumber
+    \end{beamercolorbox}}%
+  \vskip0pt
+}
+
+% --- figure colours -------------------------------------------------------
+\colorlet{fbCar}{uniMist}
+\colorlet{fbLoco}{uniNavy!18}
+\colorlet{fbAccent}{uniCrimson}
+\colorlet{fbLine}{uniNavy}
+\colorlet{fbMuted}{uniSlate}
+\input{figures.tex}
+
+\title[A Graph Neural Surrogate for Longitudinal Train Dynamics]%
+      {A Graph Neural Surrogate for\\Longitudinal Train Dynamics}
+\subtitle{Toward Fuel-Optimal Control of Freight Consists}
+\author[G. James]{George James}
+\institute{School of Engineering\\Colorado State University Pueblo}
+\date{\today}
+
+\begin{document}
+
+% --- Slide 1: title -------------------------------------------------------
+{%
+\setbeamertemplate{footline}{}
+\begin{frame}[plain]
+  \vspace{0.7em}
+  \begin{center}
+    {\color{uniSlate}\footnotesize\textsc{Colorado State University Pueblo}
+     \\[0.15em] \scriptsize School of Engineering}
+
+    \vspace{1.1em}
+    \color{uniCrimson}\rule{0.55\textwidth}{2pt}
+
+    \vspace{1.0em}
+    {\color{uniNavy}\LARGE\bfseries A Graph Neural Surrogate for\\[0.25em]
+     Longitudinal Train Dynamics\par}
+
+    \vspace{0.55em}
+    {\color{uniSlate}\normalsize Toward Fuel-Optimal Control of Freight Consists\par}
+
+    \vspace{1.0em}
+    \color{uniCrimson}\rule{0.55\textwidth}{2pt}
+
+    \vspace{1.1em}
+    {\color{uniInk}\large George James\par}
+    \vspace{0.3em}
+    {\color{uniSlate}\footnotesize Doctoral Defense \quad\textbullet\quad \today\par}
+  \end{center}
+\end{frame}
+}
+
+% --- Slide 2: what LTD actually are --------------------------------------
+\begin{frame}{Background: What Longitudinal Train Dynamics Are}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.42\textwidth}
+      \begin{itemize}\setlength\itemsep{0.6em}
+        \item A freight train is a \textbf{distributed} mechanical system:
+              tens to hundreds of coupled masses.
+        \item Each vehicle samples its \textbf{own} grade, curvature
+              and resistance along the route.
+        \item Couplers carry \alert{slack}: free travel before any force
+              is transmitted.
+        \item Quantities of operational interest: \textbf{fuel},
+              \textbf{arrival time}, \textbf{peak coupler force}.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.56\textwidth}
+      \centering
+      \vspace{0.6em}
+      \scalebox{0.70}{\trainFBD}
+
+      \vspace{1.8em}
+      \begin{beamercolorbox}[wd=0.92\textwidth,sep=6pt,center]{block body}
+        $m_i\dot v_i \;=\; F_{\mathrm{ext},i} + F_{i-1} - F_i$
+      \end{beamercolorbox}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- Slide 3: slack is the whole problem (3-step build) ------------------
+\begin{frame}{Slack Is the Whole Problem}
+  \centering
+  \scalebox{0.74}{%
+    \only<1>{\slackScene{1}}%
+    \only<2>{\slackScene{2}}%
+    \only<3>{\slackScene{3}}%
+  }
+
+  \vspace{0.3em}
+  \only<3>{%
+    \begin{minipage}{0.86\textwidth}\small
+      A run-in/run-out event is what breaks a knuckle --- and the deadband is a
+      \alert{derivative discontinuity} that forces an adaptive solver to
+      collapse its step size.
+    \end{minipage}}
+\end{frame}
+
+\end{document}
