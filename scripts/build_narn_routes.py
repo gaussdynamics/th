@@ -18,11 +18,20 @@ Because throughput depends on batch size, sampling per corridor (~5,000 points)
 is about 2x worse than sampling many corridors at once. Batching elevation
 across corridors is the obvious next optimization; it is not done here.
 
-The Phase A raw-elevation QA gate is applied **between** elevation and profile,
-not before: it reads sampled elevation, so it cannot gate ahead of the spend.
-A corridor whose raw elevation fails (more than 5% of 10 m steps jumping over
-1 m, the test that rejected `route_line2`) is recorded and skipped rather than
-smoothed into range -- smoothing bad data hides it.
+The Phase A elevation QA gate is applied **between** elevation and profile, not
+before: it reads sampled elevation, so it cannot gate ahead of the spend. A
+corridor that fails (more than 5% of 10 m steps jumping over 1 m, the test that
+rejected `route_line2`) is recorded and skipped rather than smoothed into range
+-- smoothing bad data hides it.
+
+The gate measures **structure-corrected** elevation, not the raw samples.
+3DEP returns the mountain surface above a tunnel bore, which is a cliff by the
+gate's measure, so gating raw rejected exactly the steep tunnelled corridors
+the ood_grade split wants. NARN carries no structure tags (see narn.py), so the
+tunnel flag `derive_profile` interpolates across is recovered from the
+elevation signature by `routegen.profile.detect_tunnel_runs` and attached to
+the feature here. The raw verdict is kept alongside as `elevation_qa_raw`, so
+a corridor that only passes because of the correction is visible in the report.
 
 Output, under ``--out``:
 

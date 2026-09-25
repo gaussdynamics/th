@@ -60,13 +60,27 @@ Three findings came out of the pilot that change what happens next:
    `routegen.profile.detect_tunnel_runs` now recovers the flag from the
    elevation signature, and the gate runs after the correction rather than
    before. No false positives on the four healthy committed corridors;
-   `route_line2` stays rejected at 18.5% against the 5% tolerance. Not yet
-   validated against real tagged tunnels — none of the committed corridors has
-   any. Full record in `ROUTE_PIPELINE_NOTE.md`.
+   `route_line2` stays rejected at 18.5% against the 5% tolerance.
+
+   **Validated on the mountain corridors 2026-09-24, and it rescued one of the
+   five, which is the right answer.** `up_moffat_tunnel_p3` now passes with
+   9.3 km flagged; sweeping the threshold, the run is 10.2 km with **+397 m**
+   of rise over the chord, invariant over a 2.3x range — the Moffat Tunnel is
+   9.98 km under ~400 m of mountain. The other four have clustered jumps
+   (60–70% in the densest decile) but **no coherent rise**, so they are not
+   bores: this note's earlier attribution of all five rejections to tunnels
+   held for one corridor only. The rest look like the `route_line2` pathology
+   (centreline drift, or 3DEP over rugged terrain) and need a different
+   remedy. Three sit just over the tolerance (5.8/6.7/6.9% vs 5%) and were
+   deliberately **not** rescued by raising it — that is the clip/tolerance
+   re-tune's call, on grade-field physicality rather than pass rate. Full
+   record in `ROUTE_PIPELINE_NOTE.md`.
 3. **The 2.5% clip binds on real mountain grade.** `bnsf_raton_p3_56km` sits at
    the clamp for 25.4% of its length, and Raton's ruling grade genuinely is
    ~3.5%. The clip was tuned on a corridor set with no real mountain grade.
-   Re-run `tune_grade_smoothing.py` on a mountain sample.
+   Re-run `tune_grade_smoothing.py` on a mountain sample. Reproduced
+   2026-09-24 at 23.0% at-clip. The re-tune should also settle whether
+   `RAW_JUMP_TOL` should be terrain-dependent — see item 2.
 
 Also corrected: the recorded **16,427 pts/s elevation rate does not
 reproduce** — 1,700 pts/s burst, 421 sustained, so the continental projection is

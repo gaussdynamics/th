@@ -603,14 +603,63 @@ lost that was previously had — but it does bias the grade field, and catching
 it would need a structure source rather than the elevation signature. Pinned by
 a test so the property is deliberate.
 
-**Not yet validated against tagged tunnels.** The obvious check — run the
-detector on corridors with real OSM `is_tunnel` arrays and see whether it
-recovers them — cannot be done on what is committed: all five Pueblo corridors
-have **zero** tunnel samples (they carry 11–307 bridge samples and no tunnels).
-So the evidence here is a clean negative control plus synthetic positives, not
-a positive control on real tunnels. The first real test is the mountain sample
-on the workstation, where `up_moffat_tunnel_p0`'s 5.7 km stretch either comes
-back as one run or does not.
+**No tagged-tunnel validation is possible on what is committed:** all five
+Pueblo corridors have **zero** tunnel samples (11–307 bridge samples, no
+tunnels). So the committed evidence is a clean negative control plus synthetic
+positives. The positive control had to come from the mountain corridors.
+
+#### Run on the five rejected mountain corridors, 2026-09-24
+
+`build_narn_routes.py --only` on the corridors this note reported as
+tunnel-rejected, plus Raton p3 and Cajon p1 as passing controls:
+
+| corridor | raw → corrected | flagged | verdict |
+|---|---|---|---|
+| **up_moffat_tunnel_p3_51km** | — | **9.3 km** | **now passes**, rms 1.57% |
+| up_moffat_tunnel_p0_56km | 6.0% → 5.8% | 0.5 km | still rejected |
+| up_moffat_tunnel_p4_55km | 8.5% → 6.9% | 1.6 km | still rejected |
+| rrrr_tennessee_pass_p0_39km | 6.7% → 6.7% | 0.0 km | still rejected |
+| rrrr_tennessee_pass_p1_39km | 16.0% → 14.3% | 2.0 km | still rejected |
+
+**One of five, and that is the right answer rather than a shortfall.** Sweeping
+the density threshold over 0.15–0.35 and allowing runs to be merged across
+gaps, the candidate runs and their rise over the portal-to-portal chord are:
+
+| corridor | best run | rise | stable over thresholds |
+|---|---|---|---|
+| **moffat_p3** | **10.2 km** | **+397 m** | yes — every threshold gives ~10 km, +398 m |
+| moffat_p0 | 1.9 km | +8 m | no — nothing at 0.15/0.20, 0.4 km at 0.35 |
+| moffat_p4 | — | — | nothing at any threshold |
+| tennessee_pass_p0 | — | — | nothing at any threshold |
+| tennessee_pass_p1 | 6.5 km | +6 m | only at the loosest thresholds |
+
+The Moffat Tunnel is **9.98 km** long under roughly 400 m of mountain. The
+detector recovered 10.2 km and +397 m with no prior on where to look, and the
+answer is invariant over a 2.3x range of density threshold. That is the
+positive control.
+
+The other four are the opposite case: their jumps *are* clustered (60–70% of
+all jumps fall in the densest 10% of corridor length) but carry **no coherent
+rise**. A 6.5 km bore with 6 m of rock over it is not a bore. The signed
+condition is declining them correctly.
+
+**So this note's earlier attribution was too broad.** It read the signature on
+one corridor and attributed all five rejections to tunnels. That holds for
+`up_moffat_tunnel_p3` and is unsupported for the rest, which look instead like
+the `route_line2` pathology — centreline drift off the alignment, or 3DEP over
+rugged terrain — and need a different remedy than structure correction.
+
+**Deliberately not done:** three of the four sit just over the line (5.8%,
+6.7%, 6.9% against a 5% tolerance) and would pass if `RAW_JUMP_TOL` were
+raised. There is even a physical argument for a terrain-dependent tolerance —
+on a 30% mountainside a 3 m horizontal positioning error is ~1 m of vertical
+error, and the 5% was tuned on plains corridors. But raising a threshold until
+rejections disappear is the Phase A mistake. It belongs in the clip/tolerance
+re-tune, decided on whether the resulting grade field is physical, not on the
+pass rate.
+
+Incidentally the clip finding reproduced: **Raton p3 at-clip 23.0%** against
+the 25.4% recorded earlier, and Cajon p1 at 0.3% with rms 1.92%.
 
 #### The 2.5% clip binds on real mountain grade
 
