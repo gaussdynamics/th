@@ -1,0 +1,435 @@
+% ===========================================================================
+% charts.tex -- pgfplots charts, drawn natively so fonts match the deck.
+%
+% Data provenance is recorded per chart. Anything sourced from a report rather
+% than regenerated here is flagged in NOTES.md for a rebuild on the workstation.
+% ===========================================================================
+
+\pgfplotsset{
+  instbar/.style={
+    width=0.92\linewidth, height=4.3cm,
+    xbar, bar width=11pt,
+    axis lines=left,
+    axis line style={draw=chartGrid,line width=0.7pt},
+    tick align=outside, tick style={draw=chartGrid},
+    xmajorgrids, grid style={draw=chartGrid,line width=0.5pt},
+    ymajorgrids=false,
+    xlabel style={font=\scriptsize,text=uniSlate},
+    ylabel style={font=\scriptsize,text=uniSlate},
+    tick label style={font=\scriptsize,text=uniSlate},
+    nodes near coords style={font=\scriptsize,text=uniInk,/pgf/number format/fixed},
+    enlarge y limits=0.10,
+    clip=false,
+  }
+}
+
+% ---------------------------------------------------------------------------
+% \benchRegimeChart
+% Median wall-clock per driving regime, NumPy reference simulator, 120 s of
+% simulated time, 30 s budget per run.
+% Source: NEXT_STEPS.md (sweep of 66 runs, scripts/bench_scenarios.py).
+% Only 5 of the 11 regimes have published medians; the remaining 6 need the
+% raw sweep output, which lives on the workstation. See NOTES.md.
+% ---------------------------------------------------------------------------
+\newcommand{\benchRegimeChart}{%
+\begin{tikzpicture}
+  \begin{axis}[instbar,
+      xlabel={Median Wall Clock per Run (s)},
+      xmin=0, xmax=36,
+      xtick={0,5,10,15,20,25,30},
+      symbolic y coords={Power to Coast, Cruise, Notch Up,
+                         Throttle Modulation, Dynamic Brake Descent},
+      ytick={Power to Coast, Cruise, Notch Up,
+             Throttle Modulation, Dynamic Brake Descent},
+      nodes near coords,
+      point meta=explicit symbolic,
+      % Both series share the same y slots, so neither may be auto-shifted.
+      every axis plot/.append style={bar shift=0pt},
+    ]
+    % Smooth regimes
+    \addplot[draw=none,fill=chartBlue] coordinates {
+      (3.9,Power to Coast)     [3.9]
+      (4.1,Cruise)             [4.1]
+      (4.1,Notch Up)           [4.1]
+    };
+    % Slack-action regimes
+    \addplot[draw=none,fill=chartRed] coordinates {
+      (15.8,Throttle Modulation)    [15.8]
+      (27.3,Dynamic Brake Descent)  [27.3]
+    };
+    % The budget the sweep imposed
+    \draw[uniSlate,line width=0.8pt,dashed]
+      (axis cs:30,Power to Coast) -- (axis cs:30,Dynamic Brake Descent);
+    % Inside the plot, in the white space right of the short bars, so it
+    % cannot spill into the neighbouring column.
+    \node[font=\scriptsize,text=uniSlate,rotate=90,anchor=south,inner sep=3pt]
+      at (axis cs:29.5,Cruise) {30\,s Budget};
+  \end{axis}
+\end{tikzpicture}}
+
+% ---------------------------------------------------------------------------
+% \benchLegend -- the two-category legend for the chart above. Kept separate
+% so it can sit under the plot rather than floating inside it.
+% ---------------------------------------------------------------------------
+\newcommand{\benchLegend}{%
+  \begin{tikzpicture}[baseline]
+    \fill[chartBlue] (0,0) rectangle ++(0.30,0.22);
+  \end{tikzpicture}~{\scriptsize Smooth Regimes}\quad
+  \begin{tikzpicture}[baseline]
+    \fill[chartRed] (0,0) rectangle ++(0.30,0.22);
+  \end{tikzpicture}~{\scriptsize Slack-Action Regimes}}
+
+% ---------------------------------------------------------------------------
+% \brakeBlendChart -- why the brake term is tanh-blended rather than sgn.
+% Slide 24. v_brake_eps = 0.5 m/s for legibility; the code default is smaller.
+% ---------------------------------------------------------------------------
+\newcommand{\brakeBlendChart}{%
+\begin{tikzpicture}
+  \begin{axis}[
+      width=0.95\linewidth, height=4.1cm,
+      axis lines=middle,
+      axis line style={draw=chartGrid,line width=0.7pt},
+      xlabel={Velocity $v$ (m/s)},
+      xlabel style={font=\scriptsize,text=uniSlate,at={(axis description cs:0.5,-0.14)}},
+      tick label style={font=\scriptsize,text=uniSlate},
+      xmin=-3, xmax=3, ymin=-1.45, ymax=1.45,
+      ytick={-1,0,1}, xtick={-2,0,2},
+      legend style={font=\scriptsize,draw=chartGrid,fill=white,
+                    at={(0.02,0.98)},anchor=north west},
+      clip=false]
+    % the first segment carries no legend entry, or it would consume one
+    \addplot[chartRed,line width=1.6pt,domain=-3:-0.001,samples=2,forget plot] {-1};
+    \addplot[chartRed,line width=1.6pt,domain=0.001:3,samples=2] {1};
+    \addlegendentry{$\mathrm{sgn}(v)$}
+    \addplot[chartBlue,line width=1.8pt,domain=-3:3,samples=160] {tanh(x/0.5)};
+    \addlegendentry{$\tanh(v/\varepsilon)$}
+  \end{axis}
+\end{tikzpicture}}
+
+% ---------------------------------------------------------------------------
+% \curvatureChart -- Roeckl's discontinuity at R = 300 m against the smooth
+% AREMA (linear) law. Force per kilogram of consist mass.
+% Roeckl: w_c = 650/(R-55) N/kN for R >= 300, 500/(R-30) below; x g.
+% AREMA : ~6.8 kappa N/kg = 6.8/R.   Source: CURVATURE_MODEL_NOTE.md
+% ---------------------------------------------------------------------------
+\newcommand{\curvatureChart}{%
+\begin{tikzpicture}
+  \begin{axis}[
+      width=0.95\linewidth, height=4.1cm,
+      axis lines=left,
+      axis line style={draw=chartGrid,line width=0.7pt},
+      xlabel={Curve Radius $R$ (m)}, ylabel={Resistance (N/kg)},
+      xlabel style={font=\scriptsize,text=uniSlate},
+      ylabel style={font=\scriptsize,text=uniSlate},
+      tick label style={font=\scriptsize,text=uniSlate},
+      xmin=200, xmax=1200, ymin=0, ymax=0.040,
+      ymajorgrids, grid style={draw=chartGrid,line width=0.5pt},
+      legend style={font=\scriptsize,draw=chartGrid,fill=white,
+                    at={(0.98,0.98)},anchor=north east},
+      clip=false]
+    \addplot[chartRed,line width=1.6pt,domain=200:299.9,samples=60,forget plot] {4.905/(x-30)};
+    \addplot[chartRed,line width=1.6pt,domain=300:1200,samples=120] {6.377/(x-55)};
+    \addlegendentry{R\"ockl (Published)}
+    \addplot[chartBlue,line width=1.8pt,domain=200:1200,samples=120] {6.8/x};
+    \addlegendentry{AREMA Linear (Used)}
+    % the jump
+    \draw[uniSlate,line width=0.9pt,dashed] (axis cs:300,0.0182) -- (axis cs:300,0.0260);
+    % No text label: the legend fills the upper right and the slide caption
+    % already names the discontinuity. The dashed riser carries it.
+    \addplot[chartRed,only marks,mark=*,mark size=1.6pt,forget plot]
+      coordinates {(300,0.0182) (300,0.0260)};
+  \end{axis}
+\end{tikzpicture}}
+
+% ---------------------------------------------------------------------------
+% \couplerLawChart -- the constitutive law F(delta) with its slack deadband.
+% Parameters are simulator2/constants.py defaults:
+%   slack_half 0.02 m, k_draft 9.0e6 N/m, k_buff 12.0e6 N/m.
+% Damping is omitted so the static law is legible. Slide 31, backup B7.
+% ---------------------------------------------------------------------------
+\newcommand{\couplerLawChart}{%
+\begin{tikzpicture}
+  \begin{axis}[
+      width=0.92\linewidth, height=5.4cm,
+      axis lines=middle,
+      axis line style={draw=uniSlate,line width=0.7pt},
+      xlabel={$\delta$ (mm)},
+      xlabel style={font=\scriptsize,text=uniSlate,anchor=north west},
+      tick label style={font=\scriptsize,text=uniSlate},
+      xmin=-56, xmax=56, ymin=-480, ymax=360,
+      xtick={-40,-20,20,40}, ytick={-400,-200,200},
+      clip=false]
+    % deadband marked with rules rather than a fill: a fill here covers the
+    % axis and its tick labels
+    \draw[uniSlate,line width=0.7pt,dashed] (axis cs:-20,-480) -- (axis cs:-20,360);
+    \draw[uniSlate,line width=0.7pt,dashed] (axis cs: 20,-480) -- (axis cs: 20,360);
+    % upper left, clear of the y tick labels and of both branches
+    \node[font=\scriptsize,text=uniSlate,anchor=west]
+      at (axis cs:-53,255) {Slack Deadband $\pm 20$\,mm};
+    \node[font=\scriptsize,text=uniSlate,anchor=west] at (axis cs:4,330) {$F$ (kN)};
+
+    \addplot[chartRed,line width=1.9pt,domain=-53:-20,samples=2]
+      {12000*(x+20)/1000};
+    \addplot[uniSlate!60,line width=1.9pt,domain=-20:20,samples=2] {0};
+    \addplot[chartBlue,line width=1.9pt,domain=20:53,samples=2]
+      {9000*(x-20)/1000};
+
+    \node[font=\scriptsize,text=chartBlue,anchor=west] at (axis cs:25,285)
+      {Draft, $k = 9$\,MN/m};
+    \node[font=\scriptsize,text=chartRed,anchor=south west] at (axis cs:-52,-450)
+      {Buff, $k = 12$\,MN/m};
+  \end{axis}
+\end{tikzpicture}}
+
+% ---------------------------------------------------------------------------
+% \couplerLawChartPlain -- same law, no text annotations. For use as a small
+% inset, where the full version's labels crowd. Slide 31.
+% ---------------------------------------------------------------------------
+\newcommand{\couplerLawChartPlain}{%
+\begin{tikzpicture}
+  \begin{axis}[
+      width=0.92\linewidth, height=5.0cm,
+      axis lines=middle,
+      axis line style={draw=uniSlate,line width=0.7pt},
+      xlabel={$\delta$ (mm)}, ylabel={$F$ (kN)},
+      xlabel style={font=\scriptsize,text=uniSlate,anchor=north west},
+      ylabel style={font=\scriptsize,text=uniSlate,anchor=south west},
+      tick label style={font=\scriptsize,text=uniSlate},
+      xmin=-56, xmax=56, ymin=-480, ymax=360,
+      xtick={-40,40}, ytick={-400,200},
+      clip=false]
+    \draw[uniSlate,line width=0.7pt,dashed] (axis cs:-20,-480) -- (axis cs:-20,360);
+    \draw[uniSlate,line width=0.7pt,dashed] (axis cs: 20,-480) -- (axis cs: 20,360);
+    \addplot[chartRed,line width=1.9pt,domain=-53:-20,samples=2] {12000*(x+20)/1000};
+    \addplot[uniSlate!60,line width=1.9pt,domain=-20:20,samples=2] {0};
+    \addplot[chartBlue,line width=1.9pt,domain=20:53,samples=2] {9000*(x-20)/1000};
+  \end{axis}
+\end{tikzpicture}}
+
+% ---------------------------------------------------------------------------
+% \rawElevQAChart -- the raw-elevation QA gate that rejected route_line2.
+% Share of 10 m steps whose elevation jumps more than a metre.
+% Source: ROUTE_PIPELINE_NOTE.md (branch surrogate-gns).
+% ---------------------------------------------------------------------------
+\newcommand{\rawElevQAChart}{%
+\begin{tikzpicture}
+  \begin{axis}[instbar,
+      width=0.94\linewidth, height=4.2cm,
+      xlabel={Share of 10\,m Steps Jumping $>$ 1\,m (\%)},
+      xmin=0, xmax=23, xtick={0,5,10,15,20},
+      symbolic y coords={Line 5, Line 4, Line 3, Line 0, Line 2},
+      ytick={Line 5, Line 4, Line 3, Line 0, Line 2},
+      nodes near coords, point meta=explicit symbolic,
+      every axis plot/.append style={bar shift=0pt},
+      enlarge y limits=0.14]
+    \addplot[draw=none,fill=chartBlue] coordinates {
+      (1.0,Line 5) [1.0]
+      (1.1,Line 4) [1.1]
+      (1.5,Line 3) [1.5]
+      (0.7,Line 0) [0.7]
+    };
+    \addplot[draw=none,fill=chartRed] coordinates {
+      (19.3,Line 2) [19.3]
+    };
+    \draw[uniSlate,line width=0.9pt,dashed]
+      (axis cs:5,Line 5) -- (axis cs:5,Line 2);
+    \node[font=\scriptsize,text=uniSlate,rotate=90,anchor=south,inner sep=3pt]
+      at (axis cs:5,Line 4) {QA Gate};
+  \end{axis}
+\end{tikzpicture}}
+
+% ---------------------------------------------------------------------------
+% \routeFieldsChart -- the three fields the simulator consumes, for the
+% corrected Line 0 corridor. Data: route_generator/route_profiles_v3/ on
+% branch surrogate-gns, downsampled to figures/route_line0_fields.dat.
+% ---------------------------------------------------------------------------
+\newcommand{\routeFieldsChart}{%
+\begin{tikzpicture}
+  \begin{groupplot}[
+      group style={group size=1 by 3, vertical sep=0.34cm,
+                   x descriptions at=edge bottom},
+      width=0.96\linewidth, height=1.95cm,
+      axis line style={draw=chartGrid,line width=0.7pt},
+      tick label style={font=\scriptsize,text=uniSlate},
+      ylabel style={font=\scriptsize,text=uniSlate},
+      xlabel style={font=\scriptsize,text=uniSlate},
+      ymajorgrids, grid style={draw=chartGrid,line width=0.4pt},
+      xmin=0, xmax=49.2, scale only axis]
+
+    \nextgroupplot[ylabel={Grade (\%)}, ymin=-1.4, ymax=2.9, ytick={-1,0,1,2}]
+      \addplot[chartBlue,line width=0.8pt] table[x index=0,y index=1]
+        {figures/route_line0_fields.dat};
+      \draw[chartRed,line width=0.7pt,dashed]
+        (axis cs:0,2.5) -- (axis cs:49.2,2.5);
+      \node[font=\scriptsize,text=chartRed,anchor=north east,inner sep=1.5pt]
+        at (axis cs:48.6,2.44) {Clip 2.5\%};
+
+    \nextgroupplot[ylabel={$\kappa$ (1/m)}, ymin=-0.0045, ymax=0.0045,
+                   ytick={-0.003,0,0.003},
+                   yticklabel style={/pgf/number format/fixed,
+                                     /pgf/number format/precision=3}]
+      \addplot[uniSlate,line width=0.8pt] table[x index=0,y index=2]
+        {figures/route_line0_fields.dat};
+
+    \nextgroupplot[ylabel={$v_{\max}$ (km/h)}, xlabel={Chainage (km)},
+                   ymin=0, ymax=75, ytick={0,30,60}]
+      \addplot[chartBlue,line width=0.9pt,const plot] table[x index=0,y index=3]
+        {figures/route_line0_fields.dat};
+  \end{groupplot}
+\end{tikzpicture}}
+
+% ---------------------------------------------------------------------------
+% \regimeGrid -- the eleven manoeuvre archetypes, generated from
+% simulator2/driving_regimes.py at seed 7 into figures/regime_*.dat.
+% Slide 53. Traction (head end) and brake, both normalised 0-1.
+% ---------------------------------------------------------------------------
+\newcommand{\regimeGrid}{%
+\begin{tikzpicture}
+  \begin{groupplot}[
+      group style={group size=4 by 3, horizontal sep=0.60cm,
+                   vertical sep=0.98cm},
+      width=3.05cm, height=1.58cm, scale only axis,
+      axis line style={draw=chartGrid,line width=0.5pt},
+      tick label style={font=\tiny,text=uniSlate},
+      title style={font=\scriptsize,text=uniInk,yshift=-2pt},
+      xmin=0, xmax=120, ymin=-0.06, ymax=1.06,
+      xtick={0,60,120}, ytick={0,1},
+      ymajorgrids, grid style={draw=chartGrid,line width=0.4pt}]
+
+    \nextgroupplot[title={Startup}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_startup.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_startup.dat};
+    \nextgroupplot[title={Notch Up}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_notch_up.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_notch_up.dat};
+    \nextgroupplot[title={Cruise}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_cruise.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_cruise.dat};
+    \nextgroupplot[title={Throttle Mod.}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_throttle_modulation.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_throttle_modulation.dat};
+    \nextgroupplot[title={Power to Coast}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_power_to_coast.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_power_to_coast.dat};
+    \nextgroupplot[title={Coast}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_coast.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_coast.dat};
+    \nextgroupplot[title={Coast to Brake}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_coast_to_brake.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_coast_to_brake.dat};
+    \nextgroupplot[title={Dyn.\ Brake Descent}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_dynamic_brake_descent.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_dynamic_brake_descent.dat};
+    \nextgroupplot[title={Brake Release}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_brake_release.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_brake_release.dat};
+    \nextgroupplot[title={Stretch Brake}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_stretch_brake.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_stretch_brake.dat};
+    \nextgroupplot[title={Emergency}]
+      \addplot[chartBlue,line width=0.9pt] table[x index=0,y index=1]
+        {figures/regime_emergency.dat};
+      \addplot[chartRed,line width=0.9pt] table[x index=0,y index=2]
+        {figures/regime_emergency.dat};
+
+    % twelfth cell carries the legend
+    \nextgroupplot[hide axis, xmin=0, xmax=1, ymin=0, ymax=1]
+      \node[font=\scriptsize,text=uniSlate,anchor=west] at (axis cs:0,0.64)
+        {\textcolor{chartBlue}{\rule{0.9em}{1.8pt}}~~Traction};
+      \node[font=\scriptsize,text=uniSlate,anchor=west] at (axis cs:0,0.34)
+        {\textcolor{chartRed}{\rule{0.9em}{1.8pt}}~~Brake};
+  \end{groupplot}
+\end{tikzpicture}}
+
+% ---------------------------------------------------------------------------
+% \throughputCharts -- wall clock is flat in consist size and falls as 1/batch.
+% Source: TORCH_PORT_REPORT.md, RTX 4090, 120 s simulated, dt = 0.02.
+% ---------------------------------------------------------------------------
+\newcommand{\throughputConsist}{%
+\begin{tikzpicture}
+  \begin{axis}[
+      width=0.95\linewidth, height=4.0cm,
+      axis lines=left, axis line style={draw=chartGrid,line width=0.7pt},
+      xlabel={Consist Size $N$}, ylabel={ms / Scenario},
+      xlabel style={font=\scriptsize,text=uniSlate},
+      ylabel style={font=\scriptsize,text=uniSlate},
+      tick label style={font=\scriptsize,text=uniSlate},
+      xmin=0, xmax=215, ymin=0, ymax=80,
+      xtick={11,60,130,200}, ytick={0,20,40,60,80},
+      ymajorgrids, grid style={draw=chartGrid,line width=0.5pt}]
+    \addplot[chartBlue,line width=1.6pt,mark=*,mark size=1.9pt]
+      coordinates {(11,58.1) (30,59.4) (60,58.9) (130,58.0) (200,58.7)};
+  \end{axis}
+\end{tikzpicture}}
+
+\newcommand{\throughputBatch}{%
+\begin{tikzpicture}
+  \begin{loglogaxis}[
+      width=0.95\linewidth, height=4.0cm,
+      axis lines=left, axis line style={draw=chartGrid,line width=0.7pt},
+      xlabel={Batch Size $B$}, ylabel={ms / Scenario},
+      xlabel style={font=\scriptsize,text=uniSlate},
+      ylabel style={font=\scriptsize,text=uniSlate},
+      tick label style={font=\scriptsize,text=uniSlate},
+      xmin=0.8, xmax=340, ymin=10, ymax=5000,
+      xtick={1,4,16,64,256}, xticklabels={1,4,16,64,256},
+      ymajorgrids, grid style={draw=chartGrid,line width=0.5pt}]
+    \addplot[chartRed,line width=1.6pt,mark=*,mark size=1.9pt]
+      coordinates {(1,3281.9) (4,907.1) (16,227.9) (32,114.5)
+                   (64,58.0) (128,29.6) (256,15.7)};
+  \end{loglogaxis}
+\end{tikzpicture}}
+
+% ---------------------------------------------------------------------------
+% \fdConvergenceChart -- the validator's residual is the finite difference,
+% not the trajectory: clean second-order convergence in the output spacing.
+% Source: DATASET_BUILD_REPORT.md (data/v2, N = 31, cruise, route_line2).
+% ---------------------------------------------------------------------------
+\newcommand{\fdConvergenceChart}{%
+\begin{tikzpicture}
+  \begin{loglogaxis}[
+      width=0.92\linewidth, height=4.8cm,
+      axis lines=left, axis line style={draw=chartGrid,line width=0.7pt},
+      xlabel={Output Spacing $\Delta t_{\mathrm{out}}$ (s)},
+      ylabel={Max Residual},
+      xlabel style={font=\scriptsize,text=uniSlate},
+      ylabel style={font=\scriptsize,text=uniSlate},
+      tick label style={font=\scriptsize,text=uniSlate},
+      xmin=0.008, xmax=0.32, ymin=2e-5, ymax=0.5,
+      ymajorgrids, grid style={draw=chartGrid,line width=0.5pt},
+      legend style={font=\scriptsize,draw=chartGrid,fill=white,
+                    at={(0.03,0.97)},anchor=north west}]
+    \addplot[chartRed,line width=1.5pt,mark=*,mark size=1.9pt]
+      coordinates {(0.25,1.935e-1) (0.10,5.571e-2) (0.05,1.632e-2)
+                   (0.02,2.471e-3) (0.01,6.126e-4)};
+    \addlegendentry{$|\mathrm{d}v/\mathrm{d}t|$ (m/s$^2$)}
+    \addplot[chartBlue,line width=1.5pt,mark=*,mark size=1.9pt]
+      coordinates {(0.25,2.105e-2) (0.10,4.474e-3) (0.05,1.131e-3)
+                   (0.02,1.863e-4) (0.01,4.588e-5)};
+    \addlegendentry{$|\mathrm{d}x/\mathrm{d}t|$ (m/s)}
+    \addplot[uniSlate,line width=0.8pt,dashed,forget plot]
+      coordinates {(0.01,3.2e-4) (0.25,2.0e-1)};
+    \node[font=\scriptsize,text=uniSlate,anchor=north west]
+      at (axis cs:0.055,3.0e-4) {Slope 2};
+  \end{loglogaxis}
+\end{tikzpicture}}

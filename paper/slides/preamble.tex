@@ -1,0 +1,116 @@
+% ===========================================================================
+% preamble.tex -- "Institutional" deck style.
+% Navy frametitle bar with a crimson rule; footline carrying author, short
+% title and slide number. Conservative, committee-facing.
+% ===========================================================================
+
+\usetheme{default}
+\useinnertheme{rectangles}
+\usepackage[T1]{fontenc}
+\usepackage{sourcesanspro}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+% Ragged-right fixed-width column: justified wraps look bad at slide size.
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\usepackage{appendixnumberbeamer}
+\usepgfplotslibrary{groupplots}
+\pgfplotsset{compat=1.18}
+
+% ---------------------------------------------------------------------------
+% Palette
+% NOTE: swap uniNavy / uniCrimson for the official CSU Pueblo values.
+% ---------------------------------------------------------------------------
+\definecolor{uniNavy}{HTML}{15325B}      % chrome, headings, rules
+\definecolor{uniCrimson}{HTML}{A6192E}   % emphasis, accent rule
+\definecolor{uniSlate}{HTML}{5A6B7D}     % secondary text
+\definecolor{uniMist}{HTML}{E8ECF1}      % tinted surfaces
+\definecolor{uniInk}{HTML}{1C2530}       % body text
+
+% Chart fills. These are LIGHTER steps of the same two hues: the deep navy and
+% crimson above are text colours and fail the categorical lightness/chroma
+% checks as fills. Validated pass on all six checks (worst adjacent CVD dE 21.9
+% deutan, 32.2 tritan; normal-vision dE 28.0).
+\definecolor{chartBlue}{HTML}{3B7DBF}
+\definecolor{chartRed}{HTML}{C0392B}
+\definecolor{chartGrid}{HTML}{C9D2DB}
+
+\setbeamercolor{normal text}{fg=uniInk,bg=white}
+\setbeamercolor{structure}{fg=uniNavy}
+\setbeamercolor{alerted text}{fg=uniCrimson}
+\setbeamercolor{frametitle}{bg=uniNavy,fg=white}
+\setbeamercolor{title}{fg=uniNavy}
+\setbeamercolor{block title}{bg=uniMist,fg=uniNavy}
+\setbeamercolor{block body}{bg=uniMist!45,fg=uniInk}
+\setbeamercolor{itemize item}{fg=uniCrimson}
+\setbeamercolor{itemize subitem}{fg=uniSlate}
+
+\setbeamerfont{frametitle}{size=\large,series=\bfseries}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{itemize item}{\raisebox{0.12em}{\rule{0.42em}{0.42em}}}
+\setbeamertemplate{itemize subitem}{\raisebox{0.14em}{\rule{0.30em}{0.30em}}}
+
+% --- frametitle bar, with a crimson rule beneath --------------------------
+\setbeamertemplate{frametitle}{%
+  \nointerlineskip
+  \begin{beamercolorbox}[wd=\paperwidth,sep=0pt,leftskip=0.9em,rightskip=0.9em]{frametitle}
+    \vskip0.55em\usebeamerfont{frametitle}\insertframetitle\par\vskip0.45em
+  \end{beamercolorbox}%
+  \nointerlineskip\color{uniCrimson}\rule{\paperwidth}{2.2pt}
+}
+
+% --- footline: author -- short title -- slide number ----------------------
+\setbeamertemplate{footline}{%
+  \leavevmode
+  \hbox{%
+    \begin{beamercolorbox}[wd=.30\paperwidth,ht=2.4ex,dp=1.1ex,leftskip=0.9em]{author in head/foot}%
+      \color{uniSlate}\scriptsize\insertshortauthor
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.55\paperwidth,ht=2.4ex,dp=1.1ex,center]{title in head/foot}%
+      \color{uniSlate}\scriptsize\insertshorttitle
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.15\paperwidth,ht=2.4ex,dp=1.1ex,rightskip=0.9em plus1fil]{date in head/foot}%
+      \hfill\color{uniSlate}\scriptsize\insertframenumber\,/\,\inserttotalframenumber
+    \end{beamercolorbox}}%
+  \vskip0pt
+}
+
+% ---------------------------------------------------------------------------
+% Small shared pieces
+% ---------------------------------------------------------------------------
+
+% A stat tile: \stattile{value}{label}
+\newcommand{\stattile}[2]{%
+  \begin{beamercolorbox}[wd=0.95\linewidth,sep=7pt,center]{block body}
+    {\color{uniNavy}\Large\bfseries #1}\\[0.15em]
+    {\color{uniSlate}\scriptsize #2}
+  \end{beamercolorbox}}
+
+% A source line, for figures and tables
+\newcommand{\srcline}[1]{{\color{uniSlate}\scriptsize #1\par}}
+
+% An act divider: the roadmap strip beside the act's title.
+% \actdivider{act number}{act title}
+\newcommand{\actdivider}[2]{%
+\begin{frame}[plain]
+  \vspace{0.4em}
+  \begin{columns}[c,onlytextwidth]
+    \begin{column}{0.42\textwidth}
+      \hfill\scalebox{0.78}{\actstrip{#1}}
+    \end{column}
+    \begin{column}{0.54\textwidth}
+      {\color{uniSlate}\footnotesize\textsc{Act #1}\par}
+      \vspace{0.25em}
+      {\color{uniNavy}\LARGE\bfseries #2\par}
+      \vspace{0.5em}
+      {\color{uniCrimson}\rule{0.55\textwidth}{2pt}}
+    \end{column}
+  \end{columns}
+\end{frame}}
+
+% Verdict marks for comparison tables
+\newcommand{\yes}{\textcolor{chartBlue}{$\checkmark$}}
+\newcommand{\no}{\textcolor{uniSlate!70}{$\times$}}
+\newcommand{\partly}{\textcolor{uniSlate}{$\sim$}}

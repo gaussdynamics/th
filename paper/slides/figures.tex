@@ -1,0 +1,767 @@
+% ===========================================================================
+% figures.tex -- shared TikZ content for all three candidate deck styles.
+%
+% Each style file defines these five colors before \input-ing this file, so
+% the same drawings re-skin themselves per style:
+%
+%   fbCar     body fill for a freight car
+%   fbLoco    body fill for a powered vehicle
+%   fbAccent  the one saturated colour (forces, highlights)
+%   fbLine    strokes, axes, rails
+%   fbMuted   secondary text and de-emphasised strokes
+% ===========================================================================
+
+\usetikzlibrary{decorations.pathmorphing,arrows.meta,positioning,calc,patterns}
+
+% --- a single vehicle body ------------------------------------------------
+% #1 = x position, #2 = fill colour, #3 = label
+\newcommand{\vehicle}[3]{%
+  \draw[fill=#2,draw=fbLine,line width=0.7pt,rounded corners=1.5pt]
+        (#1,0) rectangle ++(1.8,0.85);
+  \node[font=\small,text=fbLine] at (#1+0.9,0.42) {#3};
+  \draw[fill=fbLine,draw=fbLine] (#1+0.35,-0.02) circle (0.12);
+  \draw[fill=fbLine,draw=fbLine] (#1+1.45,-0.02) circle (0.12);
+}
+
+% --- a coupler drawn as a coil spring ------------------------------------
+% #1 = start x, #2 = end x
+\newcommand{\coupler}[2]{%
+  \draw[decorate,decoration={coil,aspect=0.55,segment length=2.2pt,amplitude=2.6pt},
+        draw=fbAccent,line width=0.9pt] (#1,0.42) -- (#2,0.42);
+}
+
+% ===========================================================================
+% \trainFBD -- free-body diagram of a three-vehicle consist on a grade.
+% Used on slide 2 (plain) and slide 17 (symbol-annotated) of the plan.
+% ===========================================================================
+\newcommand{\trainFBD}[1][0]{%
+\begin{tikzpicture}[scale=1.0,every node/.style={transform shape}]
+  % --- inclined track -----------------------------------------------------
+  \begin{scope}[rotate=6]
+    \draw[fbLine,line width=1.1pt] (-0.4,-0.16) -- (9.4,-0.16);
+    \foreach \x in {-0.2,0.25,...,9.2}
+      \draw[fbMuted,line width=0.5pt] (\x,-0.16) -- ++(0,-0.16);
+
+    \vehicle{0.0}{fbLoco}{Loco}
+    \vehicle{3.2}{fbCar}{Car $i$}
+    \vehicle{6.4}{fbCar}{Car $i{+}1$}
+
+    \coupler{1.8}{3.2}
+    \coupler{5.0}{6.4}
+
+    % One force above each vehicle, so nothing collides:
+    %   traction on the loco, resistance on car i, grade on car i+1.
+    \draw[-{Stealth[length=6pt]},fbAccent,line width=1.5pt]
+          (0.30,1.30) -- ++(1.20,0)
+          node[midway,above,font=\small,text=fbAccent,inner sep=2.5pt]
+          {$F_{\mathrm{trac}}$};
+    \draw[{Stealth[length=6pt]}-,fbLine,line width=1.3pt]
+          (3.50,1.30) -- ++(1.20,0)
+          node[midway,above,font=\small,text=fbLine,inner sep=2.5pt]
+          {$R(v)$};
+    \draw[{Stealth[length=6pt]}-,fbMuted,line width=1.3pt]
+          (6.70,1.30) -- ++(1.20,0)
+          node[midway,above,font=\small,text=fbMuted,inner sep=2.5pt]
+          {$m_i g\sin\theta$};
+
+    % Coupler forces on the middle car, drawn BELOW the running gear so they
+    % never collide with the coil springs. Opt in with \trainFBD[1].
+    \ifnum#1=1
+      \draw[fbMuted,line width=0.4pt,dotted] (3.2,0.36) -- (3.2,-0.78);
+      \draw[fbMuted,line width=0.4pt,dotted] (5.0,0.36) -- (5.0,-0.78);
+      \draw[-{Stealth[length=5pt]},fbAccent,line width=1.2pt] (3.2,-0.78) -- ++(0.75,0);
+      \draw[-{Stealth[length=5pt]},fbAccent,line width=1.2pt] (5.0,-0.78) -- ++(-0.75,0);
+      \node[font=\small,text=fbAccent,below,inner sep=2pt] at (3.55,-0.86) {$F_{i-1}$};
+      \node[font=\small,text=fbAccent,below,inner sep=2pt] at (4.65,-0.86) {$F_{i}$};
+    \fi
+  \end{scope}
+
+  % --- grade angle --------------------------------------------------------
+  \draw[fbMuted,line width=0.6pt,dashed] (-0.45,-0.20) -- (2.6,-0.20);
+  \draw[fbMuted,line width=0.6pt] (1.55,-0.20) arc (0:6:2.0);
+  \node[font=\small,text=fbMuted] at (1.95,-0.04) {$\theta$};
+\end{tikzpicture}}
+
+% ===========================================================================
+% \slackScene{n} -- one overlay of the slack run-in / run-out build.
+%   n = 1  bunched (buff), couplers compressed, no force transmitted
+%   n = 2  slack taken up, couplers at the edge of the deadband
+%   n = 3  run-out (draft), force spike at take-up
+% Used on slide 3 of the plan.
+% ===========================================================================
+\newcommand{\slackScene}[1]{%
+\begin{tikzpicture}[scale=1.0,every node/.style={transform shape}]
+  \def\spA{0.0}
+  % Gaps stay wide enough that the coil still reads as a spring when bunched.
+  \ifnum#1=1 \def\spB{2.30}\def\spC{4.60}\fi
+  \ifnum#1=2 \def\spB{2.70}\def\spC{5.40}\fi
+  \ifnum#1=3 \def\spB{3.10}\def\spC{6.20}\fi
+
+  \draw[fbLine,line width=1.0pt] (-0.4,-0.16) -- (8.4,-0.16);
+  \foreach \x in {-0.2,0.25,...,8.2}
+    \draw[fbMuted,line width=0.5pt] (\x,-0.16) -- ++(0,-0.14);
+
+  \vehicle{\spA}{fbLoco}{}
+  \vehicle{\spB}{fbCar}{}
+  \vehicle{\spC}{fbCar}{}
+
+  \coupler{1.8}{\spB}
+  \coupler{\spB+1.8}{\spC}
+
+  % deadband bracket over the first coupler
+  \draw[fbMuted,line width=0.7pt] (1.8,1.05) -- (1.8,1.55);
+  \draw[fbMuted,line width=0.7pt] (\spB,1.05) -- (\spB,1.55);
+  \draw[{Stealth[length=4pt]}-{Stealth[length=4pt]},fbMuted,line width=0.7pt]
+        (1.8,1.42) -- (\spB,1.42);
+  \node[font=\small,text=fbMuted,above,inner sep=2pt] at ({(1.8+\spB)/2},1.46)
+        {Coupler Extension $\delta$};
+
+  % --- state caption ------------------------------------------------------
+  \ifnum#1=1
+    \node[font=\normalsize\bfseries,text=fbMuted,anchor=west] at (0,-1.05)
+      {Bunched: Slack Closed, No Force Transmitted};
+  \fi
+  \ifnum#1=2
+    \node[font=\normalsize\bfseries,text=fbMuted,anchor=west] at (0,-1.05)
+      {Slack Taken Up: Couplers Reach the End of the Slack};
+  \fi
+  \ifnum#1=3
+    \node[font=\normalsize\bfseries,text=fbAccent,anchor=west] at (0,-1.05)
+      {Run-Out: Force Spikes When the Slack Closes};
+  \fi
+
+  % --- coupler force trace, revealed progressively ------------------------
+  \begin{scope}[xshift=0cm,yshift=-3.75cm]
+    \draw[fbMuted,line width=0.7pt] (0,0) -- (7.6,0);
+    \draw[fbMuted,line width=0.7pt] (0,-0.35) -- (0,1.75);
+    \node[font=\small,text=fbMuted,rotate=90,anchor=south] at (-0.34,0.6)
+      {Coupler Force $F_{i}$};
+    \node[font=\small,text=fbMuted,anchor=north east] at (7.6,-0.08) {Time};
+    \draw[fbMuted,line width=0.5pt,dashed] (0,0) -- (7.6,0);
+
+    \ifnum#1>0
+      \draw[fbLine,line width=1.2pt] (0,0) -- (2.4,0);
+    \fi
+    \ifnum#1>1
+      \draw[fbLine,line width=1.2pt] (2.4,0) -- (3.9,0.04);
+    \fi
+    \ifnum#1>2
+      \draw[fbAccent,line width=1.6pt]
+        (3.9,0.04) .. controls (4.25,0.10) and (4.35,1.55) .. (4.6,1.55)
+                   .. controls (4.9,1.55) and (5.0,0.35) .. (5.35,0.55)
+                   .. controls (5.7,0.75) and (5.9,0.30) .. (6.3,0.48)
+                   .. controls (6.8,0.62) and (7.1,0.40) .. (7.6,0.46);
+      \draw[fbAccent,line width=0.6pt,dashed] (4.6,1.55) -- (0,1.55);
+      \node[font=\small,text=fbAccent,anchor=south east,inner sep=2pt]
+        at (7.6,1.60) {Peak Force: The Value the Safety Limit Applies To};
+    \fi
+  \end{scope}
+\end{tikzpicture}}
+
+% ===========================================================================
+% \consistBand -- a long consist drawn as a wide, quiet band. Title slide.
+% Deliberately low-contrast: it sits under the title block, not beside it.
+% ===========================================================================
+\newcommand{\consistBand}{%
+\begin{tikzpicture}[scale=0.55,every node/.style={transform shape}]
+  \draw[fbMuted!40,line width=0.8pt] (-0.3,-0.16) -- (16.9,-0.16);
+  \foreach \x in {-0.1,0.4,...,16.7}
+    \draw[fbMuted!30,line width=0.5pt] (\x,-0.16) -- ++(0,-0.12);
+  \vehicle{0.0}{fbLoco}{}
+  \foreach \i in {1,...,7}{%
+    \pgfmathsetmacro{\px}{\i*2.05}
+    \coupler{\px-0.25}{\px}
+    \vehicle{\px}{fbCar}{}
+  }
+\end{tikzpicture}}
+
+% ===========================================================================
+% \surrogateFlow -- how a surrogate relates to the simulator it learns from.
+% Slide 6. The point of the drawing is that physics stays the ground truth.
+% ===========================================================================
+\newcommand{\surrogateFlow}{%
+\begin{tikzpicture}[
+    node distance=0pt,
+    box/.style={draw=uniNavy,line width=0.9pt,rounded corners=2pt,
+                minimum width=3.5cm,minimum height=1.25cm,align=center,
+                font=\small,text=uniInk},
+    fill1/.style={box,fill=uniMist},
+    fill2/.style={box,fill=chartBlue!18},
+    arr/.style={-{Stealth[length=6pt]},uniNavy,line width=1.1pt}]
+
+  \node[fill1] (sim) at (0,0) {High-Fidelity\\Physics Simulator};
+  \node[fill1] (data) at (5.0,0) {Scenario\\Dataset};
+  \node[fill2] (sur) at (10.0,0) {Learned\\Surrogate};
+
+  \draw[arr] (sim) -- (data)
+    node[midway,above,font=\scriptsize,text=uniSlate,inner sep=3pt] {Generates};
+  \draw[arr] (data) -- (sur)
+    node[midway,above,font=\scriptsize,text=uniSlate,inner sep=3pt] {Trains};
+
+  % cost annotations beneath
+  \node[font=\scriptsize,text=uniSlate,align=center] at (0,-1.15)
+    {Hours of CPU Time\\per Scenario};
+  \node[font=\scriptsize,text=chartRed,align=center] at (10.0,-1.15)
+    {Milliseconds\\per Scenario};
+
+  % the ground-truth loop back
+  \draw[{Stealth[length=6pt]}-,uniCrimson,line width=1.0pt,dashed]
+    (sim.north) .. controls +(0,1.15) and +(0,1.15) .. (sur.north);
+  \node[font=\scriptsize,text=uniCrimson,align=center,fill=white,
+        inner xsep=5pt,inner ysep=2pt] at (5.0,1.42)
+    {Validated Against, Never Replaced By};
+\end{tikzpicture}}
+
+% ===========================================================================
+% \actstrip{n} -- the roadmap / act-divider strip, act n highlighted.
+% n = 0 shows the whole roadmap with nothing highlighted (slide 8).
+% ===========================================================================
+\newcommand{\actstrip}[1]{%
+\begin{tikzpicture}[scale=1.0,every node/.style={transform shape}]
+  \def\actlist{%
+    1/Motivation, 2/Related Work, 3/Formulation, 4/Reference Simulator,
+    5/Routes, 6/Data \& Tooling, 7/Architecture, 8/Training,
+    9/Evaluation, 10/Control, 11/Conclusion}
+  \foreach \n/\lbl [count=\i from 0] in {1/Motivation, 2/Related Work,
+      3/Formulation, 4/Reference Simulator, 5/Routes, 6/Data \& Tooling,
+      7/Architecture, 8/Training, 9/Evaluation, 10/Control, 11/Conclusion}{%
+    \pgfmathsetmacro{\yy}{-\i*0.62}
+    \ifnum#1=\n
+      \node[anchor=west,font=\small\bfseries,text=white,fill=uniNavy,
+            inner xsep=7pt,inner ysep=4pt,minimum width=5.4cm] at (0,\yy)
+            {\makebox[4.9cm][l]{\n.~\lbl}};
+    \else
+      \node[anchor=west,font=\small,text=uniSlate,fill=uniMist!60,
+            inner xsep=7pt,inner ysep=4pt,minimum width=5.4cm] at (0,\yy)
+            {\makebox[4.9cm][l]{\n.~\lbl}};
+    \fi
+  }
+\end{tikzpicture}}
+
+% ===========================================================================
+% \litMap{n} -- the four literatures this work sits between.
+%   n = 0  all four quadrants plain
+%   n = 1  the centre badge ("This Work") revealed
+% Slide 9, re-shown highlighted on slide 15.
+% ===========================================================================
+\newcommand{\litMap}[1]{%
+\begin{tikzpicture}[
+    quad/.style={draw=uniNavy,line width=0.8pt,fill=uniMist!55,
+                 minimum width=5.3cm,minimum height=2.1cm,align=center,
+                 font=\small,text=uniInk,inner sep=4pt}]
+
+  % NOTE: TikZ's \\ is not defined inside a nested {\scriptsize ...} group,
+  % so the size change is applied inline rather than wrapped in braces.
+  \node[quad] (a) at (-2.75, 1.25) {\textbf{Classical LTD Simulation}\\[0.15em]
+        \scriptsize Physics-anchored, train-agnostic,\\ far too slow to optimize through};
+  \node[quad] (b) at ( 2.75, 1.25) {\textbf{Data-Driven Rail Models}\\[0.15em]
+        \scriptsize Fast, but tied to one consist\\ or one corridor};
+  \node[quad] (c) at (-2.75,-1.25) {\textbf{Sequence \& Operator Models}\\[0.15em]
+        \scriptsize General machinery, fixed token\\ or grid layout};
+  \node[quad] (d) at ( 2.75,-1.25) {\textbf{Probabilistic Forecasting}\\[0.15em]
+        \scriptsize Calibrated uncertainty,\\ no dynamics of its own};
+
+  \ifnum#1=1
+    \node[draw=uniCrimson,line width=1.4pt,fill=white,rounded corners=3pt,
+          font=\small\bfseries,text=uniCrimson,inner xsep=9pt,inner ysep=6pt]
+          at (0,0) {This Work};
+  \fi
+\end{tikzpicture}}
+
+% ===========================================================================
+% \mpStep{n} -- one message-passing step on a chain graph.
+%   n = 1  the graph alone
+%   n = 2  edge update from the two incident nodes
+%   n = 3  node update aggregating incident edge messages
+% Slide 13; reused for the architecture act.
+% ===========================================================================
+\newcommand{\mpStep}[1]{%
+\begin{tikzpicture}[
+    vtx/.style={circle,draw=uniNavy,line width=0.9pt,fill=uniMist,
+                minimum size=0.78cm,font=\scriptsize,text=uniInk},
+    vtxhot/.style={vtx,fill=chartBlue!30,draw=chartBlue,line width=1.2pt},
+    edg/.style={uniNavy,line width=1.0pt},
+    edghot/.style={chartRed,line width=1.6pt}]
+
+  \foreach \i in {0,...,4}{%
+    \pgfmathsetmacro{\px}{\i*2.3}
+    \ifnum#1=3
+      \ifnum\i=2 \node[vtxhot] (v\i) at (\px,0) {$h_\i$};
+      \else      \node[vtx]    (v\i) at (\px,0) {$h_\i$};\fi
+    \else
+      \node[vtx] (v\i) at (\px,0) {$h_\i$};
+    \fi
+  }
+  \foreach \i [evaluate=\i as \j using int(\i+1)] in {0,...,3}{%
+    \ifnum#1>1
+      \ifnum\i=1 \draw[edghot] (v\i) -- (v\j);
+      \else\ifnum\i=2 \draw[edghot] (v\i) -- (v\j);
+      \else \draw[edg] (v\i) -- (v\j);\fi\fi
+    \else
+      \draw[edg] (v\i) -- (v\j);
+    \fi
+  }
+  % edge labels
+  \foreach \i [evaluate=\i as \j using int(\i+1)] in {0,...,3}{%
+    \pgfmathsetmacro{\px}{\i*2.3+1.15}
+    \node[font=\scriptsize,text=uniSlate,above,inner sep=3pt] at (\px,0.10) {$e_{\i\j}$};
+  }
+
+  \ifnum#1=2
+    \node[font=\small,text=chartRed,align=center] at (4.6,-1.35)
+      {\textbf{Edge Update}\\[0.1em]
+       {\scriptsize $e_{ij} \leftarrow \phi_e(e_{ij},\, h_i,\, h_j)$}};
+  \fi
+  \ifnum#1=3
+    \node[font=\small,text=chartBlue!70!black,align=center] at (4.6,-1.35)
+      {\textbf{Node Update}\\[0.1em]
+       {\scriptsize $h_i \leftarrow \phi_h\bigl(h_i,\, \textstyle\sum_{j \in \mathcal{N}(i)} e_{ij}\bigr)$}};
+  \fi
+  \ifnum#1=1
+    \node[font=\small,text=uniSlate,align=center] at (4.6,-1.35)
+      {Vehicles Are Nodes, Couplers Are Edges\\[0.1em]
+       {\scriptsize The Chain Is the Consist: Any Length, No Padding}};
+  \fi
+\end{tikzpicture}}
+
+% ===========================================================================
+% ACT III figures
+% ===========================================================================
+
+% --- \taskMap : three structured inputs -> operator -> four outputs -------
+% Slide 16.
+\newcommand{\taskMap}{%
+\begin{tikzpicture}[
+    inp/.style={draw=uniNavy,line width=0.8pt,fill=uniMist,rounded corners=2pt,
+                minimum width=3.0cm,minimum height=0.95cm,align=center,
+                font=\small,text=uniInk},
+    outbox/.style={draw=uniSlate,line width=0.7pt,fill=white,rounded corners=2pt,
+                minimum width=3.0cm,minimum height=0.8cm,align=center,
+                font=\scriptsize,text=uniInk},
+    arr/.style={-{Stealth[length=5pt]},uniNavy,line width=1.0pt}]
+
+  \node[inp] (r) at (0, 1.45) {Route Profile $\mathcal{R}$};
+  \node[inp] (c) at (0, 0.00) {Consist $\mathcal{C}$};
+  \node[inp] (u) at (0,-1.45) {Control Plan $\mathcal{U}$};
+
+  \node[draw=uniCrimson,line width=1.3pt,fill=white,rounded corners=3pt,
+        minimum width=2.4cm,minimum height=3.4cm,align=center,
+        font=\small\bfseries,text=uniCrimson] (op) at (4.5,0) {$F$};
+
+  \node[outbox] (o1) at (9.1, 1.65) {Motion per Vehicle};
+  \node[outbox] (o2) at (9.1, 0.55) {Force per Coupler};
+  \node[outbox] (o3) at (9.1,-0.55) {Energy and Trip Time};
+  \node[outbox] (o4) at (9.1,-1.65) {Safety Margin};
+
+  \foreach \n in {r,c,u} \draw[arr] (\n) -- (op);
+  \foreach \n in {o1,o2,o3,o4} \draw[arr] (op) -- (\n);
+\end{tikzpicture}}
+
+% --- \padWaste{n} : why a fixed token budget is the wrong bias ------------
+% n = 1 the sequence model, n = 2 the graph model. Slide 18.
+\newcommand{\padWaste}[1]{%
+\begin{tikzpicture}[scale=1.0,every node/.style={transform shape}]
+  \ifnum#1=1
+    \node[font=\small\bfseries,text=uniInk,anchor=west] at (0,2.35)
+      {Sequence Model: Fixed Input Length};
+    % 150-slot strip, 11 real tokens
+    \foreach \i in {0,...,29}{%
+      \pgfmathsetmacro{\px}{\i*0.33}
+      \ifnum\i<3
+        \fill[chartBlue] (\px,1.35) rectangle ++(0.29,0.42);
+      \else
+        \fill[uniMist] (\px,1.35) rectangle ++(0.29,0.42);
+        \draw[uniSlate!45,line width=0.3pt] (\px,1.35) rectangle ++(0.29,0.42);
+      \fi
+    }
+    \node[font=\scriptsize,text=uniSlate,anchor=west] at (0,1.02)
+      {11-car train: 3 tokens carry data, 27 slots are padding};
+    \foreach \i in {0,...,29}{%
+      \pgfmathsetmacro{\px}{\i*0.33}
+      \fill[chartBlue] (\px,0.20) rectangle ++(0.29,0.42);
+    }
+    \node[font=\scriptsize,text=uniSlate,anchor=west] at (0,-0.13)
+      {150-car train: the budget is exactly full};
+    \node[font=\small,text=chartRed,anchor=west,align=left] at (0,-0.85)
+      {The budget must be set for the longest train,\\
+       so every short one wastes most of the tensor};
+  \fi
+  \ifnum#1=2
+    \node[font=\small\bfseries,text=uniInk,anchor=west] at (0,2.35)
+      {Graph Model: The Chain Is the Consist};
+    \foreach \i in {0,...,3}{%
+      \pgfmathsetmacro{\px}{\i*1.05}
+      \node[circle,draw=uniNavy,line width=0.8pt,fill=uniMist,
+            minimum size=0.5cm,font=\tiny] (a\i) at (\px,1.55) {};
+    }
+    \foreach \i [evaluate=\i as \j using int(\i+1)] in {0,...,2}
+      \draw[chartBlue,line width=1.1pt] (a\i) -- (a\j);
+    \node[font=\scriptsize,text=uniSlate,anchor=west] at (4.6,1.55)
+      {short consist: 4 nodes, 3 edges};
+
+    \foreach \i in {0,...,9}{%
+      \pgfmathsetmacro{\px}{\i*1.05}
+      \node[circle,draw=uniNavy,line width=0.8pt,fill=uniMist,
+            minimum size=0.5cm,font=\tiny] (b\i) at (\px,0.30) {};
+    }
+    \foreach \i [evaluate=\i as \j using int(\i+1)] in {0,...,8}
+      \draw[chartBlue,line width=1.1pt] (b\i) -- (b\j);
+    \node[font=\scriptsize,text=uniSlate,anchor=west] at (10.0,0.30)
+      {long consist: same weights};
+
+    \node[font=\small,text=chartBlue!70!black,anchor=west,align=left] at (0,-0.85)
+      {No padding, no masking. The parameter count\\
+       does not depend on $N$};
+  \fi
+\end{tikzpicture}}
+
+% --- \nodeTensor : the node (vehicle) feature matrix H -------------------
+% Slide 19. Channels follow DATA_SCHEMA.md exactly.
+\newcommand{\nodeTensor}{%
+\begin{tikzpicture}[scale=1.0,every node/.style={transform shape}]
+  \def\cw{0.62} \def\rh{0.46}
+  % column headers
+  \foreach \c/\lbl [count=\i from 0] in {%
+      0/$x$, 1/$v$, 2/$z_{\mathrm{brk}}$, 3/$z_{\mathrm{trac}}$,
+      4/Mass, 5/Davis $A$, 6/Davis $B$, 7/Davis $C$,
+      8/Traction?, 9/$F^{\max}_{\mathrm{trac}}$, 10/$F^{\max}_{\mathrm{brk}}$}{%
+    \pgfmathsetmacro{\px}{\i*\cw}
+    \node[font=\scriptsize,text=uniSlate,rotate=52,anchor=west]
+      at (\px+0.30,0.14) {\lbl};
+  }
+  % cells
+  \foreach \r in {0,...,4}{%
+    \pgfmathsetmacro{\py}{-\r*\rh}
+    \foreach \i in {0,...,10}{%
+      \pgfmathsetmacro{\px}{\i*\cw}
+      \ifnum\i<4
+        \fill[chartBlue!28] (\px,\py) rectangle ++(\cw-0.05,-\rh+0.05);
+      \else
+        \fill[uniMist] (\px,\py) rectangle ++(\cw-0.05,-\rh+0.05);
+      \fi
+      \draw[uniSlate!35,line width=0.3pt] (\px,\py) rectangle ++(\cw-0.05,-\rh+0.05);
+    }
+    \node[font=\scriptsize,text=uniSlate,anchor=east] at (-0.12,\py-\rh/2+0.03)
+      {Vehicle \r};
+  }
+  \node[font=\scriptsize,text=uniSlate,anchor=east] at (-0.12,-5*\rh-0.06) {$\vdots$};
+  % group rules -- a brace over this span renders almost flat
+  \draw[chartBlue,line width=2.2pt] (0,-5*\rh-0.34) -- (4*\cw-0.05,-5*\rh-0.34);
+  \node[font=\scriptsize,text=chartBlue!70!black,anchor=north]
+    at (2*\cw,-5*\rh-0.44) {4 Dynamic};
+  \draw[uniSlate,line width=2.2pt] (4*\cw,-5*\rh-0.34) -- (11*\cw-0.05,-5*\rh-0.34);
+  \node[font=\scriptsize,text=uniSlate,anchor=north]
+    at (7.5*\cw,-5*\rh-0.44) {7 Static: Stored Once, Not per Time Step};
+\end{tikzpicture}}
+
+% --- \edgeTensor : the edge (coupler) feature matrix E ------------------
+% Slide 20.
+\newcommand{\edgeTensor}{%
+\begin{tikzpicture}[scale=1.0,every node/.style={transform shape}]
+  \def\cw{0.62} \def\rh{0.46}
+  \foreach \c/\lbl [count=\i from 0] in {%
+      0/$\delta$, 1/$\dot\delta$, 2/$F$,
+      3/$L_0$, 4/Slack, 5/$k_{\mathrm{draft}}$, 6/$c_{\mathrm{draft}}$,
+      7/$k_{\mathrm{buff}}$, 8/$c_{\mathrm{buff}}$}{%
+    \pgfmathsetmacro{\px}{\i*\cw}
+    \node[font=\scriptsize,text=uniSlate,rotate=52,anchor=west]
+      at (\px+0.30,0.14) {\lbl};
+  }
+  \foreach \r in {0,...,3}{%
+    \pgfmathsetmacro{\py}{-\r*\rh}
+    \foreach \i in {0,...,8}{%
+      \pgfmathsetmacro{\px}{\i*\cw}
+      \ifnum\i<3
+        \fill[chartRed!25] (\px,\py) rectangle ++(\cw-0.05,-\rh+0.05);
+      \else
+        \fill[uniMist] (\px,\py) rectangle ++(\cw-0.05,-\rh+0.05);
+      \fi
+      \draw[uniSlate!35,line width=0.3pt] (\px,\py) rectangle ++(\cw-0.05,-\rh+0.05);
+    }
+    \node[font=\scriptsize,text=uniSlate,anchor=east] at (-0.12,\py-\rh/2+0.03)
+      {Coupler \r};
+  }
+  \node[font=\scriptsize,text=uniSlate,anchor=east] at (-0.12,-4*\rh-0.06) {$\vdots$};
+  \draw[chartRed,line width=2.2pt] (0,-4*\rh-0.34) -- (3*\cw-0.05,-4*\rh-0.34);
+  \node[font=\scriptsize,text=chartRed,anchor=north]
+    at (1.5*\cw,-4*\rh-0.44) {3 Dynamic};
+  \draw[uniSlate,line width=2.2pt] (3*\cw,-4*\rh-0.34) -- (9*\cw-0.05,-4*\rh-0.34);
+  \node[font=\scriptsize,text=uniSlate,anchor=north]
+    at (6*\cw,-4*\rh-0.44) {6 Static};
+\end{tikzpicture}}
+
+% --- \imposedLearned : what the network outputs, and what is imposed ----
+% Slides 23 and 67. The central design figure of the revised formulation.
+\newcommand{\imposedLearned}[1]{%
+\begin{tikzpicture}[
+    ch/.style={draw=uniSlate,line width=0.7pt,rounded corners=2pt,
+               minimum width=3.6cm,minimum height=0.85cm,align=center,
+               font=\small,text=uniInk},
+    learned/.style={ch,fill=chartBlue!25,draw=chartBlue,line width=1.1pt},
+    imposed/.style={ch,fill=uniMist}]
+
+  \node[font=\small\bfseries,text=uniInk] at (0,1.55) {State Channel};
+  \node[font=\small\bfseries,text=uniInk] at (5.6,1.55) {Where It Comes From};
+
+  \ifnum#1=1
+    \node[ch] (x) at (0, 0.55) {$x$: position};
+    \node[ch] (v) at (0,-0.45) {$v$: velocity};
+    \node[ch] (zb) at (0,-1.45) {$z_{\mathrm{brk}},\, z_{\mathrm{trac}}$};
+  \fi
+  \ifnum#1>1
+    \node[ch] (x) at (0, 0.55) {$x$: position};
+    \node[ch] (v) at (0,-0.45) {$v$: velocity};
+    \node[ch] (zb) at (0,-1.45) {$z_{\mathrm{brk}},\, z_{\mathrm{trac}}$};
+    \node[imposed] (xr) at (5.6, 0.55) {Trapezoid $+$ Correction};
+    \node[imposed] (zr) at (5.6,-1.45) {Exact Analytic Solution};
+    \draw[-{Stealth[length=5pt]},uniSlate,line width=0.9pt] (x) -- (xr);
+    \draw[-{Stealth[length=5pt]},uniSlate,line width=0.9pt] (zb) -- (zr);
+  \fi
+  \ifnum#1>2
+    \node[learned] (vr) at (5.6,-0.45) {Learned Acceleration};
+    \draw[-{Stealth[length=5pt]},chartBlue,line width=1.1pt] (v) -- (vr);
+    \node[font=\small,text=chartBlue!70!black,align=center] at (2.8,-2.55)
+      {The network outputs two scalars per vehicle,\\ not four channels};
+  \fi
+\end{tikzpicture}}
+
+% --- \rolloutTensor : the T x N x d stack -------------------------------
+% Slide 21.
+\newcommand{\rolloutTensor}{%
+\begin{tikzpicture}[scale=1.0,every node/.style={transform shape}]
+  \foreach \s [count=\i from 0] in {0,1,2}{%
+    \pgfmathsetmacro{\ox}{\i*0.42}
+    \pgfmathsetmacro{\oy}{\i*0.30}
+    \pgfmathsetmacro{\op}{100-\i*22}
+    \fill[chartBlue!\op!white,opacity=0.95]
+      (\ox,\oy) rectangle ++(3.3,2.0);
+    \draw[uniNavy,line width=0.7pt] (\ox,\oy) rectangle ++(3.3,2.0);
+  }
+  \node[font=\scriptsize,text=uniSlate,anchor=north] at (1.65,-0.12) {$N$ Vehicles};
+  \node[font=\scriptsize,text=uniSlate,rotate=90,anchor=south] at (-0.18,1.0) {$d$ Channels};
+  \draw[-{Stealth[length=5pt]},uniSlate,line width=0.9pt]
+    (3.55,0.15) -- ++(0.75,0.55);
+  \node[font=\scriptsize,text=uniSlate,anchor=west] at (4.35,0.55) {$T$ Timesteps};
+  \node[font=\small\bfseries,text=uniNavy,anchor=west] at (0.1,2.75)
+    {$\mathbf{X} \in \mathbb{R}^{T \times N \times d}$};
+\end{tikzpicture}}
+
+% --- \consistOnGrade : one train spans several grade features ----------
+% Slide 25. The point: route fields are sampled per vehicle, at x_i(t).
+\newcommand{\consistOnGrade}{%
+\begin{tikzpicture}[scale=1.0,every node/.style={transform shape}]
+  % grade profile as a filled terrain curve
+  \draw[uniSlate!35,line width=0.6pt] (0,-0.6) -- (13.0,-0.6);
+  \draw[uniNavy,line width=1.3pt]
+    (0,0.05) .. controls (2.2,0.05) and (2.8,0.95) .. (4.6,1.05)
+             .. controls (6.4,1.15) and (6.8,0.35) .. (8.6,0.30)
+             .. controls (10.4,0.25) and (11.2,1.00) .. (13.0,1.15);
+  \fill[uniMist,opacity=0.65]
+    (0,0.05) .. controls (2.2,0.05) and (2.8,0.95) .. (4.6,1.05)
+             .. controls (6.4,1.15) and (6.8,0.35) .. (8.6,0.30)
+             .. controls (10.4,0.25) and (11.2,1.00) .. (13.0,1.15)
+             -- (13.0,-0.6) -- (0,-0.6) -- cycle;
+
+  % vehicles riding it, each with its own local grade arrow
+  \foreach \px/\py/\ang/\lbl in {%
+      1.1/0.08/2/$\sin\theta_0$, 3.6/0.72/22/$\sin\theta_1$,
+      6.1/1.05/-4/$\sin\theta_2$, 8.6/0.30/-14/$\sin\theta_3$,
+      11.1/0.72/20/$\sin\theta_4$}{%
+    \begin{scope}[shift={(\px,\py)},rotate=\ang]
+      \draw[fill=fbCar,draw=uniNavy,line width=0.6pt,rounded corners=1pt]
+        (-0.45,0.06) rectangle ++(0.9,0.42);
+      \draw[fill=uniNavy,draw=uniNavy] (-0.25,0.04) circle (0.055);
+      \draw[fill=uniNavy,draw=uniNavy] ( 0.25,0.04) circle (0.055);
+    \end{scope}
+    \node[font=\scriptsize,text=chartRed,anchor=south] at (\px,\py+0.60) {\lbl};
+  }
+  \node[font=\small,text=uniInk,anchor=west,align=left] at (0,-1.25)
+    {Every vehicle samples the route at its own chainage $x_i(t)$.\\
+     A 2\,km consist is on several grade features at once};
+\end{tikzpicture}}
+
+% --- \pipelineFig : the whole thesis as one flow -----------------------
+% Slide 27, reused as the Act X divider and the closing slide.
+\newcommand{\pipelineFig}[1]{%
+\begin{tikzpicture}[
+    src/.style={draw=uniSlate,line width=0.7pt,fill=white,rounded corners=2pt,
+                minimum width=2.7cm,minimum height=0.78cm,align=center,
+                font=\scriptsize,text=uniInk},
+    stg/.style={draw=uniNavy,line width=0.9pt,fill=uniMist,rounded corners=2pt,
+                minimum width=2.6cm,minimum height=1.15cm,align=center,
+                font=\small,text=uniInk},
+    hot/.style={stg,fill=chartBlue!22,draw=chartBlue,line width=1.3pt},
+    arr/.style={-{Stealth[length=5pt]},uniNavy,line width=1.0pt}]
+
+  \node[src] (ra) at (0, 1.25) {Route Acquisition};
+  \node[src] (cl) at (0, 0.00) {Consist Library};
+  \node[src] (cp) at (0,-1.25) {Control Profiles};
+
+  \node[stg] (sim) at (4.1,0) {Reference\\Simulator};
+  \node[stg] (cor) at (7.7,0) {Scenario\\Corpus};
+  \ifnum#1=7 \node[hot] (sur) at (11.3,0) {Graph Network\\Simulator};
+  \else      \node[stg] (sur) at (11.3,0) {Graph Network\\Simulator};\fi
+  \ifnum#1=10 \node[hot] (mpc) at (14.9,0) {Fuel-Optimal\\MPC};
+  \else       \node[stg] (mpc) at (14.9,0) {Fuel-Optimal\\MPC};\fi
+
+  \foreach \n in {ra,cl,cp} \draw[arr] (\n) -- (sim);
+  \draw[arr] (sim) -- (cor);
+  \draw[arr] (cor) -- (sur);
+  \draw[arr] (sur) -- (mpc);
+
+  \node[font=\scriptsize,text=uniSlate,anchor=north] at (5.9,-0.72) {10,000 scenarios};
+  \node[font=\scriptsize,text=chartRed,anchor=north] at (13.1,-0.72) {analytic gradients};
+\end{tikzpicture}}
+
+% ===========================================================================
+% ACT IV figures
+% ===========================================================================
+
+% --- \stageLadder{n} : the eight validation stages, rung n highlighted ---
+% Slide 28 shows the whole ladder (n = 0); slides 29-37 highlight one rung.
+\newcommand{\stageLadder}[1]{%
+\begin{tikzpicture}[scale=1.0,every node/.style={transform shape}]
+  \foreach \n/\lbl [count=\i from 0] in {%
+      1/{Single Powered Vehicle},
+      2/{Two Bodies, Linear Coupler},
+      3/{Nonlinear Coupler with Slack},
+      4/{Three Bodies, Force Propagation},
+      5/{General $N$-Vehicle Assembly},
+      6/{Per-Vehicle Grade and Curvature},
+      7/{Actuator Lag, Power-Limited Traction},
+      8/{Scope vs Industrial High Fidelity}}{%
+    \pgfmathsetmacro{\yy}{-\i*0.66}
+    \ifnum#1=\n
+      \node[anchor=west,font=\small\bfseries,text=white,fill=uniNavy,
+            inner xsep=8pt,inner ysep=5pt,minimum width=6.6cm] at (0,\yy)
+            {\makebox[6.0cm][l]{Stage \n~~\lbl}};
+    \else
+      \node[anchor=west,font=\small,text=uniSlate,fill=uniMist!60,
+            inner xsep=8pt,inner ysep=5pt,minimum width=6.6cm] at (0,\yy)
+            {\makebox[6.0cm][l]{Stage \n~~\lbl}};
+    \fi
+  }
+\end{tikzpicture}}
+
+% --- \scopeTable : what the simulator does and does not model -----------
+% Slide 39, returned to on slide 94.
+\newcommand{\scopeTable}{%
+\begin{tikzpicture}[
+    hdr/.style={font=\small\bfseries,text=uniInk},
+    itm/.style={font=\footnotesize,text=uniInk,anchor=west}]
+  \fill[chartBlue!12] (-0.25,0.45) rectangle (6.1,-3.95);
+  \fill[uniMist!70]   (6.5,0.45) rectangle (12.9,-3.95);
+  \node[hdr,anchor=west,text=chartBlue!70!black] at (-0.1,0.15) {In Scope};
+  \node[hdr,anchor=west,text=uniSlate]           at (6.65,0.15) {Out of Scope};
+  \foreach \t [count=\i from 0] in {%
+      Longitudinal motion per vehicle,
+      Nonlinear couplers with slack,
+      Asymmetric buff and draft stiffness,
+      Per-vehicle grade and curvature,
+      First-order actuator lag,
+      Power-limited traction}{%
+    \pgfmathsetmacro{\yy}{-0.35-\i*0.58}
+    \node[itm] at (-0.1,\yy) {\textbullet~~\t};
+  }
+  \foreach \t [count=\i from 0] in {%
+      Lateral and vertical dynamics,
+      Wheel--rail contact mechanics,
+      Draft-gear internal states,
+      Air-brake pipe propagation,
+      Hysteresis and stick--slip,
+      Calibration to real rolling stock}{%
+    \pgfmathsetmacro{\yy}{-0.35-\i*0.58}
+    \node[itm,text=uniSlate] at (6.65,\yy) {\textbullet~~\t};
+  }
+\end{tikzpicture}}
+
+% --- \stagepips{n} : compact horizontal stage indicator ----------------
+% The vertical \stageLadder is too tall to sit beside the stage figures,
+% which are three-panel stacks. This is the in-slide version.
+\newcommand{\stagepips}[1]{%
+\begin{tikzpicture}[baseline]
+  \foreach \i in {1,...,8}{%
+    \pgfmathsetmacro{\px}{(\i-1)*0.52}
+    \ifnum#1=\i
+      \fill[uniNavy] (\px,0) rectangle ++(0.42,0.26);
+      \node[font=\tiny,text=white] at (\px+0.21,0.13) {\i};
+    \else
+      \fill[uniMist] (\px,0) rectangle ++(0.42,0.26);
+      \node[font=\tiny,text=uniSlate] at (\px+0.21,0.13) {\i};
+    \fi
+  }
+\end{tikzpicture}}
+
+% ===========================================================================
+% ACT V figures
+% ===========================================================================
+
+% --- \routePipeline : acquisition -> resample -> elevation -> fields ----
+% Slide 42. Fills the TODO placeholder at 05_route_acquisition.tex:14.
+\newcommand{\routePipeline}{%
+\begin{tikzpicture}[
+    stg/.style={draw=uniNavy,line width=0.9pt,fill=uniMist,rounded corners=2pt,
+                minimum width=2.45cm,minimum height=1.25cm,align=center,
+                font=\footnotesize,text=uniInk},
+    arr/.style={-{Stealth[length=5pt]},uniNavy,line width=1.0pt}]
+
+  \node[stg] (a) at (0.0,0)  {\textbf{1}\\Acquisition};
+  \node[stg] (b) at (3.3,0)  {\textbf{1.5}\\Resample};
+  \node[stg] (c) at (6.6,0)  {\textbf{2}\\Elevation};
+  \node[stg] (d) at (9.9,0)  {\textbf{3}\\Derived Fields};
+  \node[stg] (e) at (13.2,0) {\textbf{4}\\Export};
+
+  \foreach \x/\y in {a/b,b/c,c/d,d/e} \draw[arr] (\x) -- (\y);
+
+  \foreach \n/\t in {a/{Corridors from a\\rail network graph},
+                     b/{Uniform 10\,m grid},
+                     c/{DEM samples along\\the alignment},
+                     d/{$\sin\theta$, $\kappa$, $v_{\max}$},
+                     e/{Route tensor for\\the simulator}}{%
+    \node[font=\scriptsize,text=uniSlate,align=center,anchor=north]
+      at ([yshift=-0.75cm]\n.south) {\t};
+  }
+\end{tikzpicture}}
+
+% ===========================================================================
+% ACT VI figures
+% ===========================================================================
+
+% --- \raillabLayers : screens -> services -> backend -------------------
+% Slide 49. Fills the TODO placeholder at 06_raillab.tex:24.
+\newcommand{\raillabLayers}{%
+\begin{tikzpicture}[
+    lyr/.style={draw=uniNavy,line width=0.9pt,rounded corners=2pt,
+                minimum width=9.4cm,minimum height=1.15cm,align=center,
+                font=\small,text=uniInk},
+    arr/.style={{Stealth[length=5pt]}-{Stealth[length=5pt]},uniSlate,
+                line width=1.0pt}]
+  \node[lyr,fill=uniMist]        (s) at (0, 2.05) {\textbf{Screens}\\
+    {\scriptsize Route \textbullet\ Consist \textbullet\ Controls \textbullet\ Simulate \textbullet\ Results}};
+  \node[lyr,fill=chartBlue!18]   (v) at (0, 0.00) {\textbf{Services}\\
+    {\scriptsize The only modules that import the numerical backend}};
+  \node[lyr,fill=white]          (b) at (0,-2.05) {\textbf{Backend}\\
+    {\scriptsize \texttt{simulator2} \textbullet\ \texttt{route\_generator}: unchanged, run without the GUI}};
+  \draw[arr] (s) -- (v) node[midway,right,font=\scriptsize,text=uniSlate,inner sep=6pt]
+    {screens call services};
+  \draw[arr] (v) -- (b) node[midway,right,font=\scriptsize,text=uniSlate,inner sep=6pt]
+    {services return plain data};
+\end{tikzpicture}}
+
+% --- \diskLayout : what a built corpus looks like on disk --------------
+% Slide 59.
+\newcommand{\diskLayout}{%
+\begin{tikzpicture}[
+    every node/.style={font=\footnotesize\ttfamily,text=uniInk,anchor=west},
+    note/.style={font=\scriptsize\rmfamily,text=uniSlate,anchor=west}]
+  \node at (0,0.0)   {data/v2/};
+  \node at (0.5,-0.5)  {build\_config.json};   \node[note] at (5.0,-0.5)  {sampling ranges, git commit, seed};
+  \node at (0.5,-1.0)  {index.parquet};        \node[note] at (5.0,-1.0)  {10,000 rows $\times$ 43 columns};
+  \node at (0.5,-1.5)  {norm\_stats.json};     \node[note] at (5.0,-1.5)  {train split only};
+  \node at (0.5,-2.0)  {splits.json};          \node[note] at (5.0,-2.0)  {explicit scenario ids per split};
+  \node at (0.5,-2.5)  {routes/};              \node[note] at (5.0,-2.5)  {written once per corridor, not per scenario};
+  \node at (0.5,-3.0)  {scenarios/<route>/};   \node[note] at (5.0,-3.0)  {one compressed .npz per scenario};
+  \draw[uniSlate!40,line width=0.5pt] (0.25,-0.25) -- (0.25,-3.0);
+  \foreach \y in {-0.5,-1.0,-1.5,-2.0,-2.5,-3.0}
+    \draw[uniSlate!40,line width=0.5pt] (0.25,\y) -- (0.45,\y);
+\end{tikzpicture}}
