@@ -214,7 +214,7 @@
   \centering
   \resizebox{\textwidth}{!}{\input{../figures/tikz/arch_overview}}
 
-  \vspace{0.7em}
+  \vspace{0.35em}
   \begin{columns}[T,onlytextwidth]
     \begin{column}{0.32\textwidth}\centering
       \stattile{730,370}{parameters, the same for any train length}
@@ -325,9 +325,9 @@
               velocities removed only 9\% of the shape error.
       \end{itemize}
       \vspace{0.3em}
-      {\footnotesize What remains: per-step accuracy is similar on both sets,
-       but on long trains the errors \alert{reinforce instead of cancelling}.
-       It is a stability problem, not an accuracy problem.}
+      {\footnotesize Per-step accuracy is similar on both sets. On long
+       trains the errors \alert{reinforce instead of cancelling}: a stability
+       problem, not an accuracy problem.}
     \end{column}
   \end{columns}
 \end{frame}
