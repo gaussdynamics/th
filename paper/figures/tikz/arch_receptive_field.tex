@@ -1,0 +1,41 @@
+% Receptive field of one vehicle after r rounds of message passing, against
+% the distance a coupler force wave travels in one 0.25 s step.
+% Used by fig:arch_receptive_field in chapters/08_surrogate_architecture.tex.
+\begin{tikzpicture}[
+    font=\small,
+    dot/.style={circle, draw=black!45, fill=white, line width=0.5pt,
+                inner sep=0pt, minimum size=3.6mm},
+    reach/.style={dot, draw=archLearned!80, fill=archLearned!25},
+    self/.style={dot, draw=archLearned, fill=archLearned, line width=0.8pt},
+]
+\def\sp{0.62}   % horizontal spacing between vehicles
+\def\rh{0.62}   % vertical spacing between rounds
+% rows: r = 0 (top) to r = 5 (bottom); vehicle offsets -7..7 around the target
+\foreach \r in {0,...,5} {
+  \node[anchor=east, font=\footnotesize] at ({-7*\sp-0.45}, {-\r*\rh})
+      {$r = \r$};
+  \draw[black!30, line width=0.5pt] ({-7*\sp}, {-\r*\rh}) -- ({7*\sp}, {-\r*\rh});
+  \foreach \k in {-7,...,7} {
+    \pgfmathtruncatemacro{\a}{abs(\k)}
+    \ifnum\k=0
+      \node[self] at ({\k*\sp}, {-\r*\rh}) {};
+    \else\ifnum\a>\r
+      \node[dot] at ({\k*\sp}, {-\r*\rh}) {};
+    \else
+      \node[reach] at ({\k*\sp}, {-\r*\rh}) {};
+    \fi\fi
+  }
+}
+\node[font=\footnotesize\itshape, text=black!60] at (0,0.45) {vehicle $i$};
+
+% physical reach of one step
+\pgfmathsetmacro{\yb}{-5*\rh-0.7}
+\pgfmathsetmacro{\yc}{\yb-0.75}
+\draw[archImposed, line width=2.4pt] ({-3*\sp}, \yb) -- ({3*\sp}, \yb);
+\node[font=\footnotesize, text=archImposed, anchor=north] at (0, \yb-0.08)
+    {force wave in 0.25\,s, median: about 3 vehicles each way};
+\draw[archImposed!60, line width=2.4pt] ({-5*\sp}, \yc) -- ({5*\sp}, \yc);
+\node[font=\footnotesize, text=archImposed!80, anchor=north] at (0, \yc-0.08)
+    {99th percentile: about 5 vehicles each way};
+
+\end{tikzpicture}

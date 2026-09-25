@@ -1,0 +1,103 @@
+% One round of message passing on the consist chain: (a) the edge update,
+% (b) the node update, (c) the end vehicles, (d) the update block itself.
+% Used by fig:arch_message_passing in chapters/08_surrogate_architecture.tex.
+\begin{tikzpicture}[
+    font=\small,
+    >={Stealth[length=2mm]},
+    veh/.style={circle, draw=black!70, fill=white, line width=0.7pt,
+                inner sep=0pt, minimum size=8.5mm, font=\footnotesize},
+    vehhot/.style={veh, draw=archLearned, fill=archLearned!12, line width=1.1pt},
+    cpl/.style={rectangle, draw=black!70, fill=black!70, inner sep=0pt, minimum size=2.4mm},
+    cplhot/.style={rectangle, draw=archLearned, fill=archLearned, inner sep=0pt, minimum size=3.2mm},
+    msg/.style={->, line width=0.9pt, draw=archLearned},
+    panel/.style={font=\small\bfseries, anchor=west},
+    note/.style={font=\footnotesize\itshape, text=black!60, align=center},
+    blk/.style={draw=black!60, fill=archFill, rounded corners=2pt, line width=0.6pt,
+                minimum height=0.85cm, align=center, font=\footnotesize},
+]
+
+% ============ (a) edge update ================================================
+\begin{scope}[shift={(0,0)}]
+  \node[panel] at (-0.5,1.5) {(a) Edge update};
+  \node[veh]    (a0) at (0,0)   {$n_{j-1}$};
+  \node[vehhot] (a1) at (2.1,0) {$n_{j}$};
+  \node[vehhot] (a2) at (4.2,0) {$n_{j+1}$};
+  \node[veh]    (a3) at (6.3,0) {$n_{j+2}$};
+  \draw[line width=0.9pt, black!60] (a0) -- (a1) (a2) -- (a3);
+  \draw[line width=1.2pt, archLearned] (a1) -- (a2);
+  \node[cpl] at ($(a0)!0.5!(a1)$) {};
+  \node[cplhot] (ej) at ($(a1)!0.5!(a2)$) {};
+  \node[cpl] at ($(a2)!0.5!(a3)$) {};
+  \node[font=\footnotesize, text=archLearned] at ($(ej)+(0,-0.45)$) {$e_j$};
+  \draw[msg] (a1.north) to[bend left=45] (ej.north west);
+  \draw[msg] (a2.north) to[bend right=45] (ej.north east);
+  \node[font=\footnotesize] at (3.15,-1.25)
+    {$e_j \leftarrow e_j + \mathrm{LN}\bigl(\phi_e^{(r)}[\,e_j,\ n_j,\ n_{j+1}\,]\bigr)$};
+  \node[note] at (3.15,-1.8) {each coupler reads the two vehicles it joins};
+\end{scope}
+
+% ============ (b) node update ================================================
+\begin{scope}[shift={(9.3,0)}]
+  \node[panel] at (-0.5,1.5) {(b) Node update};
+  \node[veh]    (b0) at (0,0)   {$n_{i-1}$};
+  \node[vehhot] (b1) at (3.0,0) {$n_{i}$};
+  \node[veh]    (b2) at (6.0,0) {$n_{i+1}$};
+  \draw[line width=1.2pt, archLearned] (b0) -- (b1) -- (b2);
+  \node[cplhot] (el) at ($(b0)!0.5!(b1)$) {};
+  \node[cplhot] (er) at ($(b1)!0.5!(b2)$) {};
+  \node[font=\footnotesize, text=archLearned] at ($(el)+(0,-0.45)$) {$e_{i-1}$};
+  \node[font=\footnotesize, text=archLearned] at ($(er)+(0,-0.45)$) {$e_i$};
+  \draw[msg] (el.north) to[bend left=45]
+      node[pos=0.45, above, font=\scriptsize, text=black!70] {from ahead} (b1.north west);
+  \draw[msg] (er.north) to[bend right=45]
+      node[pos=0.45, above, font=\scriptsize, text=black!70] {from behind} (b1.north east);
+  \node[font=\footnotesize] at (3.0,-1.25)
+    {$n_i \leftarrow n_i + \mathrm{LN}\bigl(\phi_n^{(r)}[\,n_i,\ e_{i-1},\ e_i\,]\bigr)$};
+  \node[note] at (3.0,-1.8) {the two messages are kept separate, not summed};
+\end{scope}
+
+% ============ (c) the end vehicles ===========================================
+\begin{scope}[shift={(4.6,-4.4)}]
+  \node[panel] at (-0.5,1.5) {(c) The ends of the train};
+  \node[rectangle, draw=black!50, dashed, fill=white, minimum size=3.2mm, inner sep=0pt]
+      (ghost) at (0.5,0) {};
+  \node[font=\footnotesize, text=black!60] at (0.5,-0.45) {$\mathbf{0}$};
+  \node[vehhot] (c0) at (2.1,0) {$n_0$};
+  \node[veh] (c1) at (4.2,0) {$n_1$};
+  \node[veh] (c2) at (6.3,0) {$n_2$};
+  \draw[line width=0.9pt, black!40, dashed] (-0.1,0) -- (ghost.west) (ghost.east) -- (c0.west);
+  \draw[line width=0.9pt, black!60] (c0) -- (c1) -- (c2);
+  \node[cplhot] (ce0) at ($(c0)!0.5!(c1)$) {};
+  \node[cpl] at ($(c1)!0.5!(c2)$) {};
+  \node[font=\footnotesize, text=archLearned] at ($(ce0)+(0,-0.45)$) {$e_0$};
+  \draw[msg, draw=black!45, dashed] (ghost.north) to[bend left=45] (c0.north west);
+  \draw[msg] (ce0.north) to[bend right=45] (c0.north east);
+  \node[note, text width=6.8cm] at (3.15,-1.45)
+    {The lead vehicle has no coupler ahead of it. A zero vector stands in
+     for the missing message, as a zero force does in the force balance.};
+\end{scope}
+
+% ============ (d) the update block ===========================================
+\begin{scope}[shift={(0,-9.7)}]
+  \node[panel] at (-0.5,2.2) {(d) Inside one update, $\phi^{(r)}$};
+  \node[font=\footnotesize, align=right, anchor=east] (cur) at (1.2,0)
+      {current state\\$e_j$ or $n_i$};
+  \node[blk, minimum width=2.0cm] (cat) at (3.4,0) {concatenate\\[-2pt]\scriptsize $3\times128$};
+  \node[blk, minimum width=1.9cm] (l1)  at (6.0,0) {Linear\\[-2pt]\scriptsize $384\to128$};
+  \node[blk, minimum width=1.3cm] (act) at (8.2,0) {SiLU};
+  \node[blk, minimum width=1.9cm] (l2)  at (10.4,0) {Linear\\[-2pt]\scriptsize $128\to128$};
+  \node[blk, minimum width=1.9cm] (ln)  at (12.7,0) {LayerNorm};
+  \node[circle, draw=black!70, line width=0.7pt, inner sep=0.5pt, font=\small] (add) at (14.4,0) {$+$};
+  \node[font=\footnotesize, align=left, anchor=west] (upd) at (15.2,0)
+      {updated state\\$e_j$ or $n_i$};
+  \draw[->, line width=0.7pt, black!70] (cur.east) -- (cat.west);
+  \foreach \a/\b in {cat/l1, l1/act, act/l2, l2/ln, ln/add, add/upd} {
+    \draw[->, line width=0.7pt, black!70] (\a) -- (\b);
+  }
+  \draw[->, line width=0.7pt, black!70] (3.4,1.15)
+      node[above, font=\footnotesize] {the two neighbours} -- (cat.north);
+  \draw[->, line width=0.9pt, archImposed] (1.6,0) |- (14.4,-1.1) -- (add.south);
+  \node[font=\scriptsize\itshape, text=archImposed, fill=white, inner sep=2pt]
+      at (8.2,-1.1) {residual connection: the block learns a change to the current state, not a replacement};
+\end{scope}
+\end{tikzpicture}

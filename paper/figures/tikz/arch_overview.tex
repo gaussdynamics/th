@@ -1,0 +1,92 @@
+% Encode-process-decode pipeline of the chain graph network, and the step
+% reconstruction that turns its two outputs into the next state.
+% Used by fig:arch_overview in chapters/08_surrogate_architecture.tex.
+\begin{tikzpicture}[
+    font=\small,
+    >={Stealth[length=2.2mm]},
+    stage/.style={draw=#1, fill=archFill, rounded corners=2pt, line width=0.7pt,
+                  minimum width=2.6cm, minimum height=1.05cm, align=center},
+    stage/.default=black!60,
+    sub/.style={font=\footnotesize, text=black!70},
+    lbl/.style={font=\footnotesize\itshape, text=black!60, align=center},
+    flow/.style={->, line width=0.7pt, draw=black!70},
+    veh/.style={circle, draw=black!70, fill=white, inner sep=0pt, minimum size=4.2mm},
+]
+
+% ---- column 1: inputs -------------------------------------------------------
+\node[stage=archInput, text width=3.2cm] (nin) at (0, 1.15)
+    {Node features\\[-2pt]\footnotesize 17 per vehicle\\[-3pt]\scriptsize state, commands, route};
+\node[stage=archInput, text width=3.2cm] (ein) at (0,-1.15)
+    {Edge features\\[-2pt]\footnotesize 9 per coupler\\[-3pt]\scriptsize stretch, rate, force};
+\node[lbl] at (0, 2.25) {Inputs at step $k$};
+
+% ---- column 2: encoders -----------------------------------------------------
+\node[stage] (nenc) at (3.2, 1.15) {Node encoder\\[-2pt]\footnotesize MLP, $17 \to 128$};
+\node[stage] (eenc) at (3.2,-1.15) {Edge encoder\\[-2pt]\footnotesize MLP, $9 \to 128$};
+\node[lbl] at (3.2, 2.25) {Encode};
+\draw[flow] (nin) -- (nenc);
+\draw[flow] (ein) -- (eenc);
+
+% ---- column 3: processor ----------------------------------------------------
+\node[draw=black!60, fill=archFill, rounded corners=2pt, line width=0.7pt,
+      minimum width=3.3cm, minimum height=3.35cm] (proc) at (6.75,0) {};
+\node[lbl] at (6.75, 2.25) {Process};
+\begin{scope}[shift={(6.75,0.55)}]
+  \foreach \i in {0,...,4} {
+    \node[veh] (c\i) at ({-1.2+0.6*\i}, 0) {};
+  }
+  \foreach \i [evaluate=\i as \j using int(\i+1)] in {0,...,3} {
+    \draw[line width=0.9pt, black!70] (c\i) -- (c\j);
+    \node[rectangle, fill=black!70, minimum size=1.6mm, inner sep=0pt]
+        at ($(c\i)!0.5!(c\j)$) {};
+  }
+\end{scope}
+\node[font=\footnotesize, align=center] at (6.75,-0.55)
+    {edge update, then\\node update};
+\node[font=\footnotesize, align=center] at (6.75,-1.25)
+    {$\times\,R = 5$ rounds};
+\draw[flow] (nenc.east) -- (proc.west |- nenc.east);
+\draw[flow] (eenc.east) -- (proc.west |- eenc.east);
+
+% ---- column 4: decoders -----------------------------------------------------
+\node[stage=archLearned] (ndec) at (10.3, 1.15)
+    {Node head\\[-2pt]\footnotesize $\bar a_i$ per vehicle};
+\node[stage=archLearned] (edec) at (10.3,-1.15)
+    {Edge head\\[-2pt]\footnotesize $c_j$ per coupler};
+\node[lbl] at (10.3, 2.25) {Decode};
+\draw[flow] (proc.east |- ndec.west) -- (ndec);
+\draw[flow] (proc.east |- edec.west) -- (edec);
+
+% ---- column 5: step reconstruction ------------------------------------------
+\node[draw=archImposed, fill=archFill, rounded corners=2pt, line width=0.7pt,
+      align=left, inner sep=6pt, font=\footnotesize,
+      minimum height=3.35cm, text width=4.25cm] (rec) at (14.55,0) {%
+    $v_{k+1} = v_k + h\,\bar a$\\[4pt]
+    $\delta_{k+1} = \delta_k + \tfrac{h}{2}\bigl(\dot\delta_k + \dot\delta_{k+1}\bigr) + c$\\[4pt]
+    \mbox{$x_{k+1}$: centroid by trapezoid,}\\ \mbox{\phantom{$x_{k+1}$:} shape from $\delta_{k+1}$}\\[4pt]
+    $z_{k+1}$: exact lag solution};
+\node[lbl] at (14.55, 2.25) {Reconstruct};
+\draw[flow] (ndec.east) -- (rec.west |- ndec.east);
+\draw[flow] (edec.east) -- (rec.west |- edec.east);
+
+% ---- output and rollout loop ------------------------------------------------
+\node[stage=archImposed, minimum width=1.5cm, minimum height=0.8cm] (out)
+    at (14.55,-2.85) {$\mathbf{s}_{k+1}$};
+\draw[flow] (rec) -- (out);
+\coordinate (lp) at (-1.95,-2.85);
+\draw[line width=0.7pt, dashed, draw=black!55] (out.west) -- (lp) -- (lp |- nin.west);
+\draw[flow, dashed, draw=black!55] (lp |- nin.west) -- (nin.west);
+\draw[flow, dashed, draw=black!55] (lp |- ein.west) -- (ein.west);
+\node[lbl, fill=white, inner sep=2pt] at (6.75,-2.85)
+    {rollout: features rebuilt from $\mathbf{s}_{k+1}$ for the next step};
+
+% ---- legend -----------------------------------------------------------------
+\begin{scope}[shift={(4.3,-3.75)}, font=\footnotesize]
+  \draw[archInput, line width=1.4pt] (0,0) -- (0.45,0);
+  \node[anchor=west] at (0.5,0) {inputs};
+  \draw[archLearned, line width=1.4pt] (2.1,0) -- (2.55,0);
+  \node[anchor=west] at (2.6,0) {learned by the network};
+  \draw[archImposed, line width=1.4pt] (6.9,0) -- (7.35,0);
+  \node[anchor=west] at (7.4,0) {imposed exactly};
+\end{scope}
+\end{tikzpicture}
