@@ -28,6 +28,7 @@ from routegen.profile import (  # noqa: E402
     _fill_invalid,
     derive_profile,
     detect_tunnel_runs,
+    suppress_short_excursions,
 )
 
 _ROUTES = os.path.join(os.path.dirname(__file__), "..", "elevated_routes")
@@ -208,3 +209,54 @@ if __name__ == "__main__":
                 traceback.print_exc()
     print("\n%s" % ("all passed" if not fails else "%d failed" % fails))
     sys.exit(1 if fails else 0)
+
+
+# --------------------------------------------------------------------------- #
+# Persistence filter: length, not magnitude, separates artifact from terrain
+# --------------------------------------------------------------------------- #
+def test_short_excursion_is_clamped_and_sustained_one_is_kept():
+    s = np.arange(1000) * DS
+    g = np.zeros(1000)
+    g[100:110] = 0.05    # 100 m spike -- an artifact
+    g[400:500] = 0.035   # 1 km at 3.5% -- Raton's ruling grade
+    out = suppress_short_excursions(g, s, threshold=0.025, min_len_m=500.0)
+    assert np.isclose(out[100:110].max(), 0.025)
+    assert np.isclose(out[400:500].max(), 0.035)
+
+
+def test_filter_preserves_sign():
+    s = np.arange(600) * DS
+    g = np.zeros(600)
+    g[100:110] = -0.05
+    out = suppress_short_excursions(g, s, threshold=0.025, min_len_m=500.0)
+    assert np.isclose(out[100:110].min(), -0.025)
+
+
+def test_filter_leaves_the_field_continuous():
+    """A run's edges sit at |grade| == threshold by construction, so clamping
+    its interior to the threshold introduces no step."""
+    s = np.arange(600) * DS
+    g = 0.02 + 0.02 * np.exp(-((np.arange(600) - 300.0) / 8.0) ** 2)
+    out = suppress_short_excursions(g, s, threshold=0.025, min_len_m=500.0)
+    assert np.abs(np.diff(out)).max() <= np.abs(np.diff(g)).max() + 1e-12
+
+
+def test_filter_is_a_noop_when_disabled():
+    s = np.arange(600) * DS
+    g = np.zeros(600)
+    g[100:110] = 0.05
+    assert np.array_equal(
+        suppress_short_excursions(g, s, threshold=0.025, min_len_m=0.0), g)
+
+
+def test_derive_profile_reproduces_earlier_corpora_by_default():
+    """The filter must default off, or every corpus built before it silently
+    stops reproducing from its own build_config."""
+    s, z = _track(n=600)
+    feat = {"geometry": {"coordinates": [[-104.0 + i * 1e-4, 38.0, float(z[i])]
+                                         for i in range(600)]},
+            "properties": {"s_m": s.tolist()}}
+    a = derive_profile(feat, smooth_window_m=800.0, grade_clip=0.025)
+    b = derive_profile(feat, smooth_window_m=800.0, grade_clip=0.025,
+                       excursion_min_len_m=0.0)
+    assert np.array_equal(np.asarray(a["grade"]), np.asarray(b["grade"]))

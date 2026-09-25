@@ -75,12 +75,26 @@ Three findings came out of the pilot that change what happens next:
    deliberately **not** rescued by raising it — that is the clip/tolerance
    re-tune's call, on grade-field physicality rather than pass rate. Full
    record in `ROUTE_PIPELINE_NOTE.md`.
-3. **The 2.5% clip binds on real mountain grade.** `bnsf_raton_p3_56km` sits at
-   the clamp for 25.4% of its length, and Raton's ruling grade genuinely is
-   ~3.5%. The clip was tuned on a corridor set with no real mountain grade.
-   Re-run `tune_grade_smoothing.py` on a mountain sample. Reproduced
-   2026-09-24 at 23.0% at-clip. The re-tune should also settle whether
-   `RAW_JUMP_TOL` should be terrain-dependent — see item 2.
+3. ~~**The 2.5% clip binds on real mountain grade.**~~ ✅ **re-tuned
+   2026-09-24.** `bnsf_raton_p3_56km` sat at the clamp for 23.0% of its length
+   against a genuine ~3.5% ruling grade. The fix was not a new number but a
+   split: the clip was doing two jobs — bounding grade to physical values and
+   suppressing DEM artifacts — and artifacts differ from real mountain grade in
+   **length**, not magnitude, which a magnitude clamp cannot see. So the clip
+   is now a physical tripwire (**4.0%**) and `suppress_short_excursions` does
+   the artifact work, clamping excursions over 2.5% that do not persist for
+   **500 m**. Swept over 71 corridors against criteria fixed in advance:
+   plains rms shift **0.000 pp** and plains worst max **2.50%** at every clip
+   tested (without the filter, relaxing the clip moves them to 0.071 pp and
+   4.00%), while Raton goes to **max 3.43%, at-clip 0.0%**. The filter defaults
+   off in `derive_profile`, so earlier corpora still reproduce. One corridor
+   still binds — `up_moffat_tunnel_p3` at 1.5%, a 750 m run ending 60 m before
+   the tunnel's west portal, i.e. the approach cut the detector's conservative
+   edges leave behind. Full record in `ROUTE_PIPELINE_NOTE.md`.
+
+   Still open from item 2: whether `RAW_JUMP_TOL` should be terrain-dependent.
+   The re-tune did not settle it, because the corridors it would affect are
+   rejected before any grade field exists to judge.
 
 Also corrected: the recorded **16,427 pts/s elevation rate does not
 reproduce** — 1,700 pts/s burst, 421 sustained, so the continental projection is
@@ -89,30 +103,25 @@ but batching elevation across corridors is the obvious unclaimed optimization.
 
 ### Next action, unambiguous
 
-**Re-tune the grade clip on a mountain sample, then build the split corridor
-set.** The tunnel decision is done (item 2 above), which matters for ordering:
-re-tuning the clip first would have tuned it on a sample with Tennessee Pass
-and three Moffat pieces rejected — the steepest corridors missing — which is
-the Phase A mistake ("selected against a corridor set that contained no real
-mountain grade") repeated one level up. Now that the tunnelled corridors
-survive the gate, the sample the clip is tuned on actually contains the grade
-it has to represent.
-
-On the clip itself the recommendation is to stop using it as an artifact
-filter. It is doing two jobs — bound grade to physically real values, and
-suppress DEM artifacts — and it is bad at the second, because artifacts and
-real mountain grade differ in **length**, not magnitude: `route_line0`'s
-residual at-clip runs have median 135 m, while Raton's genuine ~3.5% ruling
-grade holds for kilometres. So set `grade_clip` from physics (~4% clears every
-active North American adhesion ruling grade) and give artifact suppression to
-the minimum-length filter this file already proposed. Note that relaxing the
-clip costs none of the Phase A protection: `route_line2` is caught by the
-raw-elevation gate, which is upstream and independent of the clip — the clip
-is not what catches it.
-
-Then pick the corridors for
+**Pick the split corridor set and elevate it.** Both route decisions are
+settled (items 2 and 3 above), so nothing blocks choosing
 `train`/`val`/`test_id`/`ood_grade`/`ood_corridor`/`control_eval` out of the
-4,350 US corridors and elevate just those.
+4,350 US corridors. `ood_grade` now has honest mountain grade to draw on —
+Raton p3 carries its real 3.43% instead of a 2.5% clamp — and `control_eval`,
+empty since v1, can finally be populated.
+
+Two things to settle while choosing, neither blocking:
+
+- **Whether `RAW_JUMP_TOL` should be terrain-dependent.** Three steep
+  corridors sit just over the 5% gate (5.8/6.7/6.9%) and would pass if it
+  were raised. There is a physical argument — on a 30% mountainside a 3 m
+  horizontal error is ~1 m vertical — but it was not settled during the
+  re-tune, because a rejected corridor has no grade field to judge. Deciding
+  it needs building them anyway and inspecting the result.
+- **Elevation batching across corridors.** Sustained throughput is ~420–900
+  pts/s and sampling per corridor runs at about half the plateau rate. A few
+  hundred corridors is 10–20 min either way, so this is an optimization, not a
+  blocker.
 
 After that: the overspeed second cause (control profiles are sampled
 independently of terrain — a randomizer fix, not a route fix), then the Phase C

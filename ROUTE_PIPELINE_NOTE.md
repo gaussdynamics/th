@@ -683,6 +683,126 @@ raw-elevation tolerance both need re-tuning against the corridors that matter
 for `ood_grade` — the same `tune_grade_smoothing.py` exercise, run on a mountain
 sample instead of the Pueblo five.
 
+### The grade clip, re-tuned 2026-09-24
+
+`grade_clip = 0.025` was selected in Phase A against a corridor set with no real
+mountain grade, and it truncates Raton. The re-tune does not move the number in
+place; it splits what the number was doing.
+
+**The clip was doing two jobs.** Bound grade to physically real values, and
+suppress DEM artifacts. It is bad at the second, because artifacts and real
+mountain grade differ in **length**, not magnitude — `route_line0`'s residual
+at-clip runs have median length 135 m, while Raton's genuine ~3.5% ruling grade
+holds for kilometres. A magnitude clamp cannot separate those, and asking it to
+is what made 2.5% look justified on a corridor set that happened to contain no
+mountains.
+
+So: the clip becomes a **physical tripwire** and a **persistence filter** does
+the artifact work. `routegen.profile.suppress_short_excursions` clamps grade
+excursions above 2.5% that do not persist for 500 m down to 2.5%, sign
+preserved. A run's own edges sit at exactly the threshold, so the clamped field
+stays continuous. It runs *before* the clip — measuring excursion lengths on an
+already-clamped field would measure the clamp. It defaults **off** in
+`derive_profile`, so every corpus built earlier still reproduces from its own
+`build_config.json`.
+
+**Swept over 71 corridors** that pass the elevation gate — the 72 built pilot /
+steep / sample corridors plus the cached tunnel set, re-derived offline from
+their stored `z_raw_m`. 67 plains (baseline rms < 1%), 4 mountain (Raton p3,
+Cajon p1/p2, Moffat p3). Criteria fixed before the numbers were read:
+
+| | criterion |
+|---|---|
+| A | plains corridors unchanged from Phase A (\|rms shift\| < 0.05 pp) |
+| B | the clip stops being load-bearing (at-clip < 1% of length) |
+| C | real mountain grade survives (Raton p3 p95 rises toward its true ~3.5%) |
+| D | relaxing the clip admits no artifacts (plains max grade does not grow) |
+
+The filter decouples the clip from the plains completely. Without it, relaxing
+2.5% → 4% pushes plains rms by 0.071 pp and plains worst max from 2.50% to
+4.00% — criterion D fails, which is exactly the fear that justified the tight
+clip. With `min_len = 500 m` the plains rms shift is **0.000 pp at every clip
+value tested**, and plains worst max stays at 2.50%:
+
+| clip | min_len | plains rms shift | plains worst max | worst at-clip | Raton p3 p95 |
+|---|---|---|---|---|---|
+| 0.025 | 0 | 0.000 pp | 2.50% | 23.0% | 2.50% |
+| 0.040 | 0 | 0.071 pp | **4.00%** | 2.1% | 3.22% |
+| 0.035 | 500 | 0.000 pp | 2.50% | 1.5% | 3.22% |
+| **0.040** | **500** | **0.000 pp** | **2.50%** | **1.5%** | **3.22%** |
+
+Per corridor, Phase A → `clip 4% + 500 m` (rms / p95 / max / at-clip):
+
+| corridor | Phase A | re-tuned |
+|---|---|---|
+| **bnsf_raton_p3_56km** | 1.70 / 2.50 / 2.50 / **23.0%** | 1.88 / 3.22 / **3.43** / **0.0%** |
+| bnsf_cajon_p1_29km | 1.92 / 2.20 / 2.50 / 0.3% | 1.92 / 2.20 / 2.50 / 0.0% |
+| bnsf_cajon_p2_18km | 1.15 / 1.58 / 1.63 / 0.0% | unchanged |
+| up_moffat_tunnel_p3_51km | 1.57 / 2.03 / 2.50 / 3.8% | 1.61 / 2.03 / 4.00 / 1.5% |
+
+Plains aggregate is untouched: rms median 0.507% against 0.507%, worst max
+2.50% against 2.50%.
+
+#### Is the gate biased against steep terrain? Measured, and: mildly
+
+The worry with rejecting corridors on elevation quality is not the count, it is
+selection: if the gate preferentially throws out steep corridors, `ood_grade`
+ends up built on the mountain corridors whose DEM happened to be clean, which
+is a quiet bias in exactly the split that can least afford one. Measured over
+the 75-corridor offline sample:
+
+| terrain | n | pass rate | median jump fraction |
+|---|---|---|---|
+| gentle (rms < 0.75%) | 55 | **100%** | 0.61% |
+| rolling (0.75–1.25%) | 15 | 87% | 1.04% |
+| steep (rms > 1.25%) | 5 | 60% | 1.94% |
+
+`corr(jump fraction, rms grade) = +0.34`. So the bias is real.
+
+**It does not bite where it would matter, though.** The two steepest corridors
+in the sample pass with 4–10x margin — `bnsf_cajon_p1` (rms 1.92, jump 0.51%)
+and `bnsf_raton_p3` (rms 1.88, jump 1.27%). The rejected ones are *less* steep
+than both: `up_moffat_tunnel_p4` at rms 1.67 and `p0` at rms 1.41. And
+`rrrr_tennessee_pass_p1`, at rms 0.89, is not a steep corridor at all — it is
+rejected at 14.28%, nearly 3x the tolerance, which is broken data rather than a
+marginal call.
+
+**Decision: reject them and stop.** 0 of 48 US corridors failed the
+representative sample; there are 4,350 US corridors and the splits need a few
+hundred. Raton keeps its real grade, Cajon is intact, Moffat p1 and p3 pass.
+Rescuing `tennessee_pass_p1` would need roughly a 3x tolerance increase, which
+re-admits `route_line2`-class data — that is not tuning, it is removing the
+gate, and the gate is the only reason `route_line2` was ever caught.
+
+**The cheap lever, if `ood_grade` turns out thin.** `up_moffat_tunnel_p0`
+(5.78%) and `p4` (6.94%) are genuinely marginal, both tunnelled, and p3 showed
+that detected runs end short of the true portals. Dilating runs by a portal
+margin would plausibly rescue both. Hold it until the split is built: if
+`ood_grade` has enough mountain corridors without them, it is not worth trading
+a known-small artifact for the risk of interpolating over real track.
+
+**Settings chosen:** `grade_clip = 0.040`, `excursion_threshold = 0.025`,
+`excursion_min_len_m = 500`, window unchanged at 800 m.
+
+`0.035` and `0.040` are indistinguishable on every criterion, so the choice is
+physical rather than empirical. 4% clears every active North American adhesion
+ruling grade with margin; 3.5% would leave Raton — measured max 3.43% — with
+0.07 pp of headroom, and the next Raton-like corridor would be truncated
+silently. The point of this re-tune is to stop silently truncating real
+terrain, so the margin goes that way.
+
+**One corridor still binds, and it is a real artifact.** `up_moffat_tunnel_p3`
+sits at the clip for 1.5% of its length, in a single 750 m run at
+16.39–17.14 km. The detected tunnel starts at 17.2 km — the run ends **60 m
+before the west portal**. It is the approach cut, where the DEM is still
+reading the mountainside but the jump density has not yet risen enough to be
+flagged: `detect_tunnel_runs` is conservative at its edges. The excursion
+persists past 500 m, so the filter correctly leaves it alone and the clip
+bounds it. That is the tripwire doing its job rather than a setting to tune
+around. Dilating detected runs by a portal margin is the obvious fix and is not
+done — it trades a known small artifact for the risk of interpolating over real
+track, and should be decided on measurement rather than by analogy.
+
 ---
 
 ## Phase C — corpus rebuild, at a larger scale

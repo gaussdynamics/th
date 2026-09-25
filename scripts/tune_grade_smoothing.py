@@ -125,6 +125,9 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--windows", type=float, nargs="+",
                     default=[200, 400, 600, 800, 1200, 1600])
+    ap.add_argument("--excursion-threshold", type=float, default=0.025)
+    ap.add_argument("--excursion-min-len-m", type=float, default=500.0,
+                    help="0 disables the persistence filter")
     ap.add_argument("--clip", type=float, default=0.04,
                     help="grade_clip in use while measuring (default: today's 4%%)")
     ap.add_argument("--routes", type=Path, default=ELEVATED)
@@ -162,7 +165,9 @@ def main() -> None:
         table[w] = {}
         for name in usable:
             prof = derive_profile(feats[name], smooth_window_m=w,
-                                  grade_clip=args.clip)
+                                  grade_clip=args.clip,
+                                  excursion_threshold=args.excursion_threshold,
+                                  excursion_min_len_m=args.excursion_min_len_m)
             table[w][name] = summarize(prof, args.clip)
 
     names = usable

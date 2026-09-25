@@ -73,7 +73,14 @@ from routegen.resample import resample_feature  # noqa: E402
 # and recorded in ROUTE_PIPELINE_NOTE.md. Not defaults -- the routegen defaults
 # are still the pre-Phase-A 200 m / 4%.
 SMOOTH_WINDOW_M = 800.0
-GRADE_CLIP = 0.025
+# Re-tuned 2026-09-24 on a 71-corridor mountain-inclusive sample. The 2.5% clip
+# was doing two jobs -- bounding grade to physical values, and suppressing DEM
+# artifacts -- and it was bad at the second, because artifacts and real mountain
+# grade differ in LENGTH, not magnitude. Split: the clip is now a physical
+# tripwire, and a persistence filter does the artifact work.
+GRADE_CLIP = 0.040
+EXCURSION_THRESHOLD = 0.025
+EXCURSION_MIN_LEN_M = 500.0
 # Raw-elevation gate: the fraction of 10 m steps allowed to jump over 1 m.
 # route_line2 failed at 19.3%; every other corridor measured 0.7-1.5%.
 RAW_JUMP_TOL = 0.05
@@ -135,6 +142,9 @@ def main() -> int:
     ap.add_argument("--ds-m", type=float, default=10.0)
     ap.add_argument("--smooth-window-m", type=float, default=SMOOTH_WINDOW_M)
     ap.add_argument("--grade-clip", type=float, default=GRADE_CLIP)
+    ap.add_argument("--excursion-threshold", type=float, default=EXCURSION_THRESHOLD)
+    ap.add_argument("--excursion-min-len-m", type=float, default=EXCURSION_MIN_LEN_M,
+                    help="0 disables the persistence filter")
     ap.add_argument("--pilot", action="store_true", help="run the 12-corridor pilot")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--sample", type=int, default=None,
@@ -216,7 +226,9 @@ def main() -> int:
         # the artifact stays honest and derive_profile applies the one fill.
         elev["properties"]["is_tunnel"] = tunnel.tolist()
         prof = derive_profile(elev, smooth_window_m=args.smooth_window_m,
-                              grade_clip=args.grade_clip)
+                              grade_clip=args.grade_clip,
+                              excursion_threshold=args.excursion_threshold,
+                              excursion_min_len_m=args.excursion_min_len_m)
         save_profile_npz(prof, str(out / "routes" / ("%s.npz" % cid)))
         with open(out / "profiles" / ("%s.geojson" % cid), "w") as fh:
             json.dump(profile_to_geojson(elev, prof), fh)
@@ -239,6 +251,8 @@ def main() -> int:
         "rejected_ids": [r["corridor_id"] for r in rejected],
         "ds_m": args.ds_m, "smooth_window_m": args.smooth_window_m,
         "grade_clip": args.grade_clip, "raw_jump_tol": RAW_JUMP_TOL,
+        "excursion_threshold": args.excursion_threshold,
+        "excursion_min_len_m": args.excursion_min_len_m,
         "n_tunnel_corridors": sum(1 for r in records if r["tunnel"]["n_samples"] > 0),
         "tunnel_detection": "routegen.profile.detect_tunnel_runs",
         "n_points_total": n_pts_total, "elapsed_s": round(elapsed, 1),

@@ -100,6 +100,46 @@ def _fill_invalid(values: np.ndarray, s: np.ndarray, invalid: np.ndarray) -> np.
     return out
 
 
+def _runs(mask: np.ndarray):
+    """Yield ``(start, stop)`` half-open index pairs of each True run in ``mask``."""
+    if mask.size == 0:
+        return
+    edges = np.flatnonzero(np.diff(np.concatenate(([0], mask.view(np.int8), [0]))))
+    for a, b in zip(edges[::2], edges[1::2]):
+        yield int(a), int(b)
+
+
+def suppress_short_excursions(grade: np.ndarray, s: np.ndarray, *,
+                              threshold: float, min_len_m: float) -> np.ndarray:
+    """Clamp grade excursions above ``threshold`` that do not persist.
+
+    A ruling grade is sustained: Raton holds ~3.5% for kilometres. A DEM
+    artifact is not -- the residual at-clip runs on route_line0 have a median
+    length of 135 m. Magnitude cannot separate the two, and that is the job a
+    magnitude clamp was being asked to do. Length can.
+
+    Each contiguous run with ``|grade| > threshold`` shorter than ``min_len_m``
+    is clamped to ``threshold``, sign preserved. The run's own edges sit at
+    ``|grade| == threshold`` by construction, so the clamped field stays
+    continuous. Runs that persist are left alone, which is what lets the
+    magnitude clip be set from physics rather than tuned against artifacts.
+
+    ``min_len_m <= 0`` disables the filter and returns ``grade`` unchanged.
+    """
+    grade = np.asarray(grade, dtype=float)
+    if min_len_m <= 0 or grade.size == 0:
+        return grade
+    s = np.asarray(s, dtype=float)
+    out = grade.copy()
+    over = np.abs(grade) > threshold
+    for a, b in _runs(over):
+        # Span of the excursion, endpoint-inclusive.
+        length = float(s[min(b, s.size - 1)] - s[a])
+        if length < min_len_m:
+            out[a:b] = np.sign(grade[a:b]) * threshold
+    return out
+
+
 def _window_samples(window_m: float, ds_m: float) -> int:
     return max(3, int(round(window_m / max(ds_m, 1e-9))))
 
@@ -113,6 +153,8 @@ def derive_profile(
     smooth_window_m: float = 200.0,
     poly_order: int = 2,
     grade_clip: float = 0.04,
+    excursion_threshold: float = 0.025,
+    excursion_min_len_m: float = 0.0,
     curv_window_m: float = 300.0,
     min_radius_m: float = 80.0,
     vmax_fallback_class: int = 4,
@@ -158,6 +200,12 @@ def derive_profile(
     win = _window_samples(smooth_window_m, ds)
     z_smooth = savgol(z_corr, win, poly_order, deriv=0, delta=ds)
     grade = savgol(z_corr, win, poly_order, deriv=1, delta=ds)
+    # Persistence filter first, magnitude clip second: the clip is a physical
+    # bound (a tripwire), the filter is what removes artifacts. Doing it the
+    # other way round would measure excursion lengths on an already-flattened
+    # field. Disabled by default so earlier corpora reproduce.
+    grade = suppress_short_excursions(grade, s, threshold=excursion_threshold,
+                                      min_len_m=excursion_min_len_m)
     grade = np.clip(grade, -grade_clip, grade_clip)
     sin_theta = np.sin(np.arctan(grade))
 
@@ -190,6 +238,8 @@ def derive_profile(
         "smooth_window_m": float(smooth_window_m),
         "poly_order": int(poly_order),
         "grade_clip": float(grade_clip),
+        "excursion_threshold": float(excursion_threshold),
+        "excursion_min_len_m": float(excursion_min_len_m),
         "curv_window_m": float(curv_window_m),
         "min_radius_clamp_m": float(min_radius_m),
         "vmax_fallback_class": int(vmax_fallback_class),
@@ -343,15 +393,6 @@ DENSITY_TOL = 0.25        # jump fraction inside the window marking a candidate
 MIN_RUN_M = 300.0         # shorter than this is not worth correcting as a tunnel
 MAX_RUN_M = 15000.0       # longer than this is a broken corridor, not a bore
 MIN_RISE_M = 5.0          # median height of surface over chord, for condition 3
-
-
-def _runs(mask: np.ndarray):
-    """Yield ``(start, stop)`` half-open index pairs of each True run in ``mask``."""
-    if mask.size == 0:
-        return
-    edges = np.flatnonzero(np.diff(np.concatenate(([0], mask.view(np.int8), [0]))))
-    for a, b in zip(edges[::2], edges[1::2]):
-        yield int(a), int(b)
 
 
 def detect_tunnel_runs(
