@@ -1,0 +1,359 @@
+<title>Two Results on Longer Trains</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=Source+Serif+4:opsz,wght@8..60,600;8..60,700&display=swap">
+<style>
+  :root {
+    --ground: #F5F6F8;
+    --panel: #FFFFFF;
+    --ink: #1C2530;
+    --muted: #5A6B7D;
+    --rule: #D6DCE3;
+    --navy: #15325B;
+    --blue: #3B7DBF;
+    --blue-soft: #A9C4DD;
+    --red: #B8372B;
+    --red-soft: #E8B4AD;
+    --good-bg: #E6EFF8;
+    --warn-bg: #F7E7E4;
+    --serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+    --sans: "Source Sans 3", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #10151C;
+      --panel: #171E27;
+      --ink: #E3E8EE;
+      --muted: #9AA8B8;
+      --rule: #2B3542;
+      --navy: #A9C4E6;
+      --blue: #6FA6DB;
+      --blue-soft: #3A5670;
+      --red: #E27A6D;
+      --red-soft: #6A3A34;
+      --good-bg: #1A2A3B;
+      --warn-bg: #33211F;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #10151C;
+    --panel: #171E27;
+    --ink: #E3E8EE;
+    --muted: #9AA8B8;
+    --rule: #2B3542;
+    --navy: #A9C4E6;
+    --blue: #6FA6DB;
+    --blue-soft: #3A5670;
+    --red: #E27A6D;
+    --red-soft: #6A3A34;
+    --good-bg: #1A2A3B;
+    --warn-bg: #33211F;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.6;
+    padding-inline: 20px;
+    padding-block: 40px 64px;
+  }
+  main { max-width: 700px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px; }
+  h1, h2, h3 { font-family: var(--serif); color: var(--navy); text-wrap: balance; line-height: 1.2; margin: 0; }
+  h1 { font-size: 2.1rem; }
+  h2 { font-size: 1.5rem; margin-top: 18px; }
+  h3 { font-size: 1.1rem; font-family: var(--sans); font-weight: 700; color: var(--ink); }
+  p { margin: 0; }
+  .eyebrow { font-size: 0.78rem; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+  .lede { font-size: 1.1rem; color: var(--ink); }
+  .muted { color: var(--muted); }
+  section { display: flex; flex-direction: column; gap: 16px; }
+  hr { border: 0; border-top: 1px solid var(--rule); margin: 8px 0 0; width: 100%; }
+  strong { font-weight: 700; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* the two headline verdicts */
+  .verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+  .verdict { border-radius: 6px; padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; }
+  .verdict.good { background: var(--good-bg); }
+  .verdict.bad { background: var(--warn-bg); }
+  .verdict .tag { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .verdict.good .tag { color: var(--blue); }
+  .verdict.bad .tag { color: var(--red); }
+  .verdict .big { font-family: var(--serif); font-size: 1.25rem; font-weight: 700; color: var(--ink); line-height: 1.3; }
+
+  /* definitions */
+  dl.terms { display: grid; grid-template-columns: max-content 1fr; gap: 10px 18px; margin: 0; }
+  dl.terms dt { font-weight: 700; }
+  dl.terms dd { margin: 0; }
+  @media (max-width: 520px) {
+    dl.terms { grid-template-columns: 1fr; gap: 2px; }
+    dl.terms dd { margin-bottom: 10px; }
+  }
+
+  /* figures */
+  figure { margin: 0; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 10px; }
+  figure .chart { overflow-x: auto; }
+  figure svg { display: block; width: 100%; min-width: 440px; height: auto; }
+  figcaption { font-size: 0.9rem; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.88rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 22px; height: 0; border-top: 3px solid; display: inline-block; }
+  .sw.dash { border-top-style: dashed; }
+  .sq { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+
+  /* tables */
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.95rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 0.85rem; }
+  td.r, th.r { text-align: right; }
+
+  /* ruled-out list */
+  .tests { display: flex; flex-direction: column; gap: 12px; }
+  .test { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; display: grid; grid-template-columns: 1fr; gap: 6px; }
+  .test .row { display: grid; grid-template-columns: 7.5em 1fr; gap: 10px; }
+  .test .k { font-size: 0.8rem; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); font-weight: 600; padding-top: 2px; }
+  .test .out { color: var(--red); font-weight: 600; }
+  @media (max-width: 520px) { .test .row { grid-template-columns: 1fr; gap: 0; } }
+
+  .note { font-size: 0.88rem; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 14px; }
+
+  svg text { font-family: var(--sans); }
+  .ax { stroke: var(--rule); }
+  .grid { stroke: var(--rule); stroke-dasharray: 2 3; }
+  .tick { fill: var(--muted); font-size: 12px; }
+  .lab { fill: var(--muted); font-size: 12px; }
+  .val { fill: var(--ink); font-size: 12px; font-weight: 600; }
+</style>
+
+<main>
+  <header style="display:flex;flex-direction:column;gap:12px;">
+    <div class="eyebrow">Committee update · companion to slides 8 and 9</div>
+    <h1>Two Results on Longer Trains</h1>
+    <p class="lede">The surrogate was trained only on trains of 10 to 80 cars, then tested on trains of 121 to 150 cars that it had never seen. This page explains what that test measured, what came out of it, and why the second result matters for the rest of the thesis.</p>
+  </header>
+
+  <div class="verdicts">
+    <div class="verdict good">
+      <span class="tag">Holds up</span>
+      <span class="big">Train speed stays accurate on the longer trains.</span>
+      <span class="muted">Slide 8</span>
+    </div>
+    <div class="verdict bad">
+      <span class="tag">Does not hold up</span>
+      <span class="big">How far each coupler is stretched drifts badly on the longer trains.</span>
+      <span class="muted">Slide 9</span>
+    </div>
+  </div>
+
+  <section>
+    <h2>What was tested</h2>
+    <p>The surrogate predicts how a train moves over the next quarter of a second. To simulate a longer stretch of time, it is run again and again, each time starting from its own previous prediction. That repeated use is called a <strong>rollout</strong>. A rollout of 200 steps covers 50 seconds.</p>
+    <p>Small mistakes can pile up in a rollout, because every step starts from the last step's answer rather than from the truth. So each result is reported at two points:</p>
+    <dl class="terms">
+      <dt>One step</dt>
+      <dd>Start from the true state and predict a quarter second ahead. This measures raw accuracy.</dd>
+      <dt>200 steps</dt>
+      <dd>Start from the true state once, then let the model run on its own predictions for 50 seconds. This measures whether errors stay under control.</dd>
+      <dt>Baseline</dt>
+      <dd>A deliberately simple rival to beat. For one step it is "predict no change"; for 200 steps it is "hold the starting state and never update it". A model worth keeping must beat these by a wide margin.</dd>
+    </dl>
+    <p>Every number below is the worst vehicle (or coupler) in the train, taken as the typical value over many starting points. Worst-case is the right lens, because a safety limit cares about the one coupler that is most stressed, not the average.</p>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="eyebrow">Slide 8</div>
+    <h2>Speed: accurate on trains up to 15 times longer</h2>
+    <p>On the trains it was trained on, the model's speed error after 50 seconds is <strong class="num">0.066 m/s</strong>, which is 27 times better than the baseline. On the unseen long trains it is <strong class="num">0.118 m/s</strong>, still <strong>11 times better</strong> than the baseline. The error roughly doubles on the longer trains, but it stays small and far below the baseline at every point in the rollout.</p>
+
+    <figure>
+      <div class="chart" id="velChart"></div>
+      <div class="legend">
+        <span><i class="sw" style="border-color:var(--blue)"></i>Model, trained sizes (10–80 cars)</span>
+        <span><i class="sw" style="border-color:var(--red)"></i>Model, unseen sizes (121–150 cars)</span>
+        <span><i class="sw dash" style="border-color:var(--blue-soft)"></i>Baseline, trained sizes</span>
+        <span><i class="sw dash" style="border-color:var(--red-soft)"></i>Baseline, unseen sizes</span>
+      </div>
+      <figcaption>Speed error of the worst vehicle as the rollout gets longer, on a logarithmic scale: each gridline is ten times the one below. The model lines stay below the baselines throughout, and the gap widens as the rollout runs: about 3 to 4 times at one step, 11 to 27 times by 200 steps.</figcaption>
+    </figure>
+
+    <h3>Why it works</h3>
+    <p>The network uses one small set of weights for every car and every coupler, whatever the length of the train. A 150-car train does not need new weights; the same ones are simply applied more times. So nothing in the model is tied to the train lengths it happened to see in training.</p>
+    <p>Two training techniques were needed to keep 200-step rollouts stable: adding small random errors to the inputs during training, and training on the model's own earlier predictions. Either one alone was worse. Doubling the training time nearly halved the 200-step error, which means the model is not yet as good as it can get.</p>
+  </section>
+
+  <hr>
+
+  <section>
+    <div class="eyebrow">Slide 9</div>
+    <h2>Coupler shape: fine on trained sizes, barely better than the baseline on long trains</h2>
+    <p><strong>Coupler shape</strong> means how far each coupler is stretched or compressed, measured in millimetres. It matters because coupler force comes directly from it: once a coupler has taken up its slack of about 20 mm, every extra millimetre of stretch adds force. The control chapter will keep coupler force under a safety limit, so it needs this number to be right.</p>
+
+    <figure>
+      <div class="chart" id="shapeChart"></div>
+      <div class="legend">
+        <span><i class="sq" style="background:var(--blue)"></i>Model</span>
+        <span><i class="sq" style="background:var(--muted);opacity:.45"></i>Baseline (hold the starting state)</span>
+      </div>
+      <figcaption>Shape error of the worst coupler after 200 steps (50 seconds). On the trained sizes the model is 6.8 times better than the baseline. On the unseen long trains it is only 1.2 times better.</figcaption>
+    </figure>
+
+    <p>So the model knows how fast a long train is going, but loses track of how its couplers are stretched. That is an uncomfortable combination for the control chapter, whose safety limit is on coupler force, on long trains, over long stretches of time.</p>
+
+    <h3>Three explanations that were tested and ruled out</h3>
+    <div class="tests">
+      <div class="test">
+        <div class="row"><span class="k">Idea</span><span><strong>The model can't "see" far enough along the train.</strong> Each step it passes information five cars in each direction. Maybe that is too short for a 150-car train.</span></div>
+        <div class="row"><span class="k">Test</span><span>If so, errors should be worst far from where information enters. Measure the error along the train in four quarters.</span></div>
+        <div class="row"><span class="k">Result</span><span class="out">Error is roughly even along the train (11.4, 8.8, 10.8 and 6.8 mm by quarter). Ruled out.</span></div>
+      </div>
+      <div class="test">
+        <div class="row"><span class="k">Idea</span><span><strong>The whole train slowly stretches.</strong> A small, steady bias could add up to a large error over 200 steps.</span></div>
+        <div class="row"><span class="k">Test</span><span>Force the model's corrections to have no overall stretch, and retrain.</span></div>
+        <div class="row"><span class="k">Result</span><span class="out">Long trains: no change (39.3 mm either way). Trained sizes: about 47% worse. Ruled out.</span></div>
+      </div>
+      <div class="test">
+        <div class="row"><span class="k">Idea</span><span><strong>The shape error comes from the speed error.</strong> Stretch builds up from the difference in speed between neighbouring cars, so a small speed error could feed it.</span></div>
+        <div class="row"><span class="k">Test</span><span>Give the model the perfectly correct speeds at every step and see how much shape error is left.</span></div>
+        <div class="row"><span class="k">Result</span><span class="out">Only 9% of the shape error went away (44.2 to 40.1 mm). Ruled out.</span></div>
+      </div>
+    </div>
+
+    <h3>What it actually is: errors that reinforce instead of cancel</h3>
+    <p>Here is the useful clue. At a single step, the model is almost as accurate on long trains as on the trained sizes: its per-step error is only about 17% larger. The difference appears over many steps.</p>
+    <p>If each step's small error were independent of the others, like coin flips, they would partly cancel and the total would grow at a predictable, modest rate. Comparing each rollout against that expectation shows two opposite behaviours:</p>
+
+    <figure>
+      <div class="chart" id="stabChart"></div>
+      <div class="legend">
+        <span><i class="sq" style="background:var(--blue)"></i>Actual error after 200 steps</span>
+        <span><i class="sq" style="background:var(--muted);opacity:.45"></i>Expected if per-step errors were independent</span>
+      </div>
+      <figcaption>Shape error after 200 steps against what independent per-step errors would add up to, in one diagnostic run (a 38-car trained-size train and a 150-car unseen train). On the trained size the errors cancel to well below the expectation. On the long train they add up to about twice it.</figcaption>
+    </figure>
+
+    <p>On trains of a familiar length, the model's mistakes correct each other: a coupler stretched a little too far in one step tends to be pulled back in the next. On the long trains, the mistakes push in the same direction and build on each other. In technical terms, the model's learned dynamics are <strong>stable</strong> inside the range of train lengths it was trained on and not outside it. This is a stability problem, not an accuracy problem, which is why fixes aimed at accuracy did not help.</p>
+  </section>
+
+  <hr>
+
+  <section>
+    <h2>What this means for the thesis</h2>
+    <dl class="terms">
+      <dt>Speed</dt>
+      <dd>The claim that the model works on trains longer than any it was trained on holds for speed, and the thesis will state it for speed.</dd>
+      <dt>Coupler shape</dt>
+      <dd>The same claim does not hold for coupler shape over long rollouts. The thesis will state this plainly as a limitation rather than leave it out.</dd>
+      <dt>Control</dt>
+      <dd>The control demonstration does not need to extrapolate to unseen lengths. It can train on the full range of train lengths it will control, and hold out routes instead. That avoids the weakness shown here.</dd>
+    </dl>
+    <p class="note">All numbers are from the current training dataset (data/v2). That dataset is being rebuilt on a corrected, larger set of routes, and these results will be re-run on it. The design conclusions are not expected to change; the exact numbers will.</p>
+  </section>
+</main>
+
+<script>
+(function () {
+  var NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, text) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function css(v) { return "var(" + v + ")"; }
+
+  // ---- velocity error vs rollout length (log y) ---------------------------
+  // max |dv| over the consist, median over start points, m/s. Formulation note,
+  // "Result at the default, 6000 steps".
+  (function () {
+    var steps = [1, 50, 200];
+    var series = [
+      { v: [0.0037, 0.0275, 0.0659], c: "--blue", dash: false, label: "0.066" },
+      { v: [0.0108, 0.0608, 0.1178], c: "--red", dash: false, label: "0.118" },
+      { v: [0.0158, 0.4838, 1.7807], c: "--blue-soft", dash: true, label: "1.78" },
+      { v: [0.0279, 0.5286, 1.3066], c: "--red-soft", dash: true, label: "1.31" }
+    ];
+    var W = 640, H = 300, m = { l: 62, r: 56, t: 14, b: 44 };
+    var pw = W - m.l - m.r, ph = H - m.t - m.b;
+    var lo = Math.log10(0.001), hi = Math.log10(3);
+    var xs = function (i) { return m.l + (i / (steps.length - 1)) * pw; };
+    var ys = function (v) { return m.t + ph - (Math.log10(v) - lo) / (hi - lo) * ph; };
+    var s = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img",
+      "aria-label": "Speed error against rollout length for model and baseline on trained and unseen train sizes" });
+    [0.001, 0.01, 0.1, 1].forEach(function (t) {
+      var y = ys(t);
+      s.appendChild(el("line", { x1: m.l, x2: m.l + pw, y1: y, y2: y, "class": "grid" }));
+      s.appendChild(el("text", { x: m.l - 8, y: y + 4, "text-anchor": "end", "class": "tick" }, String(t)));
+    });
+    s.appendChild(el("line", { x1: m.l, x2: m.l + pw, y1: m.t + ph, y2: m.t + ph, "class": "ax" }));
+    steps.forEach(function (st, i) {
+      s.appendChild(el("text", { x: xs(i), y: m.t + ph + 18, "text-anchor": "middle", "class": "tick" },
+        st + (st === 1 ? " step" : " steps")));
+    });
+    s.appendChild(el("text", { x: m.l + pw / 2, y: H - 6, "text-anchor": "middle", "class": "lab" }, "Rollout length (one step = 0.25 s)"));
+    var yl = el("text", { x: 14, y: m.t + ph / 2, "text-anchor": "middle", "class": "lab",
+      transform: "rotate(-90 14 " + (m.t + ph / 2) + ")" }, "Speed error, m/s");
+    s.appendChild(yl);
+    series.forEach(function (se) {
+      var d = se.v.map(function (v, i) { return (i ? "L" : "M") + xs(i) + " " + ys(v); }).join(" ");
+      s.appendChild(el("path", { d: d, fill: "none", stroke: css(se.c), "stroke-width": 2.5,
+        "stroke-dasharray": se.dash ? "6 4" : "none" }));
+      se.v.forEach(function (v, i) {
+        s.appendChild(el("circle", { cx: xs(i), cy: ys(v), r: 3.5, fill: css(se.c) }));
+      });
+      var last = se.v[se.v.length - 1];
+      s.appendChild(el("text", { x: xs(steps.length - 1) + 8, y: ys(last) + 4, "class": "val" }, se.label));
+    });
+    document.getElementById("velChart").appendChild(s);
+  })();
+
+  // ---- grouped bars on a linear mm scale ------------------------------------
+  function bars(id, groups, max, tickStep, label, aria) {
+    var W = 640, H = 250, m = { l: 62, r: 16, t: 14, b: 44 };
+    var pw = W - m.l - m.r, ph = H - m.t - m.b;
+    var ys = function (v) { return m.t + ph - (v / max) * ph; };
+    var s = el("svg", { viewBox: "0 0 " + W + " " + H, role: "img", "aria-label": aria });
+    for (var t = 0; t <= max + 1e-9; t += tickStep) {
+      var y = ys(t);
+      s.appendChild(el("line", { x1: m.l, x2: m.l + pw, y1: y, y2: y, "class": t === 0 ? "ax" : "grid" }));
+      s.appendChild(el("text", { x: m.l - 8, y: y + 4, "text-anchor": "end", "class": "tick" }, String(t)));
+    }
+    var gw = pw / groups.length, bw = Math.min(64, gw * 0.28);
+    groups.forEach(function (g, gi) {
+      var cx = m.l + gw * gi + gw / 2;
+      [[g.a, css("--blue"), 1], [g.b, css("--muted"), 0.45]].forEach(function (p, k) {
+        var x = cx + (k === 0 ? -bw - 3 : 3);
+        var y = ys(p[0]);
+        s.appendChild(el("rect", { x: x, y: y, width: bw, height: m.t + ph - y, fill: p[1], "fill-opacity": p[2], rx: 2 }));
+        s.appendChild(el("text", { x: x + bw / 2, y: y - 6, "text-anchor": "middle", "class": "val" }, p[0] + " mm"));
+      });
+      s.appendChild(el("text", { x: cx, y: m.t + ph + 18, "text-anchor": "middle", "class": "tick" }, g.name));
+    });
+    s.appendChild(el("text", { x: 14, y: m.t + ph / 2, "text-anchor": "middle", "class": "lab",
+      transform: "rotate(-90 14 " + (m.t + ph / 2) + ")" }, label));
+    document.getElementById(id).appendChild(s);
+  }
+
+  // shape error at 200 steps, model vs hold. Formulation note, "The limitation
+  // Chapter 7 needs to know about".
+  bars("shapeChart",
+    [{ name: "Trained sizes (10–80 cars)", a: 5.8, b: 39.8 },
+     { name: "Unseen sizes (121–150 cars)", a: 41.0, b: 49.2 }],
+    60, 10, "Shape error, mm",
+    "Coupler shape error after 200 steps, model against baseline, for trained and unseen train sizes");
+
+  // actual vs independent-error expectation. Formulation note, "What that
+  // implies instead".
+  bars("stabChart",
+    [{ name: "Trained size (38 cars)", a: 1.27, b: 5.7 },
+     { name: "Unseen size (150 cars)", a: 44, b: 22 }],
+    50, 10, "Shape error, mm",
+    "Actual shape error after 200 steps against the error independent per-step mistakes would give");
+})();
+</script>

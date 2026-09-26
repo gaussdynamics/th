@@ -1,5 +1,5 @@
 % ===========================================================================
-% Committee progress update, September 2026. About 15 minutes, 14 slides.
+% Committee progress update, September 2026. About 15 minutes, 15 slides.
 % Shares the style of the defense deck (preamble.tex) and reuses the Chapter 8
 % architecture diagrams from ../figures/tikz.
 %
@@ -263,7 +263,83 @@
   \end{columns}
 \end{frame}
 
-% --- 8. How the results are measured ---------------------------------------
+% --- 8. How the GPU simulator works ------------------------------------------
+% Plain-language summary of Ch. 7 sec. gpu_port (simulator2/torch_rhs.py).
+% Every number here is from that chapter.
+
+% \gpucard{heading}{result}{body}: one design change, result tag at top right.
+\newcommand{\gpucard}[3]{%
+\begin{tikzpicture}[baseline=(h.north)]
+  \node[fill=uniMist!55,text width=\dimexpr\linewidth-12pt\relax,inner sep=5pt,
+        align=left,anchor=north west,font=\scriptsize] (h)
+       {{\color{uniNavy}\footnotesize\bfseries #1}\\[2pt]#3};
+  \draw[uniNavy,line width=2.4pt] (h.north west) -- (h.south west);
+  \node[anchor=north east,fill=white,draw=chartBlue,rounded corners=1.5pt,
+        font=\scriptsize\bfseries,text=chartBlue!80!black,inner sep=2.5pt]
+       at ([xshift=-4pt,yshift=-3.5pt]h.north east) {#2};
+\end{tikzpicture}}
+
+% The B x N batch picture for card 1. Pre-rendered because a tikzpicture
+% cannot be nested inside the card's node.
+\newsavebox{\gpugridbox}
+\sbox{\gpugridbox}{%
+  \begin{tikzpicture}[scale=0.17]
+    \foreach \r in {0,...,3}{\foreach \c in {0,...,9}{%
+      \fill[chartBlue!35,draw=white,line width=0.3pt] (\c,-\r) rectangle ++(1,1);}}
+    \foreach \c in {7,8,9}{\fill[white,draw=uniSlate!40,line width=0.3pt] (\c,-3) rectangle ++(1,1);}
+    \node[font=\tiny,text=uniSlate,anchor=east] at (0,-1) {$B$ runs};
+    \node[font=\tiny,text=uniSlate,anchor=south] at (5,1) {$N$ vehicles};
+  \end{tikzpicture}}
+
+\begin{frame}{How the GPU Simulator Works}
+  \vspace{-0.1em}
+  {\footnotesize Same equations as the original simulator. Four changes make it
+  fast enough to build the datasets.\par}
+  \vspace{0.3em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.49\textwidth}
+      \gpucard{1. Whole trains at once}{Cost flat in $N$}{%
+        \begin{minipage}[t]{0.70\linewidth}
+          The original loops over vehicles one at a time in Python. The GPU
+          version holds every vehicle of every run in one table (a
+          \emph{tensor}) and computes each force for all of them at once.
+          Shorter trains are padded with empty vehicles (white).
+        \end{minipage}\hfill
+        \begin{minipage}[t]{0.27\linewidth}
+          \vspace{0.3em}\centering\usebox{\gpugridbox}
+        \end{minipage}}
+
+      \vspace{0.35em}
+      \gpucard{3. Record one step, replay it}{10$\times$ faster}{%
+        Each step was about 660 small GPU jobs, and the GPU sat idle 92\,\%
+        of the time waiting for the next one. The step is now recorded once
+        (a \emph{CUDA graph}) and replayed as one job: 38\,s down to 3.8\,s.}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \gpucard{2. A fixed time step}{0.02\,s step}{%
+        The original solver shrinks its step whenever any coupler reaches the
+        edge of its slack: on a long train, almost always. The GPU version
+        uses a standard fixed-step method (RK4), so every run takes a known
+        number of steps and none can stall. States are saved every 0.25\,s.}
+
+      \vspace{0.35em}
+      \gpucard{4. Extra digits where needed}{1.2$\times$ the cost}{%
+        Calculations keep about 16 digits (\emph{double precision}); results
+        are saved with about 7 (\emph{single}). With 7 digits, rounding alone
+        used 60\,\% of the allowed speed error. 16 digits cost only 20\,\%
+        more time.}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.4em}
+  {\scriptsize
+  \textbf{Checked against the original} with 60 tests on 15 reference
+  scenarios, written before the GPU version: speed within 0.05\,m/s, couplers
+  engage and release at the same moments in $\ge$98\,\% of samples, peak
+  coupler force within 5\,\%.\par}
+\end{frame}
+
+% --- 9. How the results are measured ---------------------------------------
 \begin{frame}{How the Results Are Measured}
   \vspace{0.2em}
   \begin{columns}[T,onlytextwidth]
@@ -303,7 +379,7 @@
   \end{beamercolorbox}
 \end{frame}
 
-% --- 9. Result: speed ----------------------------------------------------------
+% --- 10. Result: speed ----------------------------------------------------------
 \begin{frame}{Result: Speed Stays Accurate on Longer Trains}
   \vspace{0.3em}
   \centering
@@ -339,7 +415,7 @@
   \end{minipage}
 \end{frame}
 
-% --- 10. Result: coupler shape ---------------------------------------------
+% --- 11. Result: coupler shape ---------------------------------------------
 \begin{frame}{Result: Coupler Shape Does Not Hold Up on Longer Trains}
   \vspace{0.3em}
   \begin{columns}[T,onlytextwidth]
@@ -385,7 +461,7 @@
   \end{columns}
 \end{frame}
 
-% --- 11. Why the shape result fails ------------------------------------------
+% --- 12. Why the shape result fails ------------------------------------------
 \begin{frame}{Why Coupler Shape Fails: Errors Build Up Instead of Cancelling}
   \vspace{0.1em}
   \begin{columns}[T,onlytextwidth]
@@ -436,7 +512,7 @@
   \srcline{Right: one diagnostic run on a 38-car and a 150-car train.}
 \end{frame}
 
-% --- 12. Open problems ---------------------------------------------------
+% --- 13. Open problems ---------------------------------------------------
 \begin{frame}{Open Problems}
   \vspace{0.4em}
   \begin{enumerate}\setlength\itemsep{0.7em}
@@ -460,7 +536,7 @@
   \end{minipage}
 \end{frame}
 
-% --- 13. Decisions --------------------------------------------------------
+% --- 14. Decisions --------------------------------------------------------
 \begin{frame}{Questions for the Committee}
   \vspace{0.5em}
   \begin{enumerate}\setlength\itemsep{1.0em}
@@ -474,7 +550,7 @@
   \end{enumerate}
 \end{frame}
 
-% --- 14. Plan -------------------------------------------------------------
+% --- 15. Plan -------------------------------------------------------------
 \begin{frame}{Plan}
   \vspace{0.4em}
   \begin{columns}[T,onlytextwidth]
@@ -500,12 +576,6 @@
       \end{enumerate}
     \end{column}
   \end{columns}
-
-  % TODO: add target dates before the meeting.
-  \vspace{1.2em}
-  \begin{minipage}{0.92\textwidth}\small
-    \textbf{Target dates:} \textcolor{uniCrimson}{[to be filled in]}
-  \end{minipage}
 \end{frame}
 
 \end{document}
