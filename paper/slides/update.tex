@@ -1,0 +1,581 @@
+% ===========================================================================
+% Committee progress update, September 2026. About 15 minutes, 15 slides.
+% Shares the style of the defense deck (preamble.tex) and reuses the Chapter 8
+% architecture diagrams from ../figures/tikz.
+%
+% Build:  pdflatex update.tex && pdflatex update.tex
+%
+% Result numbers come from SURROGATE_FORMULATION_NOTE.md on branch
+% surrogate-gns and are measured on data/v2. See Chapter 8's header comment
+% for the full list of corpus-dependent figures.
+% ===========================================================================
+\documentclass[aspectratio=169,11pt]{beamer}
+
+\input{preamble.tex}
+\usetikzlibrary{arrows.meta, positioning, calc, fit, backgrounds,
+                decorations.pathreplacing, shapes.geometric}
+
+% Figure colours consumed by figures.tex (defense deck figures)
+\colorlet{fbCar}{uniMist}
+\colorlet{fbLoco}{uniNavy!18}
+\colorlet{fbAccent}{uniCrimson}
+\colorlet{fbLine}{uniNavy}
+\colorlet{fbMuted}{uniSlate}
+\input{figures.tex}
+
+% Colours consumed by the thesis architecture diagrams, mapped onto the deck
+% palette: red = learned by the network, blue = imposed exactly.
+\colorlet{archLearned}{chartRed}
+\colorlet{archImposed}{chartBlue}
+\colorlet{archInput}{uniSlate}
+\colorlet{archFill}{uniMist!55}
+
+\title[Committee Progress Update]{A Graph Neural Surrogate for Longitudinal Train Dynamics}
+\subtitle{Committee Progress Update}
+\author[G. James]{George James}
+\institute{School of Engineering\\Colorado State University Pueblo}
+\date{September 2026}
+
+\begin{document}
+
+% --- 1. Title ------------------------------------------------------------
+{%
+\setbeamertemplate{footline}{}
+\begin{frame}[plain]
+  \vspace{0.6em}
+  \begin{center}
+    {\color{uniSlate}\footnotesize\textsc{Colorado State University Pueblo}
+     \\[0.15em] \scriptsize School of Engineering}
+
+    \vspace{1.0em}
+    \color{uniCrimson}\rule{0.55\textwidth}{2pt}
+
+    \vspace{0.9em}
+    {\color{uniNavy}\LARGE\bfseries A Graph Neural Surrogate for\\[0.25em]
+     Longitudinal Train Dynamics\par}
+
+    \vspace{0.5em}
+    {\color{uniSlate}\normalsize Committee Progress Update\par}
+
+    \vspace{0.9em}
+    \color{uniCrimson}\rule{0.55\textwidth}{2pt}
+
+    \vspace{0.9em}
+    {\color{uniInk}\large George James\par}
+    \vspace{0.2em}
+    {\color{uniSlate}\footnotesize September 2026\par}
+
+    \vspace{0.7em}
+    \scalebox{0.80}{\consistBand}
+  \end{center}
+\end{frame}
+}
+
+% --- 2. Where things stand ------------------------------------------------
+\begin{frame}{Where Things Stand}
+  \vspace{0.2em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.58\textwidth}
+      {\small\textbf{Thesis chapters}}
+      \vspace{0.3em}
+
+      {\footnotesize
+      \begin{tabular}{@{}lL{6.2cm}@{}}
+        \toprule
+        1--6 & Written; revised this month to the current design \\
+        7    & GPU integrator and dataset \\
+        8    & Surrogate architecture \\
+        9    & First draft: training \\
+        10   & First draft: evaluation \\
+        11--12 & Not started: control, conclusion \\
+        \bottomrule
+      \end{tabular}}
+
+      \vspace{0.8em}
+      {\small\textbf{Built and working}}
+      \begin{itemize}\setlength\itemsep{0.15em}
+        \footnotesize
+        \item Reference simulator, route pipeline and RailLab console
+        \item GPU simulator and two 10,000-scenario datasets
+        \item The surrogate, trained and tested over 200-step rollouts
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.38\textwidth}
+      \vspace{0.3em}
+      \begin{center}
+        \stattile{111 pages}{Compiled thesis, chapters 1--8}
+        \vspace{0.4em}
+        \stattile{10,000}{Scenarios per dataset, 10 to 150 vehicles}
+        \vspace{0.4em}
+        \stattile{Not built}{Control demonstration}
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 3. The design changed -----------------------------------------------
+\begin{frame}{The Surrogate Design Changed}
+  \vspace{0.3em}
+  {\small The original plan combined three ideas. One was kept and two were dropped.}
+
+  \vspace{0.6em}
+  {\footnotesize
+  \begin{tabular}{@{}L{4.2cm}L{1.8cm}L{7.4cm}@{}}
+    \toprule
+    \textbf{Part of the original plan} & \textbf{Status} & \textbf{Reason} \\
+    \midrule
+    Graph neural network: vehicles as nodes, couplers as edges
+      & \textcolor{chartBlue}{\textbf{Kept}}
+      & Handles any train length with one set of weights. \\[0.35em]
+    Learn a correction to the physics equations
+      & \textcolor{uniCrimson}{\textbf{Dropped}}
+      & The training data come from those same equations, so the correction
+        is exactly zero. \\[0.35em]
+    Neural ODE: learn a derivative and integrate it with a solver
+      & \textcolor{uniCrimson}{\textbf{Dropped}}
+      & Stiff couplers would force 5 or more network calls per stored step,
+        between states no data can check. \\
+    \bottomrule
+  \end{tabular}}
+
+  \vspace{0.9em}
+  \begin{beamercolorbox}[wd=\textwidth,sep=7pt]{block body}
+    \small\textbf{New design: a graph network simulator.} The network predicts one
+    fixed 0.25\,s step. One network call replaces 50 evaluations of the physics
+    equations, and more of the physics is built in than before, not less.
+  \end{beamercolorbox}
+\end{frame}
+
+% --- 4. Why: the anchor measurement --------------------------------------
+\begin{frame}{Why: The Couplers Are Stiff at This Step Size}
+  \vspace{0.1em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.54\textwidth}
+      \begin{tikzpicture}
+        \begin{axis}[
+            width=\linewidth, height=5.6cm,
+            ybar, bar width=10pt, ymode=log, log origin=infty,
+            ymin=0.01, ymax=3,
+            symbolic x coords={none, euler, frozen, rk4},
+            xtick={none, euler, frozen, rk4}, bar shift=0pt,
+            xticklabels={{No anchor}, {Euler step}, {RK4, force\\frozen}, {RK4 step}},
+            xticklabel style={font=\scriptsize, align=center},
+            yticklabel style={font=\scriptsize},
+            ylabel={\scriptsize Target Left to Learn (m/s)},
+            ymajorgrids, grid style={chartGrid},
+            axis x line*=bottom, axis y line*=left,
+            enlarge x limits=0.18,
+            nodes near coords, nodes near coords style={font=\tiny},
+            point meta=explicit symbolic,
+          ]
+          \addplot[fill=chartRed, draw=none] coordinates {(none,0.0176) [0.018]};
+          \addplot[fill=chartBlue, draw=none] coordinates
+            {(euler,0.1108) [0.111] (frozen,0.1016) [0.102] (rk4,1.1869) [1.19]};
+        \end{axis}
+      \end{tikzpicture}
+      \srcline{Median over 480 transitions of data/v2. Lower is an easier learning problem.}
+    \end{column}
+    \begin{column}{0.43\textwidth}
+      \small
+      An \textbf{anchor} is a cheap physics estimate of the next state; the
+      network would learn only what is left over.
+
+      \vspace{0.5em}
+      For velocity, \alert{every physics anchor leaves more to learn}, about
+      6$\times$ more at best. One RK4 step of 0.25\,s diverges.
+
+      \vspace{0.5em}
+      The cause is stiffness: a coupler between two heavy cars oscillates with
+      a period as short as 0.21\,s, and an explicit step of 0.25\,s is unstable
+      for it ($\omega h = 7.45$ against a limit of about 2.8).
+
+      \vspace{0.5em}
+      For position the anchor helps: $\dot x = v$ exactly, so it is
+      \textbf{113$\times$ better}.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 5. What the network predicts ----------------------------------------
+\begin{frame}{What the Network Predicts, and What Is Computed Exactly}
+  \vspace{0.2em}
+  \centering
+  \resizebox{0.74\textwidth}{!}{\input{../figures/tikz/arch_channels}}
+
+  \vspace{0.4em}
+  \begin{minipage}{0.92\textwidth}\small
+    The brake and traction lags have an exact solution, and position follows
+    from velocity. The network predicts \textbf{two numbers}: a mean
+    acceleration per vehicle and a shape correction per coupler.
+  \end{minipage}
+\end{frame}
+
+% --- 6. The architecture -------------------------------------------------
+\begin{frame}{The Network}
+  \vspace{0.4em}
+  \centering
+  \resizebox{\textwidth}{!}{\input{../figures/tikz/arch_overview}}
+
+  \vspace{0.35em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.32\textwidth}\centering
+      \stattile{730,370}{parameters, the same for any train length}
+    \end{column}
+    \begin{column}{0.32\textwidth}\centering
+      \stattile{5 rounds}{set by how far a force wave travels in 0.25\,s}
+    \end{column}
+    \begin{column}{0.32\textwidth}\centering
+      \stattile{1 call}{per 0.25\,s step, replacing 50}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 7. Data --------------------------------------------------------------
+\begin{frame}{Data: The GPU Simulator and the Route Fix}
+  \vspace{0.2em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.47\textwidth}
+      {\small\textbf{GPU simulator}}
+      \vspace{0.4em}
+      \begin{center}
+        \stattile{$\sim$170 CPU-h $\to$ 25 min}{Time to build a 10,000-scenario dataset}
+        \vspace{0.4em}
+        \stattile{Flat in $N$}{A 150-car train costs the same as an 11-car one}
+      \end{center}
+      {\footnotesize Agrees with the original simulator within 0.05\,m/s and
+       5\% on peak coupler force.}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      {\small\textbf{Route fix}}
+      \vspace{0.3em}
+      \begin{itemize}\setlength\itemsep{0.35em}
+        \footnotesize
+        \item One of the five corridors had elevation samples that were not on
+              the track: 19.3\% of its 10\,m steps jumped more than a metre.
+        \item It is now rejected by a check on the raw elevation. Four
+              corridors remain.
+        \item The larger corridor search failed on OpenStreetMap and was
+              switched to the national rail network dataset: 274,145\,km of
+              main line.
+        \item \alert{Both datasets were built before this fix}, so they are being rebuilt as we speak.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 8. How the GPU simulator works ------------------------------------------
+% Plain-language summary of Ch. 7 sec. gpu_port (simulator2/torch_rhs.py).
+% Every number here is from that chapter.
+
+% \gpucard{heading}{result}{body}: one design change, result tag at top right.
+\newcommand{\gpucard}[3]{%
+\begin{tikzpicture}[baseline=(h.north)]
+  \node[fill=uniMist!55,text width=\dimexpr\linewidth-12pt\relax,inner sep=5pt,
+        align=left,anchor=north west,font=\scriptsize] (h)
+       {{\color{uniNavy}\footnotesize\bfseries #1}\\[2pt]#3};
+  \draw[uniNavy,line width=2.4pt] (h.north west) -- (h.south west);
+  \node[anchor=north east,fill=white,draw=chartBlue,rounded corners=1.5pt,
+        font=\scriptsize\bfseries,text=chartBlue!80!black,inner sep=2.5pt]
+       at ([xshift=-4pt,yshift=-3.5pt]h.north east) {#2};
+\end{tikzpicture}}
+
+% The B x N batch picture for card 1. Pre-rendered because a tikzpicture
+% cannot be nested inside the card's node.
+\newsavebox{\gpugridbox}
+\sbox{\gpugridbox}{%
+  \begin{tikzpicture}[scale=0.17]
+    \foreach \r in {0,...,3}{\foreach \c in {0,...,9}{%
+      \fill[chartBlue!35,draw=white,line width=0.3pt] (\c,-\r) rectangle ++(1,1);}}
+    \foreach \c in {7,8,9}{\fill[white,draw=uniSlate!40,line width=0.3pt] (\c,-3) rectangle ++(1,1);}
+    \node[font=\tiny,text=uniSlate,anchor=east] at (0,-1) {$B$ runs};
+    \node[font=\tiny,text=uniSlate,anchor=south] at (5,1) {$N$ vehicles};
+  \end{tikzpicture}}
+
+\begin{frame}{How the GPU Simulator Works}
+  \vspace{-0.1em}
+  {\footnotesize Same equations as the original simulator. Four changes make it
+  fast enough to build the datasets.\par}
+  \vspace{0.3em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.49\textwidth}
+      \gpucard{1. Whole trains at once}{Cost flat in $N$}{%
+        \begin{minipage}[t]{0.70\linewidth}
+          The original loops over vehicles one at a time in Python. The GPU
+          version holds every vehicle of every run in one table (a
+          \emph{tensor}) and computes each force for all of them at once.
+          Shorter trains are padded with empty vehicles (white).
+        \end{minipage}\hfill
+        \begin{minipage}[t]{0.27\linewidth}
+          \vspace{0.3em}\centering\usebox{\gpugridbox}
+        \end{minipage}}
+
+      \vspace{0.35em}
+      \gpucard{3. Record one step, replay it}{10$\times$ faster}{%
+        Each step was about 660 small GPU jobs, and the GPU sat idle 92\,\%
+        of the time waiting for the next one. The step is now recorded once
+        (a \emph{CUDA graph}) and replayed as one job: 38\,s down to 3.8\,s.}
+    \end{column}
+    \begin{column}{0.49\textwidth}
+      \gpucard{2. A fixed time step}{0.02\,s step}{%
+        The original solver shrinks its step whenever any coupler reaches the
+        edge of its slack: on a long train, almost always. The GPU version
+        uses a standard fixed-step method (RK4), so every run takes a known
+        number of steps and none can stall. States are saved every 0.25\,s.}
+
+      \vspace{0.35em}
+      \gpucard{4. Extra digits where needed}{1.2$\times$ the cost}{%
+        Calculations keep about 16 digits (\emph{double precision}); results
+        are saved with about 7 (\emph{single}). With 7 digits, rounding alone
+        used 60\,\% of the allowed speed error. 16 digits cost only 20\,\%
+        more time.}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.4em}
+  {\scriptsize
+  \textbf{Checked against the original} with 60 tests on 15 reference
+  scenarios, written before the GPU version: speed within 0.05\,m/s, couplers
+  engage and release at the same moments in $\ge$98\,\% of samples, peak
+  coupler force within 5\,\%.\par}
+\end{frame}
+
+% --- 9. How the results are measured ---------------------------------------
+\begin{frame}{How the Results Are Measured}
+  \vspace{0.2em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.50\textwidth}
+      {\small\textbf{The test}}
+      \begin{itemize}\setlength\itemsep{0.3em}
+        \footnotesize
+        \item Trained on trains of 10 to 80 cars. Tested on trains of 121 to
+              150 cars that it never saw.
+        \item \textbf{Rollout:} the model predicts 0.25\,s ahead, then starts
+              the next step from its own prediction. 200 steps covers 50\,s.
+        \item \textbf{Error:} the worst vehicle (or coupler) in the train,
+              compared with the simulator's true trajectory. The typical
+              (median) value over many random starting points is reported.
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      {\small\textbf{The reference: ``hold''}}
+      \begin{itemize}\setlength\itemsep{0.3em}
+        \footnotesize
+        \item Keep the starting state and never update it.
+        \item Its error is therefore \alert{how much the train actually
+              changed}. It measures how much there was to predict; it is a
+              scale, not a competing model.
+        \item Results are stated as \textbf{model error as a share of the
+              actual change}: 0\% is perfect, 100\% is no better than
+              standing still.
+      \end{itemize}
+    \end{column}
+  \end{columns}
+
+  \vspace{0.8em}
+  \begin{beamercolorbox}[wd=\textwidth,sep=6pt]{block body}
+    \footnotesize Real comparison models (constant-acceleration extrapolation,
+    a physics-correction MLP, a transformer) are planned for the evaluation
+    chapter and have not been run yet.
+  \end{beamercolorbox}
+\end{frame}
+
+% --- 10. Result: speed ----------------------------------------------------------
+\begin{frame}{Result: Speed Stays Accurate on Longer Trains}
+  \vspace{0.3em}
+  \centering
+  {\footnotesize
+  \begin{tabular}{@{}lccc@{\hspace{2.2em}}ccc@{}}
+    \toprule
+     & \multicolumn{3}{c}{\textbf{Trained sizes, 10--80 cars}}
+     & \multicolumn{3}{c}{\textbf{Unseen sizes, 121--150 cars}} \\
+    \cmidrule(r{2.2em}){2-4}\cmidrule{5-7}
+    Rollout & Actual change & Model error & Share
+            & Actual change & Model error & Share \\
+    \midrule
+    1 step, 0.25\,s  & 0.016 & 0.004 & 23\%  & 0.028 & 0.011 & 39\% \\
+    50 steps, 12.5\,s & 0.48  & 0.028 & 5.7\% & 0.53  & 0.061 & 11\% \\
+    200 steps, 50\,s  & 1.78  & 0.066 & \textbf{3.7\%} & 1.31 & 0.118 & \textbf{9.0\%} \\
+    \bottomrule
+  \end{tabular}}
+
+  \vspace{0.3em}
+  \srcline{Speed of the worst vehicle, in m/s. ``Actual change'' is the error of holding the starting state.}
+
+  \vspace{0.8em}
+  \begin{minipage}{0.94\textwidth}\small
+    \begin{itemize}\setlength\itemsep{0.35em}
+      \item After 50\,s, the model's speed error is \textbf{0.066\,m/s} on
+            familiar train lengths and \textbf{0.118\,m/s} on trains up to 15
+            times longer: under a tenth of how much the speed actually changed.
+      \item The one-step share is higher only because a train barely changes
+            in a quarter second. The long rollouts are what a simulation uses.
+      \item Doubling training time nearly halved the 200-step error, so the
+            model is not yet fully trained.
+    \end{itemize}
+  \end{minipage}
+\end{frame}
+
+% --- 11. Result: coupler shape ---------------------------------------------
+\begin{frame}{Result: Coupler Shape Does Not Hold Up on Longer Trains}
+  \vspace{0.3em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.50\textwidth}
+      \begin{tikzpicture}
+        \begin{axis}[
+            width=\linewidth, height=5.4cm,
+            ybar, bar width=16pt, ymin=0, ymax=60,
+            symbolic x coords={trained, unseen},
+            xtick={trained, unseen},
+            xticklabels={{Trained sizes\\10--80 cars}, {Unseen sizes\\121--150 cars}},
+            xticklabel style={font=\scriptsize, align=center},
+            yticklabel style={font=\scriptsize},
+            ylabel={\scriptsize Worst-Coupler Error After 50\,s (mm)},
+            ymajorgrids, grid style={chartGrid},
+            axis x line*=bottom, axis y line*=left,
+            enlarge x limits=0.45,
+            nodes near coords, nodes near coords style={font=\tiny},
+            legend style={font=\scriptsize, draw=none, at={(0.5,-0.24)}, anchor=north, legend columns=2, /tikz/every even column/.append style={column sep=0.8em}},
+            legend image code/.code={\fill (0cm,-0.08cm) rectangle (0.28cm,0.12cm);},
+          ]
+          \addplot[fill=chartBlue, draw=none] coordinates {(trained,5.8) (unseen,41.0)};
+          \addplot[fill=uniSlate!45, draw=none] coordinates {(trained,39.8) (unseen,49.2)};
+          \legend{Model error, Actual change}
+        \end{axis}
+      \end{tikzpicture}
+    \end{column}
+    \begin{column}{0.46\textwidth}
+      \small
+      \textbf{Coupler shape} is how far each coupler is stretched or
+      compressed. Past the 20\,mm of slack, every extra millimetre adds force.
+
+      \vspace{0.6em}
+      On familiar lengths the model's error is \textbf{15\%} of the actual
+      change. On the long trains it is \alert{\textbf{83\%}}: almost as large
+      as the change itself.
+
+      \vspace{0.6em}
+      The control chapter limits \textbf{coupler force}, on long trains, over
+      long stretches of time. This is the result that most affects the
+      remaining work.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% --- 12. Why the shape result fails ------------------------------------------
+\begin{frame}{Why Coupler Shape Fails: Errors Build Up Instead of Cancelling}
+  \vspace{0.1em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.50\textwidth}
+      {\small\textbf{Three explanations tested and ruled out}}
+      \begin{itemize}\setlength\itemsep{0.3em}
+        \footnotesize
+        \item \textbf{Too few message-passing rounds?} No: error is even along
+              the train, not larger far from the ends.
+        \item \textbf{A slow stretch of the whole train?} No: removing it made
+              familiar lengths 47\% worse and long trains no better.
+        \item \textbf{Caused by the speed error?} No: with perfectly correct
+              speeds, only 9\% of the shape error went away.
+      \end{itemize}
+      \vspace{0.3em}
+      {\footnotesize Per step, the model is nearly as accurate on long trains
+       (17\% worse). The problem appears only over many steps.}
+    \end{column}
+    \begin{column}{0.47\textwidth}
+      \begin{tikzpicture}
+        \begin{axis}[
+            width=\linewidth, height=4.6cm,
+            ybar, bar width=14pt, ymin=0, ymax=50,
+            symbolic x coords={trained, unseen},
+            xtick={trained, unseen},
+            xticklabels={{38 cars}, {150 cars}},
+            xticklabel style={font=\scriptsize},
+            yticklabel style={font=\scriptsize},
+            ylabel={\scriptsize Shape Error After 50\,s (mm)},
+            ymajorgrids, grid style={chartGrid},
+            axis x line*=bottom, axis y line*=left,
+            enlarge x limits=0.45,
+            nodes near coords, nodes near coords style={font=\tiny},
+            legend style={font=\scriptsize, draw=none, at={(0.5,-0.2)}, anchor=north, legend columns=1}, legend cell align=left,
+            legend image code/.code={\fill (0cm,-0.08cm) rectangle (0.28cm,0.12cm);},
+          ]
+          \addplot[fill=chartBlue, draw=none] coordinates {(trained,1.27) (unseen,44)};
+          \addplot[fill=uniSlate!45, draw=none] coordinates {(trained,5.7) (unseen,22)};
+          \legend{Actual, If step errors were independent}
+        \end{axis}
+      \end{tikzpicture}\par
+      {\footnotesize On a familiar length the errors \textbf{cancel}; on a long
+       train they \alert{build on each other}. A stability problem, not an
+       accuracy problem.}
+    \end{column}
+  \end{columns}
+  \vspace{0.2em}
+  \srcline{Right: one diagnostic run on a 38-car and a 150-car train.}
+\end{frame}
+
+% --- 13. Open problems ---------------------------------------------------
+\begin{frame}{Open Problems}
+  \vspace{0.4em}
+  \begin{enumerate}\setlength\itemsep{0.7em}
+    \small
+    \item \textbf{No corridors held out for the control demonstration.} With
+          only four corridors, reserving one more leaves too little to train on.
+    \item \textbf{The steep-grade test set is built on the rejected corridor},
+          so it tests false grades rather than real mountain grades.
+    \item \textbf{The national rail network is not yet split into routes.} It is
+          a graph of 95,936 segments; turning it into corridors is the next
+          piece of code. Everything above waits on it.
+    \item \textbf{Coupler shape on long trains} (slides 10 and 11), which matters
+          most for the control chapter.
+  \end{enumerate}
+
+  \vspace{0.6em}
+  \begin{minipage}{0.92\textwidth}\footnotesize\color{uniSlate}
+    Planned fix for 1 and 2: extract corridors including real steep crossings
+    such as Raton Pass, then rebuild with 50,000 to 100,000 scenarios, about
+    2 to 4 hours on the GPU. Results so far will be re-run on the new data.
+  \end{minipage}
+\end{frame}
+
+% --- 14. Decisions --------------------------------------------------------
+\begin{frame}{Questions for the Committee}
+  \vspace{0.5em}
+  \begin{enumerate}\setlength\itemsep{1.0em}
+    \small
+    \item \textbf{Overspeed runs.} About 18\% of scenarios exceed the speed
+          limit by more than 5\,m/s, because the simulator does not enforce
+          it. Remove them from training, or keep them as hard cases?
+    \item \textbf{Control demonstration scope.} Train the control model on
+          all train lengths, which avoids the shape problem, and hold out
+          corridors instead of train lengths?
+  \end{enumerate}
+\end{frame}
+
+% --- 15. Plan -------------------------------------------------------------
+\begin{frame}{Plan}
+  \vspace{0.4em}
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.48\textwidth}
+      {\small\textbf{Next steps, in order}}
+      \begin{enumerate}\setlength\itemsep{0.35em}
+        \footnotesize
+        \item Split the national rail network into corridors
+        \item Rebuild the dataset on the corrected, larger corridor set
+        \item Retrain and re-run the results
+        \item Build the control demonstration
+      \end{enumerate}
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      {\small\textbf{Remaining writing}}
+      \begin{enumerate}\setlength\itemsep{0.35em}
+        \footnotesize
+        \setcounter{enumi}{8}
+        \item Training: first draft done; update for the rebuilt data
+        \item Evaluation: first draft done; re-run results on the rebuilt data
+        \item Control demonstration: not started
+        \item Discussion and conclusion: not started
+      \end{enumerate}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+\end{document}

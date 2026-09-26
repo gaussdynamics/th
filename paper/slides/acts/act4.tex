@@ -1,6 +1,7 @@
 % ===========================================================================
-% ACT IV -- Reference Simulator  (Ch. 4)   Slides 28-40
-% Budget: 7 minutes. Figure-dense; it moves fast if the images carry it.
+% ACT IV -- Reference Simulator  (Ch. 4)   Slides 28-47
+% Budget: 7 minutes before the equation slides were added; allow about 10.
+% Figure-dense; it moves fast if the images carry it.
 % Every stage figure already exists and reproduces bit-for-bit from the
 % notebook, so this is the best-supported act in the deck.
 % ===========================================================================
@@ -28,6 +29,85 @@
   \end{columns}
 \end{frame}}
 
+% ---------------------------------------------------------------------------
+% Equation slides. Each stage gets one, placed before its figure, so the deck
+% shows the model and then the run that tests it. Every force term keeps one
+% colour on every slide, so the equation visibly gains terms stage by stage.
+% Equations follow Ch. 4 (04_reference_simulator.tex), which is the model of
+% record; where the notebook differs, the slide says so.
+% ---------------------------------------------------------------------------
+\definecolor{eqTrac}{HTML}{1E8449}   % traction
+\definecolor{eqBrk}{HTML}{C0501A}    % braking
+\definecolor{eqRes}{HTML}{2E6DB4}    % Davis resistance
+\definecolor{eqGrade}{HTML}{94661A}  % grade
+\definecolor{eqCurv}{HTML}{178A9A}   % curvature
+\definecolor{eqCpl}{HTML}{7D3C98}    % couplers
+\definecolor{eqAct}{HTML}{B0306F}    % actuator lag and power limit
+\colorlet{eqInert}{uniNavy}          % inertia and train structure
+
+% \eqc{colour}{math}: a coloured term, no label.
+\newcommand{\eqc}[2]{\textcolor{#1}{#2}}
+% \eqterm{colour}{math}{label}: a coloured term with its label under a brace.
+\newcommand{\eqterm}[3]{%
+  \textcolor{#1}{\underbrace{#2}_{\text{\scriptsize\shortstack{#3}}}}}
+% \eqnew / \eqcnew: the same, on a tinted box. Tinted = new at this stage.
+\newcommand{\eqnew}[3]{%
+  {\setlength{\fboxsep}{2pt}\colorbox{#1!11}{$\displaystyle\eqterm{#1}{#2}{#3}$}}}
+\newcommand{\eqcnew}[2]{%
+  {\setlength{\fboxsep}{2pt}\colorbox{#1!11}{$\displaystyle\textcolor{#1}{#2}$}}}
+
+% \termtracker{n}: which parts of the model exist by stage n. Solid chips are
+% new at stage n, tinted chips were added earlier, outlined chips come later.
+\newcommand{\termtracker}[1]{%
+\begin{tikzpicture}[baseline,
+    chip/.style={minimum width=1.04cm,minimum height=0.60cm,inner sep=1pt,
+                 align=center,font=\tiny,rounded corners=1.5pt}]
+  \foreach \s/\c/\t [count=\i from 0] in {%
+      1/eqTrac/{Traction}, 1/eqBrk/{Braking}, 1/eqRes/{Davis\\resistance},
+      1/eqGrade/{Grade}, 1/eqCurv/{Curvature}, 2/eqCpl/{Coupler\\spring},
+      3/eqCpl/{Slack and\\asymmetry}, 4/eqCpl/{Force\\chain},
+      5/eqInert/{Any train\\length $N$}, 6/eqInert/{Route per\\vehicle},
+      7/eqAct/{Actuator\\lag}, 7/eqAct/{Power\\limit}}{%
+    \pgfmathsetmacro{\px}{\i*1.12}
+    \ifnum\s<#1
+      \node[chip,fill=\c!16,text=\c] at (\px,0) {\t};
+    \else\ifnum\s=#1
+      \node[chip,fill=\c,text=white,font=\tiny\bfseries] at (\px,0) {\t};
+    \else
+      \node[chip,draw=uniSlate!45,dashed,text=uniSlate!60] at (\px,0) {\t};
+    \fi\fi
+  }
+\end{tikzpicture}}
+
+% \eqcard{colour}{heading}{body}: a definition card with a coloured edge.
+\newcommand{\eqcard}[3]{%
+\begin{tikzpicture}[baseline=(n.north)]
+  \node[fill=#1!7,text width=\dimexpr\linewidth-12pt\relax,inner sep=5pt,
+        align=left,anchor=north west,font=\scriptsize] (n)
+       {{\color{#1}\footnotesize\bfseries #2}\\[2pt]#3};
+  \draw[#1,line width=2.4pt] (n.north west) -- (n.south west);
+\end{tikzpicture}}
+
+% \eqslide{stage}{frame title}{body}
+\newcommand{\eqslide}[3]{%
+\begin{frame}{#2}
+  \vspace{0.05em}
+  {\centering\termtracker{#1}\par}
+  \vspace{0.35em}
+  #3
+\end{frame}}
+
+% Three cards side by side: \eqcards{card}{card}{card}
+\newcommand{\eqcards}[3]{%
+  \begin{columns}[T,onlytextwidth]
+    \begin{column}{0.325\textwidth}#1\end{column}
+    \begin{column}{0.325\textwidth}#2\end{column}
+    \begin{column}{0.325\textwidth}#3\end{column}
+  \end{columns}}
+
+% A thin line under the cards: \eqfoot{text}
+\newcommand{\eqfoot}[1]{\par\vspace{0.3em}{\color{uniSlate}\scriptsize #1\par}}
+
 % --- 28. The validation argument -----------------------------------------
 \begin{frame}{Built One Physical Effect at a Time}
   \vspace{0.2em}
@@ -49,17 +129,129 @@
   \end{columns}
 \end{frame}
 
-% --- 29-37. The stages ----------------------------------------------------
+% --- 29-47. The stages ----------------------------------------------------
+% Each \eqslide comes before the figure slide for the same stage.
+
+\eqslide{1}{Stage 1 Equations: Forces on a Single Vehicle}{%
+  \vspace{-0.2em}
+  \[
+    \eqterm{eqInert}{m\,\dot v}{mass $\times$\\acceleration}
+    = \eqnew{eqTrac}{F_{\mathrm{trac}}(t)}{traction\\(pulls forward)}
+    - \eqnew{eqBrk}{F_{\mathrm{brk}}(t)}{braking}
+    - \eqnew{eqRes}{R(v)}{rolling and\\air resistance}
+    - \eqnew{eqGrade}{G(x)}{grade\\(slope)}
+    - \eqnew{eqCurv}{C_{\kappa}(x,v)}{curve\\resistance}
+    \qquad\qquad \dot x = v
+  \]
+  \vspace{-0.3em}
+  \eqcards
+    {\eqcard{eqRes}{Davis resistance}{%
+      $R(v) = \bigl(A + B|v| + C v^2\bigr)\,\mathrm{sgn}(v)$\\[2pt]
+      $A$: rolling friction. $B$: losses that grow with speed. $C$: air drag.
+      The sign factor makes it always oppose the motion.\\[1pt]
+      Locomotive: $A = 800$\,N, $B = 15$, $C = 0.8$ (SI units).}}
+    {\eqcard{eqGrade}{Grade and curvature}{%
+      {\color{eqGrade}$G(x) = m g \sin\theta(x)$}, with $\theta$ the slope
+      angle of the track. Positive when climbing.\\[2pt]
+      {\color{eqCurv}$C_{\kappa} = c_{\kappa}\, m g\, \lambda\,|\kappa(x)|\,\mathrm{sgn}(v)$},
+      with $\kappa = 1/\text{radius}$ the curvature of the track.}}
+    {\eqcard{eqTrac}{Traction command}{%
+      $F_{\mathrm{trac}}(t)$ is a given function of time: a smooth ramp from
+      0 to 180\,kN between $t = 5$ and $20$\,s.\\[2pt]
+      A ramp, not a step, so the force has no sudden jump for the solver to
+      handle.}}
+  \eqfoot{State: position and speed $(x, v)$, two numbers. The test run uses
+    level track, no braking and no curves, so only traction and Davis
+    resistance act. Tracker above: solid = added at this stage, tinted =
+    added earlier, outlined = added later.}
+}
+
 \stageslide{1}{Stage 1: Single Powered Vehicle}%
   {../../notebooks/notebook_images/ltd_stage01_single_loco_traction_ramp_position_speed_netforce.png}%
   {Traction against rolling and air resistance (the Davis equation) on level
    track. Net force falls to zero as the vehicle reaches a steady speed. This
    confirms the integrator and the force signs before couplers are added.}
 
+\eqslide{2}{Stage 2 Equations: Two Vehicles Joined by a Spring Coupler}{%
+  \vspace{-0.4em}
+  \[
+    \renewcommand{\arraystretch}{1.0}
+    \begin{array}{r@{\;=\;}l@{\;}l@{\;}l@{\;}l@{\;}l}
+      \eqc{eqInert}{m_0\dot v_0}
+        & \eqc{eqTrac}{F_{\mathrm{trac}}}
+        & -\,\eqc{eqBrk}{F_{\mathrm{brk},0}}
+        & -\,\eqc{eqRes}{R_0(v_0)}
+        & -\,\eqc{eqGrade}{G_0(x_0)}
+        & \eqnew{eqCpl}{-\,F}{coupler holds\\the locomotive back} \\
+      \eqc{eqInert}{m_1\dot v_1}
+        & \hphantom{F_{\mathrm{trac}}}
+        & -\,\eqc{eqBrk}{F_{\mathrm{brk},1}}
+        & -\,\eqc{eqRes}{R_1(v_1)}
+        & -\,\eqc{eqGrade}{G_1(x_1)}
+        & \eqnew{eqCpl}{+\,F}{coupler pulls\\the car forward}
+    \end{array}
+  \]
+  \vspace{-0.4em}
+  \eqcards
+    {\eqcard{eqCpl}{Coupler stretch}{%
+      $\delta = (x_0 - x_1) - L_0, \qquad \dot\delta = v_0 - v_1$\\[2pt]
+      $L_0 = 20$\,m is the relaxed spacing. $\delta > 0$: stretched, called
+      \emph{draft}. $\delta < 0$: compressed, called \emph{buff}.}}
+    {\eqcard{eqCpl}{Linear spring-damper}{%
+      $F = k\,\delta + c\,\dot\delta$\\[2pt]
+      Stiffness $k = 8$\,MN/m: force per metre of stretch. Damping
+      $c = 0.4$\,MN$\cdot$s/m: force per m/s of stretching speed, which
+      removes energy from oscillations.}}
+    {\eqcard{eqInert}{Equal and opposite}{%
+      The same $F$ appears with opposite signs in the two equations (Newton's
+      third law), so the coupler moves force between the vehicles but adds
+      none to the train.}}
+  \eqfoot{State: $(x_0, x_1, v_0, v_1)$, four numbers. Colours match the
+    Stage~1 terms; the car has no traction.}
+}
+
 \stageslide{2}{Stage 2: Two Bodies, Linear Coupler}%
   {../../notebooks/notebook_images/ltd_stage02_loco_car_speeds_coupler_force_extension.png}%
   {The two speed traces overlap at this scale. \textbf{The coupler force and
    extension} show how the two vehicles interact.}
+
+\eqslide{3}{Stage 3 Equations: A Coupler with Slack}{%
+  {\small The two equations of motion from Stage~2 do not change. Only the
+  coupler law is replaced: the linear
+  {\color{uniSlate}$F = k\delta + c\dot\delta$} becomes\par}
+  \vspace{-0.4em}
+  \[
+    \eqc{eqCpl}{F(\delta,\dot\delta)} =
+    \left\{\;
+    \renewcommand{\arraystretch}{1.35}
+    \begin{array}{lll}
+      \eqcnew{eqCpl}{k_d(\delta - s) + c_d\,\dot\delta}
+        & \delta > s
+        & \text{\small\color{eqCpl} draft: stretched past the slack} \\
+      \eqcnew{uniSlate}{0}
+        & |\delta| \le s
+        & \text{\small\color{uniSlate} slack: no contact, no force} \\
+      \eqcnew{eqCpl}{k_b(\delta + s) + c_b\,\dot\delta}
+        & \delta < -s
+        & \text{\small\color{eqCpl} buff: compressed past the slack}
+    \end{array}\right.
+  \]
+  \vspace{-0.2em}
+  \eqcards
+    {\eqcard{uniSlate}{Slack}{%
+      $s = 20$\,mm of free play each way in the coupler and draft gear.
+      Inside it the vehicles move independently.}}
+    {\eqcard{eqCpl}{Different stiffness each way}{%
+      Draft $k_d = 9$\,MN/m; buff $k_b = 12$\,MN/m.\\[2pt]
+      Stiffer when pushed together than when pulled apart. Only the travel
+      past the slack is loaded.}}
+    {\eqcard{uniCrimson}{Why this matters}{%
+      The law has corners at $\delta = \pm s$. When slack closes the force
+      rises from zero very quickly, so the solver must take very small time
+      steps near these points.}}
+  \eqfoot{A simplified draft gear model. Hysteresis (different force when
+    loading and unloading) is not modelled.}
+}
 
 \begin{frame}{Stage 3: Nonlinear Coupler with Slack}
   \vspace{0.1em}
@@ -86,6 +278,49 @@
   \end{columns}
 \end{frame}
 
+\eqslide{4}{Stage 4 Equations: Force Passed Along a Chain of Couplers}{%
+  \vspace{-0.5em}
+  \[
+    \renewcommand{\arraystretch}{1.05}
+    \begin{array}{r@{\;=\;}l@{\;}l@{\;}l@{\;}l@{\;}l}
+      \eqc{eqInert}{m_0\dot v_0}
+        & \eqc{eqTrac}{F_{\mathrm{trac}}}
+        & -\,\eqc{eqRes}{R_0}
+        & -\,\eqc{eqGrade}{G_0}
+        &
+        & \eqcnew{eqCpl}{-\,F_0} \\
+      \eqc{eqInert}{m_1\dot v_1}
+        & \hphantom{F_{\mathrm{trac}}}
+        & -\,\eqc{eqRes}{R_1}
+        & -\,\eqc{eqGrade}{G_1}
+        & \eqnew{eqCpl}{+\,F_0}{pulled forward by\\the coupler ahead}
+        & \eqnew{eqCpl}{-\,F_1}{held back by\\the coupler behind} \\
+      \eqc{eqInert}{m_2\dot v_2}
+        & \hphantom{F_{\mathrm{trac}}}
+        & -\,\eqc{eqRes}{R_2}
+        & -\,\eqc{eqGrade}{G_2}
+        & \eqcnew{eqCpl}{+\,F_1}
+        &
+    \end{array}
+  \]
+  \vspace{-0.5em}
+  \eqcards
+    {\eqcard{eqCpl}{One law per coupler}{%
+      Coupler $j$ joins vehicles $j$ and $j+1$:\\
+      $\delta_j = (x_j - x_{j+1}) - L_{0,j}$\\
+      $F_j = F(\delta_j, \dot\delta_j)$, the Stage~3 slack law.}}
+    {\eqcard{eqCpl}{Front in, rear out}{%
+      A middle vehicle is pulled by the coupler ahead and held back by the one
+      behind. The rear car feels the locomotive only once the slack in every
+      coupler ahead of it has closed.}}
+    {\eqcard{eqBrk}{Stage 4b: brake on the lead only}{%
+      Adds $-\,F_{\mathrm{brk},0}\tanh(v_0/\varepsilon)$ to the lead:
+      80\,kN from 45 to 75\,s, traction still on. Coupler forces drop (lead
+      coupler 109 to 41\,kN) but stay in draft. $\tanh$: see Stage~7.}}
+  \eqfoot{State: $(x_0, x_1, x_2, v_0, v_1, v_2)$, six numbers. Curvature is
+    off; braking is off except in the 4b run.}
+}
+
 \stageslide{4}{Stage 4: Three Bodies and Force Propagation}%
   {../../notebooks/notebook_images/ltd_stage04_three_body_speeds_coupler_forces_train_stretch.png}%
   {Force travels down the chain one coupler at a time. End-to-end stretch is
@@ -95,6 +330,57 @@
   {../../notebooks/notebook_images/ltd_stage04b_lead_brake_pulse_speeds_coupler_forces.png}%
   {The run-in case: braking at the head end pushes the chain together. Compare
    the sign of the coupler forces against the previous slide.}
+
+\eqslide{5}{Stage 5 Equations: One Equation for Every Vehicle in a Train of $N$}{%
+  \vspace{-0.5em}
+  \[
+    \eqterm{eqInert}{m_i\dot v_i}{vehicle $i$}
+    = \eqterm{eqTrac}{F_{\mathrm{trac},i}}{traction\\(powered only)}
+    - \eqterm{eqBrk}{F_{\mathrm{brk},i}}{braking}
+    - \eqterm{eqRes}{R_i(v_i)}{resistance}
+    - \eqterm{eqGrade}{G_i}{grade}
+    - \eqterm{eqCurv}{C_i}{curve}
+    \;\eqnew{eqCpl}{+\,F_{i-1}}{coupler\\ahead}
+    \;\eqnew{eqCpl}{-\,F_{i}}{coupler\\behind}
+    \qquad {\scriptstyle i \,=\, 0,\,\dots,\,N-1}
+  \]
+  \vspace{-0.6em}
+  {\centering
+  \begin{tikzpicture}[
+      veh/.style={draw=uniNavy,fill=uniMist,rounded corners=2pt,minimum width=1.25cm,
+                  minimum height=0.5cm,font=\scriptsize},
+      cpl/.style={eqCpl,line width=1.4pt},
+      frc/.style={-{Stealth[length=4pt]},eqCpl,line width=1.1pt}]
+    % direction of travel is to the right; vehicle 0 leads
+    \node[veh] (a) at (0,0)    {$N{-}1$};
+    \node[font=\small,text=uniSlate] (d1) at (1.45,0) {$\cdots$};
+    \node[veh] (b) at (2.9,0)  {$i{+}1$};
+    \node[veh,fill=eqCpl!14,draw=eqCpl,line width=0.9pt] (c) at (5.0,0) {$i$};
+    \node[veh] (e) at (7.1,0)  {$i{-}1$};
+    \node[font=\small,text=uniSlate] (d2) at (8.55,0) {$\cdots$};
+    \node[veh,fill=uniNavy!18] (f) at (10.0,0) {$0$ (lead)};
+    \draw[cpl] (b.east) -- (c.west) node[midway,below=1pt,font=\scriptsize] {$F_i$};
+    \draw[cpl] (c.east) -- (e.west) node[midway,below=1pt,font=\scriptsize] {$F_{i-1}$};
+    \draw[frc] (c.north) ++(0.1,0.08) -- ++(0.75,0) node[right,font=\scriptsize] {$+F_{i-1}$};
+    \draw[frc] (c.north) ++(-0.1,0.08) -- ++(-0.75,0) node[left,font=\scriptsize] {$-F_i$};
+    \draw[-{Stealth[length=5pt]},uniSlate,line width=0.8pt] (11.0,-0.55) -- ++(0.9,0)
+         node[right,font=\tiny,text=uniSlate] {travel};
+  \end{tikzpicture}\par}
+  \vspace{0.2em}
+  \eqcards
+    {\eqcard{eqCpl}{The two ends}{%
+      The lead has no coupler ahead and the last car none behind:
+      $F_{-1} = F_{N-1} = 0$. With that rule the same equation holds for
+      every vehicle, including Stage~4's three.}}
+    {\eqcard{eqInert}{State and parameters}{%
+      $\mathbf{y} = (x_0,\dots,x_{N-1},\,v_0,\dots,v_{N-1})$: two numbers per
+      vehicle, $2N$ in total. Each vehicle has its own mass and Davis
+      coefficients; each coupler its own spacing, slack and stiffness.}}
+    {\eqcard{eqInert}{Nothing depends on $N$}{%
+      One code path runs a 3-car or a 150-car train. This is what later lets
+      the simulator generate training data across many train lengths. The
+      work per evaluation grows in proportion to $N$.}}
+}
 
 \stageslide{5}{Stage 5: General $N$-Vehicle Assembly}%
   {../../notebooks/notebook_images/ltd_stage05_N_vehicle_speeds_and_coupler_forces.png}%
@@ -116,11 +402,79 @@
   \end{minipage}
 \end{frame}
 
+\eqslide{6}{Stage 6 Equations: Each Vehicle Reads the Route at Its Own Position}{%
+  \vspace{-0.5em}
+  \[
+    \eqc{eqInert}{m_i\dot v_i}
+    = \eqc{eqTrac}{F_{\mathrm{trac},i}}
+    - \eqc{eqBrk}{F_{\mathrm{brk},i}}
+    - \eqc{eqRes}{R_i(v_i)}
+    - \eqnew{eqGrade}{m_i g \sin\theta(x_i)}{grade where\\vehicle $i$ is}
+    - \eqnew{eqCurv}{c_{\kappa}\, m_i g\, \lambda\, |\kappa(x_i)|\,\mathrm{sgn}(v_i)}{curve resistance\\where vehicle $i$ is}
+    \eqc{eqCpl}{\;+\,F_{i-1} - F_i}
+  \]
+  \vspace{-0.4em}
+  \eqcards
+    {\eqcard{eqInert}{The route as data}{%
+      Slope $\sin\theta(s)$ and curvature $\kappa(s)$ are stored at points
+      along the track and linearly interpolated in between. Before this
+      stage, one value applied to the whole train; now each vehicle looks up
+      its own $x_i$.}}
+    {\eqcard{eqGrade}{Why it matters}{%
+      A long freight train can have its head on a climb while its tail is still on
+      flat track. The grade force then differs along the train, so couplers
+      stretch and compress even at a constant throttle setting.}}
+    {\eqcard{eqCurv}{Curve resistance}{%
+      A fixed fraction of vehicle weight, set by the curve radius and not by
+      speed. $\lambda \approx 0.699$ is the AREMA value of 0.8\,lb per ton
+      per degree of curve. $c_{\kappa} = 1$ is the standard value;
+      $c_{\kappa} = 0$ turns the term off.}}
+  \eqfoot{Test run: slope rises from level to 0.8\,\% between 2 and 6\,km,
+    with an 800\,m radius curve there. This notebook run used an older curve
+    term that grew with $v^2$; all later results use the form above.}
+}
+
 \stageslide{6}{Stage 6: Per-Vehicle Grade and Curvature}%
   {../../notebooks/notebook_images/ltd_stage06_grade_profile_lead_rear_speeds_coupler_forces.png}%
   {Each vehicle reads the route at its own position. Lead and rear speeds
    differ wherever the train spans a change in grade, as described on
    slide~25.}
+
+\eqslide{7}{Stage 7 Equations: Commands Act Through Actuator Lag}{%
+  \vspace{-0.6em}
+  \[
+    \eqc{eqInert}{m_i\dot v_i}
+    = \eqnew{eqTrac}{F_{\mathrm{trac},i}(z_{\mathrm{trac},i},\,v_i)}{traction from its lag\\state, power limited}
+    - \eqnew{eqBrk}{F_{\mathrm{brk},i}(z_{\mathrm{brk},i})\,\tanh(v_i/\varepsilon_b)}{brake from its lag state,\\opposing the motion}
+    - \eqc{eqRes}{R_i}
+    - \eqc{eqGrade}{G_i(x_i)}
+    - \eqc{eqCurv}{C_i(x_i)}
+    \eqc{eqCpl}{\;+\,F_{i-1} - F_i}
+  \]
+  \vspace{-0.9em}
+  \[
+    \eqnew{eqAct}{\dot z_{\mathrm{trac},i} = \frac{u_{\mathrm{trac},i} - z_{\mathrm{trac},i}}{\tau_t}}{traction lag}
+    \qquad
+    \eqnew{eqAct}{\dot z_{\mathrm{brk},i} = \frac{u_{\mathrm{brk},i} - z_{\mathrm{brk},i}}{\tau_b}}{brake lag}
+  \]
+  \vspace{-0.6em}
+  \eqcards
+    {\eqcard{eqAct}{Actuator lag}{%
+      $u$ is the command; $z$ is what the equipment delivers. $z$ covers
+      63\,\% of a change in $u$ within one time constant $\tau$
+      ($\tau_t = 5$\,s, $\tau_b = 3$\,s).}}
+    {\eqcard{eqAct}{Power limit}{%
+      $F_{\mathrm{trac},i} = \min\bigl(z_{\mathrm{trac},i},\; P_{\max}/|v_i|\bigr)$\\[2pt]
+      Force $\times$ speed cannot exceed $P_{\max} = 3.5$\,MW: at most
+      175\,kN at 20\,m/s. ($z \ge 0$; $|v_i|$ floored at 1\,m/s.)}}
+    {\eqcard{eqBrk}{Brake direction}{%
+      $F_{\mathrm{brk},i} = \min\bigl(z_{\mathrm{brk},i},\; F_{\mathrm{brk},\max,i}\bigr)$\\[2pt]
+      $\tanh(v/\varepsilon_b)$ is $+1$ moving forward, $-1$ backward, and
+      smooth through 0 at a stop (see the next two slides).}}
+  \eqfoot{State: $x$, $v$, $z_{\mathrm{trac}}$, $z_{\mathrm{brk}}$ per
+    vehicle, $4N$ numbers. Force follows a command through $z$, never
+    instantly.}
+}
 
 \stageslide{7}{Stage 7: Actuator Lag and Power-Limited Traction}%
   {../../notebooks/notebook_images/ltd_stage07_brake_buildup_power_limited_traction_states.png}%
