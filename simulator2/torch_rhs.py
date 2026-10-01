@@ -106,8 +106,21 @@ class EdgeStatic(IntEnum):
     C_BUFF = 5
 
 
+class LocoParam(IntEnum):
+    """Columns of ``loco_table`` under ``traction_model = "notch"``: the
+    benchmark's Table 6, SI units. Zero for vehicles that cannot pull."""
+
+    TE_MAX_N = 0
+    P_MAX_W = 1
+    DB_MAX_N = 2
+    P_DB_MAX_W = 3
+    V_DB_MIN = 4
+    V_DB_MAX = 5
+
+
 D_NODE_STATIC = len(NodeStatic)
 D_EDGE_STATIC = len(EdgeStatic)
+D_LOCO_PARAM = len(LocoParam)
 
 
 # ---------------------------------------------------------------------------
@@ -232,12 +245,25 @@ class TorchScenarioBatch:
     draft_gear_table: Tensor | None = None   # (K, 3): per-gear m, F_load N, F_unload N
     draft_gear_k_transition: float = 1.0e8
     draft_gear_k_lock: float = 5.0e8
+    #: ``"force_lag"`` (the Chapter 4 traction, the default): ``u_trac`` is a
+    #: force command, lagged and capped at ``p_max_w / v``. ``"notch"``: the
+    #: LTD benchmark's notch-controlled diesel-electric locomotive
+    #: (:func:`_notch_force`). ``u_trac`` is then a signed notch in [-8, 8]
+    #: (positive traction, negative dynamic brake), ``z_trac`` is that notch
+    #: after the ``tau_trac_s`` lag, and the force comes from ``loco_table``.
+    #: Batch-level for the same reason as ``curvature_model``.
+    traction_model: str = "force_lag"
+    loco_table: Tensor | None = None   # (B, N, 6): see LocoParam
 
     def __post_init__(self) -> None:
         if self.coupler_model not in ("kelvin_voigt", "draft_gear"):
             raise ValueError(f"unknown coupler_model {self.coupler_model!r}")
         if self.coupler_model == "draft_gear" and self.draft_gear_table is None:
             raise ValueError("coupler_model 'draft_gear' needs draft_gear_table")
+        if self.traction_model not in ("force_lag", "notch"):
+            raise ValueError(f"unknown traction_model {self.traction_model!r}")
+        if self.traction_model == "notch" and self.loco_table is None:
+            raise ValueError("traction_model 'notch' needs loco_table")
         # Padded vehicles carry mass 0, which would divide to NaN before the
         # mask is applied -- and NaN * 0 is still NaN, so the mask alone cannot
         # save us. Substitute a harmless unit mass in the padded slots.
@@ -649,6 +675,67 @@ def _grade_force(mass: Tensor, sin_theta_field: Tensor) -> Tensor:
     return mass * GRAVITY_MPS2 * torch.sin(sin_theta_field)
 
 
+def _traction_at_notch(n: Tensor, speed: Tensor, lp: Tensor, v_eps: Tensor) -> Tensor:
+    """Benchmark Table 4 at integer notch ``n`` (0-8), speed ``|v|``:
+    ``F = (n/8) Te_max``, capped at ``(n/8)^2 P_max / v``."""
+    frac = n / 8.0
+    return torch.minimum(
+        frac * lp[..., LocoParam.TE_MAX_N],
+        frac * frac * lp[..., LocoParam.P_MAX_W] / speed.clamp_min(v_eps),
+    )
+
+
+def _db_at_notch(n: Tensor, speed: Tensor, lp: Tensor, v_eps: Tensor) -> Tensor:
+    """Benchmark Table 5 at integer DB notch ``n`` (0-8), speed ``|v|``.
+
+    Table 5 as printed is internally inconsistent for notches 1-6: it names
+    ``DB_max - 10 v`` as the plateau for 4-6 and makes the power cap a force
+    (``F v >= DB_max``) for 1-3. Read against the published curves (Figs 4b,
+    5b), every notch rises on the common ramp ``(v / v_db_min) DB_max``,
+    levels at ``DB_max n/8.7`` (notches 1-3) or ``DB_max n/7.5`` (4-6), less
+    ``10 v``, and is cut off by ``P_db_max / v``. That reproduces the
+    figures' crossovers (type 1: notch 6 at 50 km/h, 5 at 60, 4 at 75, 3 at
+    115). Notches 7 and 8 are identical and switch on speed alone, so they
+    step down from ``DB_max`` to ``P_db_max / v_db_max`` at 43 km/h, as the
+    figures show.
+    """
+    db_max = lp[..., LocoParam.DB_MAX_N]
+    p_db = lp[..., LocoParam.P_DB_MAX_W]
+    # Padded and non-traction vehicles carry zeros; keep their divisions finite.
+    v_min = lp[..., LocoParam.V_DB_MIN].clamp_min(1e-9)
+    v_max = lp[..., LocoParam.V_DB_MAX]
+    ramp = speed / v_min * db_max
+    hyper = p_db / speed.clamp_min(v_eps)
+    level = torch.where(n <= 3, n / 8.7, n / 7.5) * db_max - 10.0 * speed
+    partial = torch.minimum(torch.minimum(ramp, level), hyper)
+    full = torch.where(speed <= v_min, ramp,
+                       torch.where(speed <= v_max, db_max - 10.0 * speed, hyper))
+    f = torch.where(n >= 7, full, partial)
+    return torch.where(n > 0, f.clamp_min(0.0), torch.zeros_like(f))
+
+
+def _notch_force(z: Tensor, v: Tensor, lp: Tensor, v_eps: Tensor) -> Tensor:
+    """Locomotive force [N] along ``+x`` at lagged signed notch ``z``.
+
+    Positive ``z`` is traction (Table 4), negative is dynamic brake (Table 5),
+    which opposes motion. ``z`` passes through fractional values while the
+    lag carries it between notches; there the force is blended linearly
+    between the two neighbouring notch curves, so it is continuous in ``z``.
+    """
+    speed = v.abs()
+    mag = z.abs().clamp(max=8.0)
+    lo = torch.floor(mag).detach()
+    hi = (lo + 1.0).clamp(max=8.0)
+    w = mag - lo
+
+    def blend(law):
+        return law(lo, speed, lp, v_eps) * (1.0 - w) + law(hi, speed, lp, v_eps) * w
+
+    sgn_v = torch.where(speed < _V_SIGN_EPS, torch.zeros_like(v), torch.sign(v))
+    return torch.where(z >= 0, blend(_traction_at_notch),
+                       -blend(_db_at_notch) * sgn_v)
+
+
 def torch_rhs(
     t: float | Tensor,
     y: Tensor,
@@ -738,13 +825,17 @@ def torch_rhs(
         f_curv = None
 
     # -- actuators ----------------------------------------------------------
-    zt = z_trac.clamp_min(0.0)
     zb = z_brk.clamp_min(0.0)
 
-    power_cap = batch.p_max_w / abs_v.clamp_min(batch.v_eps)
-    f_trac = torch.where(
-        can_traction > 0, torch.minimum(zt, power_cap), torch.zeros_like(zt)
-    )
+    if batch.traction_model == "notch":
+        f_loco = _notch_force(z_trac, v, batch.loco_table, batch.v_eps)
+        f_trac = torch.where(can_traction > 0, f_loco, torch.zeros_like(f_loco))
+    else:
+        zt = z_trac.clamp_min(0.0)
+        power_cap = batch.p_max_w / abs_v.clamp_min(batch.v_eps)
+        f_trac = torch.where(
+            can_traction > 0, torch.minimum(zt, power_cap), torch.zeros_like(zt)
+        )
 
     f_brake = torch.minimum(zb, f_brk_max)
     if brake_opposes_motion is None:
