@@ -45,6 +45,7 @@ from .route import (  # shared with the NumPy path so the laws cannot drift
     MIN_CURVE_RADIUS_M,
     _AREMA_COEFF,
 )
+from .draft_gear import draft_gear_stateful_torch
 from .constants import (
     DEFAULT_C_BUFF,
     DEFAULT_C_DRAFT,
@@ -220,8 +221,23 @@ class TorchScenarioBatch:
     #: whole batch. Batches are built homogeneous, so this stays a Python
     #: constant in the traced graph instead of a per-element select.
     curvature_model: str = "proxy_v2"
+    #: ``"kelvin_voigt"`` (the Chapter 4 coupler, the default) or
+    #: ``"draft_gear"``: the stateful friction draft gear of
+    #: :mod:`simulator2.draft_gear`, read from ``draft_gear_table``. Batch-level
+    #: for the same reason as ``curvature_model``. Under ``"draft_gear"`` the
+    #: per-edge k/c columns are ignored, ``SLACK_HALF_M`` is the coupler slack
+    #: (0 for a drawbar), and ``y`` carries one gear-force state per edge
+    #: after the four node blocks: ``y`` is ``(B, 4N + N - 1)``.
+    coupler_model: str = "kelvin_voigt"
+    draft_gear_table: Tensor | None = None   # (K, 3): per-gear m, F_load N, F_unload N
+    draft_gear_k_transition: float = 1.0e8
+    draft_gear_k_lock: float = 5.0e8
 
     def __post_init__(self) -> None:
+        if self.coupler_model not in ("kelvin_voigt", "draft_gear"):
+            raise ValueError(f"unknown coupler_model {self.coupler_model!r}")
+        if self.coupler_model == "draft_gear" and self.draft_gear_table is None:
+            raise ValueError("coupler_model 'draft_gear' needs draft_gear_table")
         # Padded vehicles carry mass 0, which would divide to NaN before the
         # mask is applied -- and NaN * 0 is still NaN, so the mask alone cannot
         # save us. Substitute a harmless unit mass in the padded slots.
@@ -672,15 +688,23 @@ def torch_rhs(
     delta_dot = v[:, :-1] - v[:, 1:]
     slack = es[..., EdgeStatic.SLACK_HALF_M]
 
-    zeros_e = torch.zeros_like(delta)
-    f_draft = es[..., EdgeStatic.K_DRAFT] * (delta - slack) \
-        + es[..., EdgeStatic.C_DRAFT] * delta_dot
-    f_buff = es[..., EdgeStatic.K_BUFF] * (delta + slack) \
-        + es[..., EdgeStatic.C_BUFF] * delta_dot
-    # The exact piecewise deadband, kept as-is: softening it would change the
-    # physics documented in Chapter 4 (spec section 4.8).
-    f_cpl = torch.where(delta > slack, f_draft, zeros_e)
-    f_cpl = torch.where(delta < -slack, f_buff, f_cpl)
+    if batch.coupler_model == "draft_gear":
+        z_cpl = y[:, 4 * n : 5 * n - 1]
+        f_cpl, dz_cpl = draft_gear_stateful_torch(
+            delta, delta_dot, z_cpl, slack, batch.draft_gear_table,
+            k_transition=batch.draft_gear_k_transition,
+            k_lock=batch.draft_gear_k_lock,
+        )
+    else:
+        zeros_e = torch.zeros_like(delta)
+        f_draft = es[..., EdgeStatic.K_DRAFT] * (delta - slack) \
+            + es[..., EdgeStatic.C_DRAFT] * delta_dot
+        f_buff = es[..., EdgeStatic.K_BUFF] * (delta + slack) \
+            + es[..., EdgeStatic.C_BUFF] * delta_dot
+        # The exact piecewise deadband, kept as-is: softening it would change
+        # the physics documented in Chapter 4 (spec section 4.8).
+        f_cpl = torch.where(delta > slack, f_draft, zeros_e)
+        f_cpl = torch.where(delta < -slack, f_buff, f_cpl)
     f_cpl = f_cpl * batch._edge_maskf
 
     f_in = torch.nn.functional.pad(f_cpl, (1, 0))   # force from the vehicle ahead
@@ -742,7 +766,10 @@ def torch_rhs(
     dz_trac = (u_trac - z_trac) / batch.tau_trac_s
 
     m = batch._node_maskf
-    return torch.cat([dx * m, dv * m, dz_brk * m, dz_trac * m], dim=1)
+    out = [dx * m, dv * m, dz_brk * m, dz_trac * m]
+    if batch.coupler_model == "draft_gear":
+        out.append(dz_cpl * batch._edge_maskf)
+    return torch.cat(out, dim=1)
 
 
 # ---------------------------------------------------------------------------
