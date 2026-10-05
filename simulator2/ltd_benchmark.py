@@ -24,9 +24,11 @@ Choices the paper leaves to participants, and the ones made here:
 * **Dynamic brake law.** Table 5 is internally inconsistent as printed; it is
   read against Figs 4b and 5b. See :func:`simulator2.torch_rhs._db_at_notch`.
 * **Starting resistance** (section 3.3) is not modelled, as the paper allows.
-* **Initial state.** Not specified. The train starts at rest, every
+* **Initial state.** The questions paper does not give one; the results
+  paper (Wu et al. 2018, section 2) says all trains start at the 3 km
+  location and compares 3-50 km only. The train starts at rest, every
   connection centred in its slack, with the lead locomotive's front at
-  0 m and the consist on the flat track behind it.
+  ``START_M`` and the consist on the track behind it.
 * **Gradient table** (Appendix 1) is read as steps: each gradient holds from
   its location to the next. Integrated from 105 m that gives the Fig. 6a
   profile (valley 93.6 m at 4.1 km, summit 145.1 m at 24.7 km, 113.3 m at
@@ -63,6 +65,9 @@ DATA = Path(__file__).parent / "data" / "ltd_benchmark"
 #: Simulated time and required output step (section 3.6).
 T_END_S = 5000.0
 OUTPUT_DT_S = 0.01
+
+#: Lead locomotive's front at t = 0 (results paper, section 2).
+START_M = 3000.0
 
 #: Coupler slack: 10 mm total (section 3.1). Drawbars have none.
 COUPLER_SLACK_HALF_M = 0.005
@@ -327,11 +332,11 @@ def command_grid(train: int, consist: Consist, t_end: float = T_END_S,
 # the batch
 # ---------------------------------------------------------------------------
 
-def initial_positions(consist: Consist) -> np.ndarray:
-    """Vehicle centres [m], lead front at 0, every connection at rest
-    length (centred in its slack)."""
+def initial_positions(consist: Consist, start_m: float = START_M) -> np.ndarray:
+    """Vehicle centres [m], lead front at ``start_m``, every connection at
+    rest length (centred in its slack)."""
     lengths = np.array([vt.length_m for vt in consist.types])
-    return -(np.cumsum(lengths) - 0.5 * lengths)
+    return start_m - (np.cumsum(lengths) - 0.5 * lengths)
 
 
 def build_batch(
@@ -342,6 +347,7 @@ def build_batch(
     tau_notch_s: float = 5.0,
     k_transition: float = K_TRANSITION_N_PER_M,
     t_end: float = T_END_S,
+    start_m: float = START_M,
 ) -> tuple[TorchScenarioBatch, list[Consist]]:
     """One padded batch holding the requested benchmark trains."""
     s, sin_theta, kappa = build_route()
@@ -363,7 +369,7 @@ def build_batch(
 
         t_cmd, u = command_grid(train, c, t_end)
         y0 = np.zeros(4 * n)
-        y0[:n] = initial_positions(c)
+        y0[:n] = initial_positions(c, start_m)
         records.append({
             "N": n, "t": t_cmd, "y0": y0,
             "node_static": node, "edge_static": edge,
@@ -504,7 +510,7 @@ def run(
 
 
 __all__ = [
-    "CURVES", "REPORT_POSITIONS", "TRAINS", "VEHICLE_TYPES",
+    "CURVES", "REPORT_POSITIONS", "START_M", "TRAINS", "VEHICLE_TYPES",
     "build_batch", "build_consist", "build_route", "command_grid",
     "curvature_at", "davis_coefficients", "elevation_m", "gradient_pct_at",
     "initial_positions", "k_curv_scale_linear", "load_controls", "notch_at",

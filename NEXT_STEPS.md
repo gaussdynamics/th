@@ -12,6 +12,37 @@ physics decision)._
 
 ---
 
+## Simulator validation — major emphasis from 2026-09-26
+
+The committee asked how we know the simulator is accurate. The answer is now a
+workstream with its own log: **`SIMULATOR_VALIDATION_NOTE.md`**.
+
+- **Tier 1 (verification against exact solutions): done.** 18 tests in
+  `simulator2/tests/test_verification.py`.
+- **Tier 2 (sourced parameters, physics fixes):** next, and before any
+  further data regeneration.
+- **Tier 3 (the international benchmark):** scoped once the benchmark paper
+  has been read.
+
+Findings F1–F3 (load-independent brakes, no brake-pipe propagation, no
+draft-gear hysteresis) bear directly on the coupler-force safety constraint in
+the control chapter.
+
+## To-do: re-read Shao et al. 2025 in full (added 2026-10-04)
+
+The full text of `shao2025ttbgnn` is now at
+`paper/refs/papers/GNN_surrogate_train_track_bridge_meshless.pdf`. It is not
+needed for the benchmark. Ch2 (`02_related_work.tex:131`) already cites it,
+written before we had the PDF. To do:
+
+- Check the Ch2 sentence against the paper (vertical/lateral coupling,
+  vehicle-to-structure rather than vehicle-to-vehicle).
+- Note what it reports that bears on Ch6: graph surrogate robust to topology
+  change (accuracy drops ~2 % when the vehicle count changes), and poor
+  rail-response prediction (R² as low as 0.29). Both parallel our
+  consist-length extrapolation and coupler-shape limitation, and may be worth
+  a sentence.
+
 ## Where things stand — end of 2026-09-20
 
 Branch `surrogate-gns`, 12 commits ahead of `main`, nothing pushed.

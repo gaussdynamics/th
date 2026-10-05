@@ -69,14 +69,17 @@ def main() -> None:
     ap.add_argument("--dt", type=float, default=0.01)
     ap.add_argument("--tau-notch", type=float, default=5.0,
                     help="first-order lag on the notch [s] (the benchmark leaves it open)")
+    ap.add_argument("--start-m", type=float, default=lb.START_M,
+                    help="lead front at t = 0 [m] (the results paper starts at 3 km)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--tag", default="", help="suffix for the output files")
     args = ap.parse_args()
 
     batch, consists = lb.build_batch(tuple(args.trains), device=args.device,
-                                     tau_notch_s=args.tau_notch, t_end=args.t_end)
+                                     tau_notch_s=args.tau_notch, t_end=args.t_end,
+                                     start_m=args.start_m)
     print(f"trains {args.trains} on {args.device}, dt = {args.dt} s, "
-          f"tau_notch = {args.tau_notch} s, {args.t_end:g} s")
+          f"tau_notch = {args.tau_notch} s, start {args.start_m:g} m, {args.t_end:g} s")
     t0 = time.time()
 
     def progress(t):
@@ -89,7 +92,8 @@ def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for train, o in zip(args.trains, outs):
         path = OUT / f"train{train}{args.tag}.npz"
-        np.savez_compressed(path, dt=args.dt, tau_notch=args.tau_notch, wall_s=wall, **o)
+        np.savez_compressed(path, dt=args.dt, tau_notch=args.tau_notch, start_m=args.start_m,
+                            wall_s=wall, **o)
     print(f"done in {wall:.0f} s; written to {OUT.relative_to(ROOT)}")
     for train, o in zip(args.trains, outs):
         summarize(train, o)

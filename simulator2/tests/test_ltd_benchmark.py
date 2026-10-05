@@ -254,10 +254,21 @@ def test_dynamic_brake_opposes_motion() -> None:
 
 # -- the assembled batch ----------------------------------------------------------
 
+def test_trains_start_at_3_km() -> None:
+    """Results paper, section 2: every train starts at the 3 km location."""
+    for k in (1, 3):
+        c = lb.build_consist(k)
+        x = lb.initial_positions(c)
+        assert x[0] + c.types[0].length_m / 2 == pytest.approx(3000.0)
+        assert x[-1] > 0.0                          # Train 3's tail is still on the table
+
+
 def test_short_run_of_train_1() -> None:
-    """60 s from rest: the train starts on notch 1 at 2 s, the gears load
-    from the front, and every gear force stays inside its envelope."""
-    batch, consists = lb.build_batch((1,), t_end=60.0)
+    """60 s from rest on level track: the train starts on notch 1 at 2 s,
+    the gears load from the front, and every gear force stays inside its
+    envelope. (At the benchmark's 3 km start the track falls, and with no
+    air brakes the train rolls before the first notch.)"""
+    batch, consists = lb.build_batch((1,), t_end=60.0, start_m=0.0)
     out = lb.run(batch, consists, t_end=60.0, chunk_s=20.0)[0]
     v = out["lead_speed_mps"]
     assert v[:200].max() < 1e-6                     # notch 0 until 2 s

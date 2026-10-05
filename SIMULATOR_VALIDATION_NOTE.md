@@ -76,9 +76,9 @@ contact-event convergence issue), a dynamic brake, notch tables and
 drawbars. It does **not** validate air braking, so F1/F2 need their own
 literature-based justification.
 
-**Still needed:** the results paper (Wu et al. 2018), which holds the nine
-simulators' outputs to compare against (requested through interlibrary
-loan 2026-09-30).
+**Results paper** (Wu et al. 2018) obtained 2026-10-04:
+`paper/refs/papers/internatl_benchmarking_ltd_results.pdf`, bib key
+`Wu2018BenchmarkResults`. Comparison in the 2026-10-04 log entry.
 
 **Corrigendum** (*VSD* 56(2):341, 2018, doi:10.1080/00423114.2017.1397356;
 `paper/refs/papers/Corrigendum.pdf`): its only change is to Table 2. The
@@ -284,3 +284,30 @@ the physics fails loudly. The list comes from the code review of 2026-09-26.
     Either our light trains accelerate faster than the reference simulator
     in the first 400 s, or the driving algorithm anticipated the 80 km/h
     board. Not resolvable until the results paper's speed traces arrive.
+- **2026-10-04 (results paper; comparison)** — Read Wu et al. 2018.
+  - **Start location.** Section 2: all trains start at 3 km and only
+    3-50 km is compared. The questions paper never says so; our harness
+    started at 0 m, which caused the Train 1/2 overspeed above (controls
+    played on the wrong stretch; average speed ~10 % high on all trains).
+    `START_M = 3000` is now the default. The track behind 3 km falls, so with
+    no air brakes or starting resistance the train rolls before notch 1.
+  - Tables 3-6 transcribed to `simulator2/data/ltd_benchmark/wu2018_tables.csv`
+    (checked against page images; text extraction shifts the speed columns).
+    Fig. 2 digitized to `wu2018_fig2_speed.csv` (maxima inside each table's
+    range). Comparison: `scripts/compare_ltd_benchmark.py`.
+  - **Result, notch lag 5 s (headline):** speed matches on all trains (Fig. 2
+    RMS 0.4-0.6 km/h). 23 of 32 table quantities inside the range of the
+    paper's core six (TABLDSS, UM, CRE-LTS, TDEAS, TsDyn, CARS), 6 more
+    within 2 %. Largest-force positions match. **Misses: Train 1 peak tension
+    486 kN vs 549-734 for all nine (−11 %); Train 1 mean max tension −8 %.**
+    The peak is at start-up (41 s, 10 km/h) and depends on the notch lag,
+    which the benchmark leaves open: 486 / 541 / 565 / 622 kN at 5 / 2 / 1 /
+    0.2 s. Full run at 1 s: 28 of 32 inside, the rest within 4 %. Kept 5 s as
+    the headline since it predates the results.
+  - **Deflection** is undefined in the paper; read as the whole connection
+    (two gears + slack) since participants exceed one gear's 82.5 mm.
+  - **Caveat for the thesis:** this validates the opt-in configuration
+    (friction gear, notch traction, benchmark parameters), not the default
+    path the corpora were generated on. Air brakes (F1/F2) untested. No dt
+    sensitivity of the force results yet.
+  - Write-up: https://claude.ai/artifact/B3H96WhB8rK56FpzqT2BHk
