@@ -311,3 +311,65 @@ the physics fails loudly. The list comes from the code review of 2026-09-26.
     path the corpora were generated on. Air brakes (F1/F2) untested. No dt
     sensitivity of the force results yet.
   - Write-up: https://claude.ai/artifact/B3H96WhB8rK56FpzqT2BHk
+- **2026-10-04 (air brake, first implementation)** — Empirical propagation
+  model (Wu, Spiryagin & Cole 2016, section 4.2, which recommends this class
+  when the air brake is not the object of study): `simulator2/air_brake.py`.
+  **All parameters are placeholders**; `AirBrakeParams.source` is `None` and
+  `require_sourced()` refuses them, so no data can be generated from them yet.
+  - Brake wave at `c` (placeholder 250 m/s) shifts each vehicle's command by
+    `d/c`; build-up keeps the existing first-order lag with a time constant
+    linear from head (3 s) to tail (10 s); fixed shoe force from design gross
+    weight times shoe friction, capped at adhesion on actual weight; direct
+    release with a recharge time.
+  - **F1 reframed:** conventional cars have *fixed* shoe force, load
+    independent. The defect is the 250 kN magnitude (about 6x the placeholder
+    loaded-car value) and the missing adhesion cap. With the placeholders a
+    26 t empty sits right at the adhesion limit (~0.15 g).
+  - RHS change: optional `TorchScenarioBatch.tau_brk_node` (B, N); `None`
+    keeps the scalar path (a uniform `tau_brk_node` is bit-identical to it).
+    Everything else is command-side and opt-in; corpora untouched.
+  - Tests (`test_air_brake.py`, 14): uncoupled vehicles match the closed-form
+    build-up to 1e-5 m/s; coupled-train momentum matches the summed brake
+    impulse to 1e-7; direct-release rules; capacity and cap. Mutation check:
+    dropping the per-vehicle tau fails 2 tests, dropping the delay fails 3.
+    Full simulator suite: 306 passed.
+  - **F2 quantified:** 60 uniform cars, full application. Instantaneous
+    train-wide brake (today's corpus model): **0 kN** run-in, every car
+    decelerates together. With propagation: 440-500 kN peak buff force.
+    The corpora cannot contain braking run-in on uniform consists.
+  - Direct release barely changes the corpus regimes (94-100 % of braking
+    impulse kept), except `DYNAMIC_BRAKE_DESCENT` (85 %, ~1 forced release per
+    run), which modulates the *air* brake as a stand-in for the dynamic brake
+    that did not exist then. Move it to the notch dynamic brake at regeneration.
+  - **Not done yet:** wiring into `build_dataset.py`. The dataset files,
+    `scripts/validate_dataset.py` and `surrogate/data.py` assume a scalar
+    `tau_brk_s`; they need the per-vehicle array. Separate release time
+    constant not modelled. Parameters need sources: Wei et al. 2017 (VSD
+    55(4):517-533) for propagation and cylinder curves; AAR for net braking
+    ratio.
+
+- **2026-10-05 (air brake, timing calibrated to Wei et al. 2017)** — VSD
+  55(4):517-533, measured curves of a Shuo-Huang 10,000 t train (HXD1 + 116
+  C80, Chinese 120 valve), 4th and 116th car. The figures are vector
+  graphics, so `scripts/digitize_air_brake.py` reads the curves from the PDF's
+  line segments (output in `simulator2/data/wei2017_air_brake/`). Emergency
+  onset spread comes out 7.59 s against 7.7 s in the paper's text, which
+  checks the extraction.
+  - Application wave: 7.03 s (Fig. 5) and 8.25 s (Fig. 7) over 112 car
+    lengths → **176 m/s** (163-191). Release wave: 12.82 s → **105 m/s**,
+    now separate (decreases propagate at the release speed).
+  - Build-up tau: **10.2 s** at the head, **30.6 s** at the 116th car
+    (Fig. 7, 140 kPa step), now linear *per metre* (0.0152 s/m), not
+    normalised to train length. The head is two-timescale (fast jump, slow
+    creep; first-order rms 24 kPa of 400). Emergency (Fig. 9, rig) is
+    faster and uniform, 4.3 / 5.2 s, but is not modelled.
+  - Release tau **6.7 s** (6.89 / 6.52), new RHS field
+    `tau_brk_release_node`, used while the force falls. Recharge **90 s**
+    (head car; the tail is still ~20 kPa short at 206 s, so it is optimistic).
+  - Provenance is per field (`AirBrakeParams.sources`). Still unsourced:
+    net braking ratio, shoe friction, adhesion, design gross weight, and
+    the C80 car length (12.0 m) that turns delays into speeds.
+    `require_sourced` still refuses.
+  - Caveat for the thesis: a Chinese 120 valve, not North American ABDX.
+    Tests: 18 air brake (2 caught by mutation), full suite 310 passed.
+    F2 run-in figures from 2026-10-04 used the placeholders and need a re-run.

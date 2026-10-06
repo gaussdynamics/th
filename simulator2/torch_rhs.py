@@ -254,12 +254,27 @@ class TorchScenarioBatch:
     #: Batch-level for the same reason as ``curvature_model``.
     traction_model: str = "force_lag"
     loco_table: Tensor | None = None   # (B, N, 6): see LocoParam
+    #: Per-vehicle brake time constant [s], or ``None`` to use the
+    #: scenario-wide ``tau_brk_s``. Set by the empirical air brake
+    #: (:mod:`simulator2.air_brake`), whose cylinders fill more slowly
+    #: towards the tail. Padding entries must stay positive.
+    tau_brk_node: Tensor | None = None   # (B, N)
+    #: Per-vehicle brake time constant while the force falls towards its
+    #: command (cylinder exhaust) [s], or ``None`` to use the application
+    #: time constant both ways. Padding entries must stay positive.
+    tau_brk_release_node: Tensor | None = None   # (B, N)
 
     def __post_init__(self) -> None:
         if self.coupler_model not in ("kelvin_voigt", "draft_gear"):
             raise ValueError(f"unknown coupler_model {self.coupler_model!r}")
         if self.coupler_model == "draft_gear" and self.draft_gear_table is None:
             raise ValueError("coupler_model 'draft_gear' needs draft_gear_table")
+        for name in ("tau_brk_node", "tau_brk_release_node"):
+            tau = getattr(self, name)
+            if tau is not None and tuple(tau.shape) != tuple(self.node_mask.shape):
+                raise ValueError(
+                    f"{name} must be {tuple(self.node_mask.shape)}, "
+                    f"got {tuple(tau.shape)}")
         if self.traction_model not in ("force_lag", "notch"):
             raise ValueError(f"unknown traction_model {self.traction_model!r}")
         if self.traction_model == "notch" and self.loco_table is None:
@@ -853,7 +868,10 @@ def torch_rhs(
     dv = net / batch._mass_safe
 
     dx = v
-    dz_brk = (u_brk - z_brk) / batch.tau_brk_s
+    tau_brk = batch.tau_brk_s if batch.tau_brk_node is None else batch.tau_brk_node
+    if batch.tau_brk_release_node is not None:
+        tau_brk = torch.where(u_brk < z_brk, batch.tau_brk_release_node, tau_brk)
+    dz_brk = (u_brk - z_brk) / tau_brk
     dz_trac = (u_trac - z_trac) / batch.tau_trac_s
 
     m = batch._node_maskf

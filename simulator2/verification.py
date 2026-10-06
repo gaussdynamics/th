@@ -97,6 +97,8 @@ class Case:
     z_brk0: np.ndarray | None = None
     tau_trac: float = 5.0
     tau_brk: float = 3.0
+    tau_brk_node: np.ndarray | None = None
+    tau_brk_release_node: np.ndarray | None = None
     p_max: float = 1e12
     v_eps: float = DEFAULT_V_EPS
     v_brake_eps: float = DEFAULT_V_BRAKE_EPS
@@ -176,6 +178,11 @@ class Case:
                               else t(self.draft_gear_table)),
             draft_gear_k_transition=self.draft_gear_k_transition,
             draft_gear_k_lock=self.draft_gear_k_lock,
+            tau_brk_node=(None if self.tau_brk_node is None
+                          else t(np.asarray(self.tau_brk_node, float)[None])),
+            tau_brk_release_node=(
+                None if self.tau_brk_release_node is None
+                else t(np.asarray(self.tau_brk_release_node, float)[None])),
         )
 
 
