@@ -255,9 +255,9 @@ class TorchScenarioBatch:
     traction_model: str = "force_lag"
     loco_table: Tensor | None = None   # (B, N, 6): see LocoParam
     #: Per-vehicle brake time constant [s], or ``None`` to use the
-    #: scenario-wide ``tau_brk_s``. Set by the empirical air brake
-    #: (:mod:`simulator2.air_brake`), whose cylinders fill more slowly
-    #: towards the tail. Padding entries must stay positive.
+    #: scenario-wide ``tau_brk_s``. The empirical air brake
+    #: (:mod:`simulator2.air_brake`) builds the cylinder fill into ``u_brk``
+    #: and sets a short numerical lag here. Padding entries must stay positive.
     tau_brk_node: Tensor | None = None   # (B, N)
     #: Per-vehicle brake time constant while the force falls towards its
     #: command (cylinder exhaust) [s], or ``None`` to use the application

@@ -156,6 +156,62 @@ the physics fails loudly. The list comes from the code review of 2026-09-26.
 | F8 | Speed limits not enforced (17.8 % of scenarios exceed by > 5 m/s) | ch.07:279 | Scenario realism, not physics | Speed-aware control profiles |
 | F9 | Point-mass grade (no averaging over the car length); no rotational-inertia allowance | `torch_rhs.py` | Low | Rotating-mass factor ~2–5 %; length averaging optional |
 
+## Air brake reading list (2026-10-05)
+
+What to obtain to finish sourcing `AirBrakeParams` (see the 2026-10-05 log
+entry). ✔ = appears in a reference list of a paper already in
+`paper/refs/papers/`, so the citation is confirmed. The rest are standard
+works cited from memory: check edition and chapter when requesting them.
+**Start with 1, 2, 5 and 6.**
+
+*Force parameters (still placeholders):*
+
+1. AAR, *Manual of Standards and Recommended Practices*, Section E (Brakes
+   and Brake Equipment): **S-401** (Brake Design Requirements) for net
+   braking ratio; **M-926** (composite brake shoes) for shoe friction. Paid;
+   try the library. Check S-401's definition of the ratio: if its shoe force
+   already includes rigging losses, the model must not apply them again.
+2. Spiryagin, Wolfs, Cole, Spiryagin, Sun & McSweeney, *Design and
+   Simulation of Heavy Haul Locomotives and Trains*, CRC Press, 2016. Heavy
+   haul brake modelling, adhesion, typical values.
+3. Iwnicki (ed.), *Handbook of Railway Vehicle Dynamics*, CRC Press (2nd ed.
+   2019; 1st ed. 2006): Cole's "Longitudinal Train Dynamics" chapter.
+4. Hay, *Railroad Engineering*, 2nd ed., Wiley, 1982. Origin of
+   F = Rb·W·e·f (the form of `brake_capacity_n`); shoe friction vs speed.
+   ✔ (Wang & Rakha 2018)
+
+*North American valve (the timing is from a Chinese 120 valve):*
+
+5. Specchia, Afshari, Shabana et al., "A train air brake force model:
+   locomotive automatic brake valve and brake pipe flow formulations,"
+   *Proc IMechE F* 227(1):19–37 (2012). ✔ (Wei ref. 31)
+6. Afshari, Specchia, Shabana et al., "A train air brake force model: car
+   control unit and numerical results," *Proc IMechE F* 227(1):38–55 (2012).
+   ✔ (Wei ref. 32)
+7. Johnson, Booth & Mattoon, "Development of practical techniques for the
+   simulation of train air brake operation," ASME 86-WA/RT-4. ✔ (Wei ref. 7)
+8. Abdol Hamid, Limbert, Gauthier et al., "Simulation of freight train air
+   brake system," ASME 86-WA/RT-15 (ABD/ABDW). ✔ (Wei ref. 6)
+9. Blaine & Hengel (1971), brake system operation and testing and their
+   effect on train performance. ✔ (Wang & Rakha 2018; full citation there)
+
+*Model form and calibration:*
+
+10. Murtaza, "Railway air brake simulation: an empirical approach,"
+    *Proc IMechE F* 207:51–56 (1993). The first-order cylinder lag; cite
+    directly, not only through the survey. ✔ (Wei ref. 14)
+11. Wei, Ahmadian & Zhang, "Heavy haul train simulation of air brake system
+    and longitudinal dynamics," 2014 IEEE/ASME Joint Rail Conference. Most
+    likely source for the C80 car length (`C80_PITCH_M`). ✔ (Wei ref. 34)
+12. Cantone, "TrainDy: the new UIC software for freight train
+    interoperability," *Proc IMechE F* (2011). Independent empirical air
+    brake model to compare timing against.
+
+*Fallback for braking adhesion only (European):*
+
+13. UIC leaflet 544-1 (Brakes – braking performance); EN 14531 (railway
+    braking calculations).
+
 ## Log
 
 - **2026-09-26** — Question raised at the committee meeting. Code review of
@@ -405,3 +461,216 @@ the physics fails loudly. The list comes from the code review of 2026-09-26.
   - Caveat for the thesis: a Chinese 120 valve, not North American ABDX.
     Tests: 18 air brake (2 caught by mutation), full suite 310 passed.
     F2 run-in figures from 2026-10-04 used the placeholders and need a re-run.
+- **2026-10-06 (reading list items 2 and 3: previews only)** — The two PDFs
+  in `paper/refs/papers/` are publisher previews, not the books.
+  `design_simulation_heavy_trains.pdf` (48 pp.) stops partway through §2.5.1
+  (~p. 30). `handbook_railway_vehicle_dynamics.pdf` (92 pp.) stops in §3.3
+  (~p. 70). Neither sources a placeholder field.
+  - Missing from the previews, and still needed: Spiryagin et al. §2.7.2 *Air
+    Brake Systems* (p. 41) and §5.2.2 *Modelling Vehicle Inputs*
+    (pp. 161–175); Handbook 2nd ed. Ch. 13, Cole, *Longitudinal Train
+    Dynamics…* (pp. 457–520).
+  - What the previews do give is qualitative support for the model's form.
+    Handbook §3.1.4 (pp. 53–54): skidding when brake force exceeds the
+    wheel-rail force (supports the adhesion cap); an empty wagon can weigh
+    5× less than a laden one; shoe friction is nonlinear in speed (the model
+    uses a constant, so this simplification needs stating); empty-load
+    devices exist (the model assumes cars without them); non-synchronous
+    braking causes run-in (F2).
+  - Spiryagin et al. §2.4.3: >40 % adhesion only for a *locomotive* under
+    traction control on dry rail. This is not a braking adhesion for wagons
+    and must not source `adhesion`.
+  - Spiryagin et al. §1.3.4 (Daqin): 210 wagons + 2 HXD1 in 2.7 km; 320
+    wagons + 4 HXD1 in "almost 4 km". Wagon type is not stated, so these give
+    only upper bounds of 12.9 / 12.5 m per wagon, with the locomotives
+    included. They are consistent with `C80_PITCH_M` = 12.0 but do not
+    source it.
+- **2026-10-07 (reading list items 2 and 3: full books)** — Full copies now
+  in `paper/refs/papers/` (Spiryagin et al. 2017, 465 pp.; Handbook 2nd ed.,
+  915 pp.). Handbook Ch. 13 §13.2.2.5 (pp. 470–473) is the same text and
+  figures as Spiryagin §5.2.2.5 (pp. 171–175): one source, not two.
+  - **Force parameters: no source in either book.** Neither gives a net
+    braking ratio, a shoe friction value, a design gross weight or a wagon
+    braking adhesion. Brake force is "converted by means of rigging factors
+    and shoe friction coefficients" with no numbers. `require_sourced` still
+    refuses. Items 1 and 4 (AAR S-401/M-926, Hay) remain the route, or a
+    Chinese source for C80 to match the timing.
+  - Adhesion values are all *locomotive traction* (Spiryagin p. 163–164:
+    ~0.20 without modern control, ~0.35 daily, 0.1 in frost/snow). Usable
+    only as a bracket, not as `adhesion` for braked wagons.
+  - Plausibility check, not a source: typical train deceleration
+    0.1–0.6 m/s² (Handbook p. 515, citing its ref. [21]); braking rates are
+    held well below the adhesion limit to avoid wheel flats.
+  - Timing and logic: propagation 250–300 m/s for a well-designed system
+    (sonic limit 318–349 m/s); our 176 m/s (Wei, 120 valve) is below this
+    range, so state that in the thesis. Spiryagin §5.5 (pp. 212–213):
+    minimum application = 30 % to wagons; service >30–100 %; emergency at
+    higher cylinder pressure on AAR systems; **no graduated release** in
+    Australian and North American systems (supports direct release).
+  - **New measured timing data:** Spiryagin Figs. 5.67 and 5.68 (pp. 215–216,
+    PDF pp. 235–236) are *operational data* for a 100-wagon train with a
+    ~2000 m pipe, minimum and full-service applications, BP and BC at three
+    positions (16/996/1996 m head-end; 32/968/1943 m head–tail). They are
+    vector paths (~7000 segments per curve), so `digitize_air_brake.py` can
+    read them. An independent, non-Chinese check on propagation speed and
+    the per-metre build-up tau.
+  - C80 length: not in either book (Spiryagin uses 11 m for an Australian
+    ore wagon, p. 213, as an assumption).
+- **2026-10-07 (Spiryagin Figs 5.67–5.68 digitized)** —
+  `scripts/digitize_spiryagin_brake.py` → `simulator2/data/spiryagin2017_air_brake/`
+  (`t_s,p_kPa,curve`). 5.67a/b and 5.68a are vector (filled stroke outlines,
+  curves told apart by draw order); 5.68b is a raster image, BC only, and
+  the two end cylinders overlap there (`BC32+1943`). All four panels were
+  checked against overlays of the rendered page.
+  - **Propagation: 266–273 m/s** (head-end, BC and BP onset, both
+    applications), inside the books' 250–300 m/s. Wei's C80 / 120 valve gives
+    176 m/s. So 176 m/s is a property of that train, or of the unsourced
+    12.0 m car length, not a general value.
+  - **Head build-up agrees:** BC16 full service τ 9.7 s (rms 18 kPa) against
+    Wei's 10.2 s, with the same two-timescale shape (jump to ~70 kPa in
+    ~1.3 s, then a ramp).
+  - **Behind the head it does not:** τ 55 s at 996 m and 62 s at 1996 m;
+    the linear per-metre model gives 25 / 40 s. The rise is front-loaded,
+    not linear in distance: the cylinders follow the pipe, which at 90 s
+    is still at 385–391 kPa at 996/1996 m against 350 kPa at the head (the
+    book's "limited by the rate of pressure drop in the pipe"). With the
+    pipe exhausted at both ends (5.68b) the mid-train τ is 19 s.
+  - Final pressures: 125 kPa for minimum (50 kPa pipe reduction) and
+    350 kPa for full service (150 kPa): about 2.4:1. Minimum ≈ 36 % of full
+    service (the book's text says 30 %).
+  - Caveats: the valve and railway are not named; the curves are captioned
+    "operational data" but look very smooth (the books' other brake figures
+    are simulations). One valve per wagon (5.67) vs one per tandem pair (5.68).
+  - **Implication for `air_brake.py`:** keep the head τ. The per-metre τ
+    from two points of a 1.3 km span underestimates tail lag on a 2 km
+    head-end train by ~2× at mid-train. Options: (a) a saturating τ(d)
+    fitted to both sources; (b) the tail cylinder tracking a pipe-pressure
+    lag (closer to the mechanism). Decide before regenerating; propagation
+    speed is now a choice between sources and must be stated.
+- **2026-10-07 (air brake: brake pipe lag replaces the per-metre τ)** —
+  Option (b) from the entry above. `simulator2/air_brake.py` now computes
+  each cylinder on the command side; the RHS only adds a 0.25 s numerical
+  lag on application (`actuator_tau_s`) and the 6.7 s exhaust on release.
+  No RHS change; the corpora are untouched (the air brake is still not wired
+  into `build_dataset.py`).
+  - **Model:** the front arrives at d/c (c = 270 m/s), and quick service
+    vents 0.187 of a full-service reduction there. The rest of the
+    reduction diffuses along the pipe from the exhaust (linear diffusion,
+    level held at the lead, no flow at the tail), solved exactly as a sum of
+    first-order modes (`pipe_modes`). The control valve fills towards the
+    local reduction, upward only (it laps): inshot to 0.194 at 0.130/s,
+    then 0.043/s (68 kPa, then 15 kPa/s on 350 kPa). Release front, direct
+    release and recharge are unchanged. Pressures are fractions of full
+    service, linear in the driver's brake fraction and in force.
+  - **Calibration:** `scripts/calibrate_air_brake.py` fits the five
+    pipe/valve parameters through `cylinder_level` to all of Spiryagin
+    Figs 5.67–5.68 (11 curves, head-end and head–tail, minimum and full
+    service): **rms 15.8 kPa**, head cylinders 1.7–4.9 kPa. D = 24,800 m²/s,
+    so the slowest pipe mode is 4L²/(π²D) = 65 s at 2000 m.
+  - **Out of sample: Wei Fig. 7, 116th car: rms 10.4 kPa**, no refit
+    (pipe ~1430 m, own front speed). The 4th car is 26.7 kPa off: the 120
+    valve's head fill (fast jump, slow creep) differs from Spiryagin's.
+    One diffusivity explains a 2 km and a 1.4 km train and the head–tail
+    case. Linear per-metre τ could not.
+  - **Residuals:** cylinders behind the head under-predict by 20–28 kPa at
+    the end of the minimum applications (5.67a 996/1996, 5.68a 968) and at
+    1996 m in full service (5.67b). The measured tail fills faster than
+    linear diffusion allows, which may be pipe nonlinearity or vent valves.
+    The "max" form of quick service was chosen over an additive blend (same
+    rms, 15.8 vs 16.1) because the blend makes a spurious jump on a second
+    application step.
+  - **Sources:** propagation and the five pipe/valve fields now cite
+    Spiryagin; the release speed, exhaust τ and recharge still cite Wei (the
+    release speed via the unsourced C80 length). Unsourced: the four force
+    fields. `require_sourced` still refuses.
+  - **F2 re-run** (uniform 100 t cars, 15 m, full service, placeholder
+    capacity): 60 cars **255 kN** peak buff, 130 cars (1.9 km) **831 kN**;
+    0 kN if every car brakes at once.
+  - Tests: 23 air brake tests, including pipe modes vs an independent
+    finite-difference solve (head-end and vented at both ends), L² and
+    venting scaling, the head valve in closed form, saturation along the
+    train, a regression on Fig. 5.67b, and exact integrated impulse and
+    momentum through the actuator lag. Mutation check: no pipe lag fails 2,
+    no front delay 1, no valve rate limit 2. Cylinder values are held
+    between 0.1 s grid points (interpolating showed brake 0.1 s early).
+- **2026-10-07 (reading list item 11: Wei, Ahmadian & Zhang 2014)** — Added
+  as `DRAFTJRC2014-3789-...-finalrevise.pdf`, an author draft (cite the
+  published JRC2014-3789 proceedings version). **It does not give the C80
+  car length**: no table, the consist is only "one HXD1 locomotive and 106
+  loaded C80 railcars". `C80_PITCH_M` (and so `release_propagation_mps`)
+  stays unsourced. Content is a fluid-dynamic 120-valve model with
+  simulated curves only (100 kPa reduction, 330 kPa peak), so there is
+  nothing to calibrate against.
+  - Also added: Liu, Wang, Luo, Zhang, Liu & Zhang (2025), IEEE T-ITS
+    26(8):11893. No car length either. Its Fig. 6(d) checks wave speeds
+    against measurements in Wu, Cole, Spiryagin et al. (2017), "Railway air
+    brake model and parallel computing scheme", J. Comput. Nonlinear Dyn.
+    12(5):051017. That paper is a candidate for measured 150-wagon data and
+    possibly C80 dimensions.
+- **2026-10-07 (web search for the C80 length)** — No citable value found.
+  - A vendor listing (Tongling Tieke, rail-wagons.com) gives "length
+    13,976 mm" for a commercial "C80": not citable, not stated as length
+    over couplers, and **inconsistent** with Spiryagin §1.3.4 (210 wagons +
+    2 HXD1 in 2.7 km → ≤ 12.9 m per vehicle). Probably a body length or
+    another variant. Do not use.
+  - A 12,000 mm hit on the CRRC Qiqihar site was the C86 ore wagon; the
+    CRRC site refused connections, so its C80 sheet was not checked.
+  - Li et al. (2025), SV-JME 71(11-12):371-380, doi 10.5545/sv-jme.2025.1462,
+    a C80 SIMPACK model: only "fixed wheelbase 8.2 m" (bogie centres), axle
+    load 25 t, load 80 t. No length.
+  - Next: Wu, Cole, Spiryagin, Wang, Ma & Wei (2017), "Railway air brake
+    model and parallel computing scheme", J. Comput. Nonlinear Dyn.
+    12(5):051017, doi 10.1115/1.4036421; or the CRRC Qiqihar C80 product
+    sheet / TB standard via the library.
+- **2026-10-07 (Wu, Cole, Spiryagin, Wang, Ma & Wei 2017, JCND 12(5):051017)** —
+  `paper/refs/papers/air_brake_parallel_computing.pdf`. **No C80 length**,
+  but it makes the C80 length unnecessary for the release speed. Measured on
+  the CRRC Brake Science & Technology rig (Meishan): 150 wagon brake sets,
+  600 kPa, 13.5 m of brake pipe per wagon, pipe > 2 km. Wagon type and
+  valve are not named (Chinese heavy haul context, so presumably the 120
+  family). Speeds are in pipe metres, so no car length enters.
+  - **Release propagation, measured: 162.52 m/s** (simulated 163.31).
+    Check: Table 3 release onsets 89.7 / 95.5 / 101.1 s at wagons 001/075/150
+    give 11.4 s, and 149 × 13.5 m / 11.4 s = 176 m/s. That is 8 % off the
+    stated figure, so the distance they used is unclear.
+  - Application propagation, measured (Table 2, read column-wise): minimum
+    224, full 217, emergency 254 m/s. Release/application ≈ 0.73–0.75 (Wei:
+    105/176 = 0.60).
+  - Quick service: pipe dip 30–40 kPa on a 170 kPa full-service reduction
+    (0.18–0.24 of full). **Independent support for the fitted
+    `quick_service_frac` = 0.187.** Cylinder quick-service jump ~60 kPa.
+  - Table 2 also has cylinder ascending times (001/075/150): full service
+    35.4 / 99.9 / 106.2 s. That is again saturating along the train
+    (pipe-limited), supporting the diffusion form. Fig. 9 has the measured
+    curves (minimum, full, emergency; BP and BC at 001/075/150) and could be
+    digitized as a third validation set.
+  - **New issue: pipe length vs train length.** Both calibration sources
+    measure distance along the *pipe*: Wu has 13.5 m of pipe per wagon;
+    Spiryagin has "pipe ~2000 m" for 100 wagons, and the book notes the pipe
+    can be much longer than the train (p. 214). `air_brake.py` uses
+    vehicle-centre distance as pipe distance, so in train metres the front
+    speed and the pipe lag are optimistic by the pipe/train length ratio
+    (unknown for the thesis cars; ≥ 1). State it, or add a pipe-length-per-
+    vehicle factor.
+- **2026-10-07 (release speed from Wu et al.; pipe length factor)** —
+  `release_propagation_mps` = **162.52 m/s** (`WU2017_RELEASE_MPS`, measured,
+  pipe metres) replaces Wei's 105 m/s. The C80 length no longer enters the
+  model; `C80_PITCH_M` is kept only to place cars in the Wei out-of-sample
+  check (`WEI2017_SPAN_M` and `WEI2017_RELEASE_DELAY_S` removed). Release now
+  passes a pipe in 1/162.5 s per metre (was 1/105). Direct release stays
+  exact for pipes up to ~37 km (was ~15 km of train).
+  - New `pipe_length_factor` (pipe metres per metre of train, default 1.0).
+    `vehicle_commands` multiplies the vehicle distances by it, so the front,
+    release and pipe lag are all in pipe metres, as the sources measured.
+    It is in `PHYSICAL_FIELDS` without a source: the 1.0 is an assumption,
+    and `require_sourced` now lists it with the four force fields. Real
+    pipes are longer (Wu: 13.5 m per wagon; Spiryagin: ~20 m per wagon on
+    the 5.67 train), so the default makes braking propagate optimistically
+    fast. A value for the thesis cars needs a source (AAR, or a car's
+    piping drawing).
+  - Calibration unchanged (it works in pipe metres directly): rms 15.8 kPa,
+    Wei 116th car 10.4 kPa. A refit from the new defaults drifts inshot to
+    0.216 at the same rms: inshot level and rate are weakly identified
+    against each other. Defaults kept.
+  - Tests: 24 air brake (new: the factor stretches front and pipe lag,
+    exactly equal to scaled distances).

@@ -1,30 +1,35 @@
 """The empirical air brake (:mod:`simulator2.air_brake`).
 
-Command-side laws are checked against their definitions; the integrated
-response against closed forms: uncoupled vehicles brake exactly as
-``F_max (1 - exp(-(t - d) / tau))`` from their own onset, and with couplers
-the train's momentum still follows the summed brake force exactly.
+The brake pipe solution is checked against an independent finite-difference
+solve and the diffusion time scale; the control valve against its closed
+form at the head; the calibration against the digitized curves of
+Spiryagin et al. (2017). The integrated response is checked exactly: the RHS
+follows each vehicle's command through the actuator lag, uncoupled vehicles
+lose exactly that impulse, and with couplers the train's momentum still
+follows the summed brake force.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 import pytest
 import torch
+from scipy.linalg import solve_banded
 
 from simulator2.air_brake import (
-    WEI2017_APPLY_DELAY_S,
-    WEI2017_RELEASE_DELAY_S,
-    WEI2017_SPAN_M,
-    WEI2017_TAU_APPLY_S,
     AirBrakeParams,
     PHYSICAL_FIELDS,
     brake_capacity_n,
+    cylinder_level,
     direct_release,
     onset_delay_s,
+    pipe_modes,
     release_delay_s,
     require_sourced,
-    rise_tau_s,
     unsourced,
     vehicle_commands,
 )
@@ -32,6 +37,7 @@ from simulator2.constants import GRAVITY_MPS2 as G
 from simulator2.verification import Case, rk4_fixed
 
 P = AirBrakeParams()
+DATA = Path(__file__).resolve().parents[1] / "data/spiryagin2017_air_brake"
 
 
 # -- brake force ------------------------------------------------------------------
@@ -50,63 +56,165 @@ def test_capacity_is_fixed_per_car_and_capped_at_adhesion() -> None:
 
 
 def test_force_parameters_are_still_flagged_as_placeholders() -> None:
-    assert unsourced(P) == ["car_design_gross_kg", "net_braking_ratio",
-                            "shoe_friction", "adhesion"]
+    assert unsourced(P) == ["pipe_length_factor", "car_design_gross_kg",
+                            "net_braking_ratio", "shoe_friction", "adhesion"]
     with pytest.raises(ValueError, match="net_braking_ratio"):
         require_sourced(P)
     require_sourced(AirBrakeParams(sources={f: "test" for f in PHYSICAL_FIELDS}))
 
 
-def test_defaults_reproduce_the_wei_2017_measurements() -> None:
-    """At the 116th car (112 car lengths behind the 4th) the defaults give
-    back the measured onset, release and build-up figures."""
-    d = np.array([0.0, WEI2017_SPAN_M])
-    assert np.diff(onset_delay_s(d, P))[0] == pytest.approx(np.mean(WEI2017_APPLY_DELAY_S))
-    assert np.diff(release_delay_s(d, P))[0] == pytest.approx(WEI2017_RELEASE_DELAY_S)
-    assert rise_tau_s(d, P) == pytest.approx(WEI2017_TAU_APPLY_S)
-    assert 150.0 < P.propagation_mps < 200.0
-    assert P.release_propagation_mps < P.propagation_mps
+# -- brake pipe ---------------------------------------------------------------------
+
+def _fd_pipe(t: np.ndarray, level: np.ndarray, x_out: np.ndarray, length: float,
+             d: float, vent_tail: bool, dx: float = 5.0) -> np.ndarray:
+    """Implicit-Euler finite differences on a finer grid: the reference."""
+    n = int(round(length / dx)) + 1
+    x = np.linspace(0.0, length, n)
+    u, out = np.full(n, level[0]), [np.interp(x_out, x, np.full(n, level[0]))]
+    for k in range(1, t.size):
+        a = d * (t[k] - t[k - 1]) / (x[1] - x[0]) ** 2
+        ab = np.zeros((3, n))
+        ab[0, 1:], ab[1], ab[2, :-1] = -a, 1 + 2 * a, -a
+        ab[2, -2] = -2 * a                        # mirror node at the far end
+        rhs = u.copy()
+        ab[1, 0], ab[0, 1], rhs[0] = 1.0, 0.0, level[k]
+        if vent_tail:
+            ab[1, -1], ab[2, -2], rhs[-1] = 1.0, 0.0, level[k]
+        u = solve_banded((1, 1), ab, rhs)
+        out.append(np.interp(x_out, x, u))
+    return np.array(out)
 
 
-# -- propagation and build-up -----------------------------------------------------
+@pytest.mark.parametrize("vent_tail", [False, True])
+def test_pipe_modes_match_finite_differences(vent_tail: bool) -> None:
+    t = np.arange(0.0, 120.0, 0.05)
+    level = np.where(t < 1.0, 0.0, np.where(t < 40.0, 0.4, 1.0))
+    x = np.array([0.0, 30.0, 700.0, 1300.0, 2000.0])
+    tau, gain = pipe_modes(x, 2000.0, P.pipe_diffusivity_m2ps, vent_tail, dx_m=10.0)
+    assert np.allclose(gain.sum(axis=1), 1.0)
+    modal = np.zeros((t.size, x.size))
+    for tk, g in zip(tau, gain.T):
+        y = np.empty_like(t)
+        y[0] = level[0]
+        for k in range(1, t.size):              # same implicit-Euler step, per mode
+            y[k] = level[k] if tk == 0 else (y[k - 1] + level[k] * 0.05 / tk) / (1 + 0.05 / tk)
+        modal += np.outer(y, g)
+    ref = _fd_pipe(t, level, x, 2000.0, P.pipe_diffusivity_m2ps, vent_tail)
+    assert np.abs(modal - ref).max() < 0.01
 
-def test_onset_delay_and_rise_time_along_the_train() -> None:
-    d = np.array([0.0, 100.0, 500.0, 1000.0])
-    assert onset_delay_s(d, P) == pytest.approx(d / P.propagation_mps)
-    assert release_delay_s(d, P) == pytest.approx(d / P.release_propagation_mps)
-    tau = rise_tau_s(d, P)
-    assert tau[0] == pytest.approx(P.tau_head_s)
-    assert np.allclose(np.diff(tau) / np.diff(d), P.tau_per_m_s)
-    # per metre, not per train: a short train's tail is not a long train's tail
-    assert rise_tau_s(d[:2], P)[-1] == pytest.approx(tau[1])
+
+def test_pipe_lag_scales_with_length_squared_and_venting() -> None:
+    d = P.pipe_diffusivity_m2ps
+    slow = {length: pipe_modes(np.zeros(1), length, d)[0].max() for length in (1000.0, 2000.0)}
+    assert slow[2000.0] == pytest.approx(4 * 2000.0 ** 2 / (np.pi ** 2 * d), rel=1e-3)
+    assert slow[2000.0] / slow[1000.0] == pytest.approx(4.0, rel=1e-3)
+    both = pipe_modes(np.zeros(1), 2000.0, d, vent_tail=True)[0].max()
+    assert both == pytest.approx(slow[1000.0], rel=1e-3)        # vented at both ends
 
 
-def test_each_vehicle_sees_the_driver_command_shifted_by_its_delay() -> None:
+# -- control valve and front --------------------------------------------------------
+
+def test_head_cylinder_follows_inshot_then_service_rate() -> None:
+    """At the exhaust the pipe follows the driver at once, so the head cylinder
+    is the valve alone: inshot rate up to the inshot level, then the service
+    rate, up to the level."""
+    t = np.arange(0.0, 40.0, P.dt_s)
+    for level in (125.0 / 350.0, 1.0):
+        cyl = cylinder_level(t, np.where(t > 0.0, level, 0.0), np.zeros(1), P)[:, 0]
+        t_in = P.inshot_frac / P.inshot_rate_per_s
+        exact = np.where(t < t_in, P.inshot_rate_per_s * t,
+                         P.inshot_frac + P.service_rate_per_s * (t - t_in))
+        exact = np.minimum(np.clip(exact, 0.0, None), level)
+        assert np.abs(cyl - exact).max() < P.inshot_rate_per_s * P.dt_s + 1e-9
+
+
+def test_front_arrives_at_the_propagation_speed() -> None:
     t = np.arange(0.0, 20.0, 0.01)
-    driver = np.where(t >= 1.0, 0.7, 0.0)
-    x0 = -15.0 * np.arange(60)
-    mass = np.full(60, 100_000.0)
-    u, tau, tau_rel, f_max = vehicle_commands(t, driver, x0, mass, np.zeros(60, bool), P)
-    for i in (0, 20, 59):
+    driver = np.where(t >= 1.0, 1.0, 0.0)
+    x0 = -15.0 * np.arange(100)
+    u, tau, tau_rel, f_max = vehicle_commands(t, driver, x0, np.full(100, 1e5),
+                                              np.zeros(100, bool), P)
+    for i in (0, 40, 99):
         onset = 1.0 + 15.0 * i / P.propagation_mps
-        assert np.all(u[t < onset - 0.01, i] == 0.0)
-        assert np.allclose(u[t >= onset + 0.01, i], 0.7 * f_max[i])
-    assert tau[0] == pytest.approx(P.tau_head_s)
-    assert tau[-1] == pytest.approx(P.tau_head_s + P.tau_per_m_s * 15.0 * 59)
-    assert np.all(tau_rel == P.tau_release_s)
+        assert np.all(u[t < onset - P.dt_s, i] == 0.0)
+        assert np.all(u[t > onset + 2 * P.dt_s, i] > 0.0)
+    assert np.all(tau == P.actuator_tau_s) and np.all(tau_rel == P.tau_release_s)
+
+
+def test_cylinders_lag_the_pipe_and_saturate_with_distance() -> None:
+    """Behind the head, cylinders are pipe-limited: they never exceed the pipe
+    reduction, never fall while applied, and the lag grows less from mid-train
+    to the tail than from the head to mid-train."""
+    t = np.arange(0.0, 300.0, P.dt_s)
+    level = np.where(t > 0.0, 1.0, 0.0)
+    x = np.array([0.0, 1000.0, 2000.0])
+    cyl = cylinder_level(t, level, x, P)
+    tau, gain = pipe_modes(x, 2000.0, P.pipe_diffusivity_m2ps, dx_m=P.pipe_dx_m)
+    a = np.exp(-P.dt_s / np.where(tau > 0, tau, 1.0))
+    pipe = np.zeros((t.size, len(tau)))
+    for k in range(1, t.size):
+        pipe[k] = np.where(tau > 0, a * pipe[k - 1] + (1 - a) * level[k], level[k])
+    w = np.maximum(pipe @ gain.T, P.quick_service_frac)
+    assert np.all(cyl <= w + 1e-9)
+    assert np.all(np.diff(cyl, axis=0) >= -1e-12)
+    t50 = [t[np.argmax(cyl[:, i] >= 0.5)] for i in range(3)]
+    assert t50[2] - t50[1] < t50[1] - t50[0]
+
+
+def test_defaults_reproduce_spiryagin_full_service() -> None:
+    """Regression on the calibration (scripts/calibrate_air_brake.py):
+    Fig. 5.67 (b), head-end train, cylinders at 16, 996 and 1996 m."""
+    assert 250.0 <= P.propagation_mps <= 300.0
+    assert P.release_propagation_mps == pytest.approx(162.52)   # Wu et al. (2017)
+    assert P.release_propagation_mps < P.propagation_mps
+    d = pd.read_csv(DATA / "fig5_67b.csv")
+    t = np.arange(0.0, 90.0 + P.dt_s / 2, P.dt_s)
+    pos = (16, 996, 1996)
+    cyl = cylinder_level(t, np.where(t > 0.0, 1.0, 0.0), np.array(pos, float), P,
+                         length_m=2000.0) * 350.0
+    for i, x in enumerate(pos):
+        c = d[d.curve == f"BC{x}"]
+        rms = np.sqrt(np.mean((np.interp(c.t_s, t, cyl[:, i]) - c.p_kPa) ** 2))
+        assert rms < 30.0, (x, rms)
 
 
 def test_release_travels_with_the_slower_release_wave() -> None:
     t = np.arange(0.0, 60.0, 0.01)
     driver = np.where((t >= 1.0) & (t < 30.0), 0.7, 0.0)
     x0 = -15.0 * np.arange(60)
-    u, *_, f_max = vehicle_commands(t, driver, x0, np.full(60, 1e5), np.zeros(60, bool), P)
+    u, *_ = vehicle_commands(t, driver, x0, np.full(60, 1e5), np.zeros(60, bool), P)
     for i in (0, 20, 59):
-        on = 1.0 + 15.0 * i / P.propagation_mps
         off = 30.0 + 15.0 * i / P.release_propagation_mps
-        held = (t >= on + 0.01) & (t < off - 0.01)
-        assert np.allclose(u[held, i], 0.7 * f_max[i])
-        assert np.all(u[t >= off + 0.01, i] == 0.0)
+        held = (t > 20.0) & (t < off - P.dt_s)
+        assert np.all(u[held, i] > 0.0)
+        assert np.all(np.diff(u[held, i]) >= -1e-9)           # no partial release
+        assert np.all(u[t >= off + P.dt_s, i] == 0.0)
+
+
+def test_pipe_length_factor_stretches_the_pipe() -> None:
+    """A pipe k times the train length: each vehicle brakes as if it sat k
+    times further back, front and pipe lag alike."""
+    t = np.arange(0.0, 120.0, 0.05)
+    driver = np.where(t >= 1.0, 1.0, 0.0)
+    x0 = -15.0 * np.arange(80)
+    mass, loco = np.full(80, 1e5), np.zeros(80, bool)
+    p2 = replace(P, pipe_length_factor=2.0)
+    u, *_, f_max = vehicle_commands(t, driver, x0, mass, loco, p2)
+    level = direct_release(t, driver, p2)
+    ref = cylinder_level(t, level, 2.0 * 15.0 * np.arange(80), p2) * f_max[None, :]
+    assert np.array_equal(u, ref)
+    for i in (20, 79):
+        onset = 1.0 + 2.0 * 15.0 * i / P.propagation_mps
+        assert np.all(u[t < onset - P.dt_s, i] == 0.0)
+        assert np.all(u[t > onset + 2 * P.dt_s, i] > 0.0)
+    u1, *_ = vehicle_commands(t, driver, x0, mass, loco, P)
+    assert u[:, -1].sum() < u1[:, -1].sum()                    # longer pipe, later tail
+
+
+def test_onset_and_release_delays() -> None:
+    d = np.array([0.0, 100.0, 500.0, 1000.0])
+    assert onset_delay_s(d, P) == pytest.approx(d / P.propagation_mps)
+    assert release_delay_s(d, P) == pytest.approx(d / P.release_propagation_mps)
 
 
 # -- direct release ---------------------------------------------------------------
@@ -152,56 +260,65 @@ def test_release_can_be_turned_off() -> None:
 
 # -- integrated response ----------------------------------------------------------
 
-def _braking_case(n: int, p: AirBrakeParams, **coupler) -> tuple[Case, np.ndarray, np.ndarray, np.ndarray]:
+def _braking_case(n: int, p: AirBrakeParams, **coupler) -> tuple[Case, np.ndarray, np.ndarray]:
     t = np.arange(0.0, 40.0, 0.005)
     driver = np.where(t >= 1.0, 1.0, 0.0)
     x0 = -15.0 * np.arange(n)
     mass = np.full(n, 100_000.0)
-    u, tau, _, f_max = vehicle_commands(t, driver, x0, mass, np.zeros(n, bool), p)
+    u, tau, _, _ = vehicle_commands(t, driver, x0, mass, np.zeros(n, bool), p)
     case = Case(mass=mass, x0=x0, v0=np.full(n, 20.0), L0=15.0, cmd_t=t,
                 u_trac=np.zeros_like(u), u_brk=u, f_brk_max=1e12, tau_brk_node=tau,
                 **coupler)
-    # The step reaches the RHS as a linear ramp across one 5 ms command
-    # sample, whose impulse equals a step at the ramp's midpoint.
-    return case, tau, f_max, onset_delay_s(-x0, p) + 1.0 - 0.0025
+    return case, t, u
 
 
-def _impulse(t: np.ndarray, f_max: float, tau: float, onset: float) -> np.ndarray:
-    """``int_0^t F_max (1 - exp(-(s - onset) / tau)) ds`` for ``s > onset``."""
-    s = np.clip(t - onset, 0.0, None)
-    return f_max * (s - tau * (1.0 - np.exp(-s / tau)))
+def _lagged_impulse(t_cmd: np.ndarray, u: np.ndarray, tau: float,
+                    t_out: np.ndarray) -> np.ndarray:
+    """Exact ``int z`` for ``z' = (u - z) / tau``, ``u`` piecewise linear, ``z(0) = u(0)``.
+
+    Per segment of slope ``s`` and length ``h``:
+    ``z1 = u1 - tau s + (z0 - u0 + tau s) e^(-h/tau)`` and
+    ``int z = (u0 + u1) h / 2 - tau (z1 - z0)``.
+    """
+    h = np.diff(t_cmd)[:, None]
+    s = np.diff(u, axis=0) / h
+    e = np.exp(-h / tau)
+    z = np.empty_like(u)
+    z[0] = u[0]
+    for k in range(1, len(t_cmd)):
+        z[k] = u[k] - tau * s[k - 1] + (z[k - 1] - u[k - 1] + tau * s[k - 1]) * e[k - 1]
+    seg = (u[:-1] + u[1:]) * h / 2 - tau * np.diff(z, axis=0)
+    cum = np.vstack([np.zeros((1, u.shape[1])), np.cumsum(seg, axis=0)])
+    return np.stack([np.interp(t_out, t_cmd, cum[:, i]) for i in range(u.shape[1])], axis=1)
 
 
-def test_uncoupled_vehicles_follow_their_own_build_up_exactly() -> None:
+def test_uncoupled_vehicles_lose_exactly_their_lagged_command_impulse() -> None:
     n = 40
-    case, tau, f_max, onset = _braking_case(n, P)
+    case, t_cmd, u = _braking_case(n, P)
     t, y = rk4_fixed(case.batch(), 30.0, 0.005, every=200)
-    v = y[:, n:2 * n]
-    for i in (0, 13, n - 1):
-        exact = 20.0 - _impulse(t, f_max[i], tau[i], onset[i]) / 100_000.0
-        assert np.abs(v[:, i] - exact).max() < 1e-5
+    exact = 20.0 - _lagged_impulse(t_cmd, u, P.actuator_tau_s, t) / 100_000.0
+    assert np.abs(y[:, n:2 * n] - exact).max() < 1e-5
 
 
 def test_coupled_train_momentum_follows_the_summed_brake_force() -> None:
     n = 40
-    case, tau, f_max, onset = _braking_case(n, P, slack=0.0127, k_draft=9e6,
-                                            c_draft=5e5, k_buff=12e6, c_buff=7e5)
+    case, t_cmd, u = _braking_case(n, P, slack=0.0127, k_draft=9e6,
+                                   c_draft=5e5, k_buff=12e6, c_buff=7e5)
     t, y = rk4_fixed(case.batch(), 30.0, 0.005, every=200)
     momentum = (100_000.0 * y[:, n:2 * n]).sum(axis=1)
-    exact = 40 * 100_000.0 * 20.0 - sum(_impulse(t, f_max[i], tau[i], onset[i]) for i in range(n))
-    assert np.abs(momentum - exact).max() / (40 * 100_000.0 * 20.0) < 1e-7
+    exact = n * 100_000.0 * 20.0 - _lagged_impulse(t_cmd, u, P.actuator_tau_s, t).sum(axis=1)
+    assert np.abs(momentum - exact).max() / (n * 100_000.0 * 20.0) < 1e-7
 
 
 def test_propagation_raises_the_run_in_force() -> None:
     """The point of F2: the head brakes first and the tail runs in. The same
-    application, propagated, compresses the couplers harder than an
-    instantaneous one."""
+    application, propagated, compresses the couplers harder than one that
+    reaches every car at once."""
     n = 60
     kw = dict(slack=0.0127, k_draft=9e6, c_draft=5e5, k_buff=12e6, c_buff=7e5)
     peaks = []
-    for c in (P.propagation_mps, 1e9):
-        p = AirBrakeParams(propagation_mps=c, release_propagation_mps=min(c, 1e8),
-                           tau_per_m_s=0.0)
+    for p in (P, replace(P, propagation_mps=1e9, release_propagation_mps=1e8,
+                         pipe_diffusivity_m2ps=1e12)):
         case, *_ = _braking_case(n, p, **kw)
         _, y = rk4_fixed(case.batch(), 20.0, 0.005, every=4)
         x = y[:, :n]
