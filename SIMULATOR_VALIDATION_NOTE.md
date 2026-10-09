@@ -311,6 +311,38 @@ the physics fails loudly. The list comes from the code review of 2026-09-26.
     path the corpora were generated on. Air brakes (F1/F2) untested. No dt
     sensitivity of the force results yet.
   - Write-up: https://claude.ai/artifact/B3H96WhB8rK56FpzqT2BHk
+- **2026-10-04 (step-size check)** — Trains 1 and 3, against a dt = 0.005 s
+  reference with the same gear stiffness k_t
+  (`scripts/ltd_benchmark_dt_check.py`; runner gained `--out-dt`,
+  `--k-transition`). Max change in any table quantity:
+
+  | Run | Train 1 | Train 3 |
+  |---|---|---|
+  | dt 0.01, k_t 7e8 (the benchmark run) | 0.1 % | 0.3 % |
+  | **dt 0.02, k_t 1e8 (production)** | **0.0 %** | **0.6 %** |
+  | dt 0.02, k_t 7e8 | **+9 to +43 %** | 1.0 % |
+  | k_t 1e8 vs 7e8, both dt 0.005 (model change) | 0.1 % | 0.6 % |
+
+  - The benchmark comparison stands: the dt = 0.01 run is converged.
+  - **The production setting reproduces the benchmark numbers.** k_t = 1e8 at
+    dt = 0.02 matches the fine-step reference to 0.6 %, and k_t 1e8 vs 7e8
+    changes the table quantities by under 1 %. The 10-14 % dissipation loss
+    measured on 2026-09-26 does not show up in these outputs.
+  - **k_t = 7e8 at dt = 0.02 chatters** on Train 1 (128 t wagons): a bounded
+    stick-slip limit cycle, not a blow-up. Force second-difference RMS 65 kN
+    against 0.7 kN at dt = 0.01; steady -317 kN reads -277 to -450 kN. The
+    run finishes without error, so only a convergence check exposes it.
+    Never pair the benchmark stiffness with the production step.
+  - Speed and position are step-insensitive everywhere (< 0.4 km/h, < 2 m).
+  - Instantaneous forces still differ at single impact instants (p99 2-15 kN,
+    max ~500 kN at one moment on Train 3; the compression envelope differs by up to
+    107 kN at one position). Peaks over the run are robust; exact impact timing
+    is not, as with the 2026-09-26 convergence study.
+  - Empties: the production gear at dt = 0.02 shows no chatter on 26 t
+    wagons (same high-frequency content as dt = 0.0025), but a hard 3 m/s
+    impact cascade does not converge (0.5 m/s speed difference against fine
+    step, non-monotone in dt). `test_stable_on_empty_wagons_at_production_step`
+    only checks boundedness and energy, so it would not catch chatter.
 - **2026-10-04 (air brake, first implementation)** — Empirical propagation
   model (Wu, Spiryagin & Cole 2016, section 4.2, which recommends this class
   when the air brake is not the object of study): `simulator2/air_brake.py`.
