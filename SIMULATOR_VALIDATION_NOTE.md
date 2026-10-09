@@ -674,3 +674,73 @@ works cited from memory: check edition and chapter when requesting them.
     against each other. Defaults kept.
   - Tests: 24 air brake (new: the factor stretches front and pipe lag,
     exactly equal to scaled distances).
+- **2026-10-07 (Tier 2 without the brake numbers: physics v3)** — A physics
+  switch, `simulator2/physics_config.py`: `LEGACY` (data/v1-v2, unchanged:
+  legacy files have exactly their old keys, fixture tests pass) and `V3` (the
+  benchmark-validated configuration plus the fixes). `build_dataset.py
+  --physics v3`; it refuses while `require_sourced` fails unless
+  `--allow-unsourced-brake` (dry run; recorded in `build_config.json` and
+  every file's metadata). v3 files carry `physics_json`, gear states, the
+  locomotive table, inertia factors and brake time constants;
+  `validate_dataset.py` reads them and rebuilds each model independently.
+  The surrogate is untouched (item 2 decides how it carries the gear state).
+  - **F7** `grade_model="exact"` (m g sin θ). **F4** modified Davis (USA),
+    Handbook Table 13.3, the benchmark's Eq. 1 form incl. Q = 3.2 on the
+    lead locomotive (`simulator2/vehicle_physics.py`; a loaded 120 t hopper:
+    A/B/C 745 N / 13.8 / 1.64 against 600 / 12 / 0.65). **F9** inertia
+    m (1 + J_f), J_f = 1.5 % wagons, 12.5 % locomotives (Handbook p. 459,
+    midpoints of 1-2 % and 10-15 %).
+  - **F5** loco_sd70 → SD70ACe (Spiryagin Table 2.9 + the benchmark's
+    type 2 table), loco_gp38 → ES44DC (Table 2.3; P_db derived as DB_max x
+    42 km/h). Notch traction and dynamic brake; fractions → nearest notch;
+    `DYNAMIC_BRAKE_DESCENT` now uses the dynamic brake, not the air brake.
+    Notch-up limited to one per 8 s, the benchmark's fastest (Appendix 2).
+  - **F3** friction draft gear in the corpora, coupler slack 10 mm total (the
+    benchmark's). F_cpl saved from the gear law with the saved gear states.
+    **Integration step 0.01 s** under the draft gear: the end stop
+    (k_lock 5e8) on a 26 t empty is ~200 rad/s, beyond RK4 at 0.02 s; a
+    126-car train diverged at 0.02 and ran clean at 0.01 (the benchmark
+    step). Non-finite scenarios are no longer written (`diverged_scenarios`).
+  - **Equilibrium start.** Scenarios settle their actuators at the first
+    command but started the gears unloaded: four SD70ACe at notch 6 then
+    yanked ~20 m of gear travel out of a 126-car train and snatched the
+    tail at 8.8-14 MN at every step size. v3 starts the gears in
+    quasi-static equilibrium (`equilibrium_start`): peak 2.4 MN, converged
+    across dt 0.01-0.00125.
+  - **F1/F2** the air brake (`air_brake.vehicle_commands`) drives `u_brk`;
+    capacities load-capped (placeholders).
+  - **F6** Karnopp stiction below 0.1 m/s: friction = clip(drive + m v/τ,
+    ±(brake + 34.3 N/t)), starting resistance from Handbook p. 468 (roller
+    bearings, lower value). Legacy never stands still: a braked car on 1 %
+    creeps back at ~3 cm/s (now a test). First version left the holding
+    force unclamped, so held cars anchored a creeping train; fixed and pinned
+    (Coulomb rate while sliding).
+  - **F8** `simulator2/speed_planner.py`: point-mass pre-simulation along the
+    route; allowed speed = lowest limit under the train, braking curve
+    0.15 m/s² (Handbook p. 515 range); traction slewed off, dynamic brake,
+    latched minimum air application; holds a stalled train at full service;
+    no power against the brakes (notch 2 cap until the release has reached
+    the tail and exhausted). v0 is capped by the limit under the whole train.
+  - **Overload flag.** Index columns `coupler_over_yield` / `_ultimate`
+    (AAR knuckle 1.8 / 2.9 MN, Spiryagin p. 213). The model has no coupler
+    failure; flagged runs are trains that would have parted. Not dropped.
+  - **Smoke corpus, 64 scenarios, 60 trains, seed 0** (validate: PASSED,
+    dv/dt residual 2.7 m/s² on non-impact points; end-stop impacts are
+    skipped as the 0.25 s output grid cannot resolve them):
+
+    | | legacy (same seed) | v3, first full | v3, final |
+    |---|---|---|---|
+    | over limit by > 5 m/s | 11 % | 2 % | 0 % |
+    | reversing < -1 m/s | 16 % | 3 % | 0 % (worst -0.47) |
+    | F_max max | (Kelvin-Voigt) | 5.4 MN | 2.38 MN |
+    | > 2.9 MN (would part) | | 2 | 0 (1 above yield) |
+    | cost, batch 64, RTX 4090 | 231 ms/scenario | | 948 ms (4.1x) |
+
+    The 4.1x is dt 0.01 (2x) plus the gear state and notch law; budget it
+    for the regeneration. data/v2 still validates under the new validator.
+  - **Still open for the regeneration:** the four brake force fields and
+    `pipe_length_factor` (AAR request); the knuckle-overload policy (drop or
+    keep the flagged runs); the surrogate's handling of the gear state
+    (item 2). The regime library is unchanged apart from the dynamic brake
+    and the notch limit; v3 trains are much stronger (850 / 632 kN starting
+    vs 300 / 180 kN) with the legacy locomotive counts.

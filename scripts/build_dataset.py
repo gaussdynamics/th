@@ -48,10 +48,10 @@ sys.path.insert(0, str(_REPO_ROOT))
 import numpy as np
 import torch
 
-from simulator2.consist import Train, build_consist
+from simulator2.air_brake import AirBrakeParams, require_sourced, unsourced
+from simulator2.consist import Train
 from simulator2.dataset import (
     build_scenario_arrays,
-    materialize_commands_fast,
     compute_norm_stats,
     route_grade_stats,
     scenario_constants,
@@ -65,6 +65,17 @@ from simulator2.driving_regimes import (
     Regime,
     generate_regime_profile,
     sample_regime,
+)
+from simulator2.physics_config import (
+    KNUCKLE_ULTIMATE_N,
+    KNUCKLE_YIELD_N,
+    LEGACY,
+    PRESETS,
+    PhysicsConfig,
+    configure_batch,
+    configure_consist,
+    materialize_commands,
+    scenario_outputs,
 )
 from simulator2.randomize import RandomizationConfig, make_randomized_scenario
 from simulator2.route import RouteProfile
@@ -90,8 +101,10 @@ def load_routes(route_dir: Path) -> Dict[str, RouteProfile]:
     return routes
 
 
-def load_trains(manifest_path: Path, train_dir: Path, limit: Optional[int] = None):
-    """Load the generated consists and resolve each to vehicles + couplers."""
+def load_trains(manifest_path: Path, train_dir: Path, limit: Optional[int] = None,
+                physics: PhysicsConfig = LEGACY):
+    """Load the generated consists and resolve each to vehicles + couplers
+    under ``physics`` (legacy: :func:`build_consist`)."""
     manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     if limit:
         manifest = manifest[:limit]
@@ -99,9 +112,9 @@ def load_trains(manifest_path: Path, train_dir: Path, limit: Optional[int] = Non
     out = []
     for entry in manifest:
         train = Train.load(Path(train_dir) / entry["filename"])
-        vehicles, couplers = build_consist(train, library)
-        out.append({"entry": entry, "train": train,
-                    "vehicles": vehicles, "couplers": couplers})
+        consist = configure_consist(train, library, physics)
+        out.append({"entry": entry, "train": train, "consist": consist,
+                    "vehicles": consist.vehicles, "couplers": consist.couplers})
     return out
 
 
@@ -246,7 +259,8 @@ def sample_scenarios(
             **grade_stats[route_id],
         })
         specs.append({"scenario": scenario, "meta": meta, "route_id": route_id,
-                      "profile": profile, "train": tr["train"]})
+                      "profile": profile, "train": tr["train"],
+                      "consist": tr["consist"], "regime": str(regime.value)})
 
     return specs, failures
 
@@ -265,14 +279,21 @@ def run_batches(
     dtype: torch.dtype,
     compress: bool = True,
     progress_every: int = 5,
+    physics: PhysicsConfig = LEGACY,
+    diverged: Optional[List[str]] = None,
 ) -> List[dict]:
-    """Integrate the specs in batches and write one ``.npz`` per scenario."""
+    """Integrate the specs in batches and write one ``.npz`` per scenario.
+
+    Scenarios whose state goes non-finite are not written; their ids are
+    appended to ``diverged``.
+    """
     # Sort by (T, N): T sets the step count and therefore the real cost, while
     # throughput is flat in N, so grouping by T first keeps batches homogeneous
     # where it matters.
     order = sorted(range(len(specs)),
                    key=lambda k: (specs[k]["meta"]["T"], specs[k]["meta"]["N"]))
     records: List[dict] = []
+    diverged = [] if diverged is None else diverged
     n_batches = math.ceil(len(order) / batch_size)
     t_start = time.perf_counter()
 
@@ -280,13 +301,18 @@ def run_batches(
         chunk = [specs[k] for k in order[bi * batch_size:(bi + 1) * batch_size]]
         scenarios = [c["scenario"] for c in chunk]
 
-        commands = [
-            materialize_commands_fast(c["profile"], c["scenario"].vehicles,
-                                      c["scenario"].t_eval, train=c["train"])
+        cmds = [
+            materialize_commands(
+                c["profile"], c["consist"], c["scenario"].t_eval, c["train"], physics,
+                regime=c["regime"], route=routes[c["route_id"]],
+                x0=np.asarray(c["scenario"].y0)[:len(c["scenario"].vehicles)],
+                v0=float(np.asarray(c["scenario"].y0)[len(c["scenario"].vehicles)]))
             for c in chunk
         ]
-        batch = TorchScenarioBatch.from_scenarios(scenarios, device=device,
-                                                  dtype=dtype, commands=commands)
+        batch = TorchScenarioBatch.from_scenarios(
+            scenarios, device=device, dtype=dtype,
+            commands=[(m.u_trac, m.u_brk) for m in cmds])
+        batch = configure_batch(batch, [c["consist"] for c in chunk], cmds, physics)
         t_max = max((np.asarray(s.t_eval) for s in scenarios), key=lambda a: a.size)
         t_grid = torch.as_tensor(t_max, dtype=dtype, device=device)
         _, y_out = rollout_rk4(batch, batch.y0, t_grid, dt=dt)
@@ -302,6 +328,15 @@ def run_batches(
             y_scn = np.concatenate(
                 [y_flat[:, blk * width: blk * width + n] for blk in range(4)], axis=1
             )
+            # Under the draft gear, one gear state per connection follows the
+            # four node blocks.
+            gear = y_flat[:, 4 * width: 4 * width + n - 1]
+            if not (np.isfinite(y_scn).all() and np.isfinite(gear).all()):
+                # A diverged run is not data. Count it rather than write it.
+                print(f"  NOT WRITTEN (non-finite state): {meta['scenario_id']}",
+                      flush=True)
+                diverged.append(meta["scenario_id"])
+                continue
             t_scn = np.asarray(sc.t_eval)[:n_t]
             # Commands were already materialized when the batch was built; the
             # per-vehicle callables are expensive (T*N Python calls), so read
@@ -312,11 +347,17 @@ def run_batches(
             node_static = batch.node_static[i, :n].double().cpu().numpy()
             edge_static = batch.edge_static[i, :max(n - 1, 0)].double().cpu().numpy()
 
+            state = np.stack([y_scn[:, k * n:(k + 1) * n] for k in range(4)], axis=-1)
+            edge_dyn, power, extras = scenario_outputs(
+                physics, state, gear, edge_static, c["consist"], cmds[i], batch)
             arrays = build_scenario_arrays(
                 t=t_scn, y=y_scn, node_static=node_static, edge_static=edge_static,
                 u_trac=u_trac, u_brk=u_brk, constants=scenario_constants(sc),
+                edge_dynamic=edge_dyn, power=power, extras=extras,
             )
             meta.update({k: float(v) for k, v in arrays.summaries.items()})
+            meta["coupler_over_yield"] = bool(meta["F_max"] > KNUCKLE_YIELD_N)
+            meta["coupler_over_ultimate"] = bool(meta["F_max"] > KNUCKLE_ULTIMATE_N)
             route = routes[meta["route_id"]]
             meta.update(speed_limit_stats(
                 arrays.state,
@@ -349,7 +390,9 @@ def main() -> None:
                          "so per-scenario cost falls roughly as 1/batch-size")
     ap.add_argument("--no-compress", action="store_true",
                     help="write raw .npz instead of zlib (~25%% faster, ~2x disk)")
-    ap.add_argument("--dt", type=float, default=0.02, help="integration step (s)")
+    ap.add_argument("--dt", type=float, default=None,
+                    help="integration step (s); default per --physics "
+                         "(0.02 legacy, 0.01 with the draft gear)")
     ap.add_argument("--dt-out", type=float, default=0.25, help="output sample spacing (s)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--dtype", default="float64", choices=("float32", "float64"),
@@ -374,7 +417,22 @@ def main() -> None:
                     help="reserve the steepest unreserved corridor for ood_grade")
     ap.add_argument("--val-fraction", type=float, default=0.10)
     ap.add_argument("--test-id-fraction", type=float, default=0.10)
+    ap.add_argument("--physics", default="legacy", choices=sorted(PRESETS),
+                    help="legacy: the Chapter 4 physics of data/v1-v2. v3: the "
+                         "benchmark-validated configuration plus the F1-F9 fixes "
+                         "(simulator2/physics_config.py)")
+    ap.add_argument("--allow-unsourced-brake", action="store_true",
+                    help="DRY RUN ONLY: build v3 although the air brake's force "
+                         "parameters are placeholders (recorded in the output)")
     args = ap.parse_args()
+    physics = PRESETS[args.physics]
+    if args.dt is None:
+        args.dt = physics.default_dt_s
+    unsourced_brake: list = []
+    if physics.air_brake:
+        unsourced_brake = unsourced(AirBrakeParams())
+        if unsourced_brake and not args.allow_unsourced_brake:
+            require_sourced(AirBrakeParams())
 
     dtype = torch.float64 if args.dtype == "float64" else torch.float32
     out_dir = Path(args.out)
@@ -385,7 +443,8 @@ def main() -> None:
     print(f"  {len(routes)} corridors: {', '.join(sorted(routes))}")
 
     print("loading consists")
-    trains = load_trains(DEFAULT_TRAIN_MANIFEST, DEFAULT_TRAIN_DIR, args.max_trains)
+    trains = load_trains(DEFAULT_TRAIN_MANIFEST, DEFAULT_TRAIN_DIR, args.max_trains,
+                         physics=physics)
     sizes = [t["entry"]["N"] for t in trains]
     print(f"  {len(trains)} consists, N in [{min(sizes)}, {max(sizes)}]")
 
@@ -400,12 +459,17 @@ def main() -> None:
         dt_s=args.dt_out,
         k_curv_scale=args.k_curv_scale,
         curvature_model=args.curvature_model,
+        v0_limit_over_train=physics.speed_planner,
     )
 
     print(f"sampling {args.n_scenarios} scenarios")
     t0 = time.perf_counter()
     specs, failures = sample_scenarios(args.n_scenarios, routes, trains, cfg,
                                        policy, args.seed)
+    for spec in specs:
+        spec["meta"]["physics"] = physics.name
+        if unsourced_brake:
+            spec["meta"]["unsourced_air_brake_fields"] = unsourced_brake
     print(f"  {len(specs)} built in {time.perf_counter() - t0:.1f}s")
     for reason, count in failures.most_common():
         print(f"  skipped {count}: {reason}")
@@ -415,8 +479,12 @@ def main() -> None:
     print(f"integrating on {args.device} in {args.dtype}, "
           f"batch={args.batch_size}, dt={args.dt}")
     t0 = time.perf_counter()
+    diverged: List[str] = []
     records = run_batches(specs, routes, out_dir, args.batch_size, args.dt,
-                          args.device, dtype, compress=not args.no_compress)
+                          args.device, dtype, compress=not args.no_compress,
+                          physics=physics, diverged=diverged)
+    if diverged:
+        print(f"  {len(diverged)} scenario(s) diverged and were not written")
     integrate_s = time.perf_counter() - t0
 
     print("writing route fields")
@@ -452,11 +520,14 @@ def main() -> None:
                         "compressed": not args.no_compress,
                         "method": "fixed-step RK4 (simulator2.torch_rhs)"},
         "randomization": asdict(cfg),
+        "physics": asdict(physics),
+        "unsourced_air_brake_fields": unsourced_brake,
         "split_policy": {k: (sorted(v) if isinstance(v, set) else v)
                          for k, v in policy.items()},
         "routes": {rid: route_grade_stats(routes[rid]) for rid in used},
         "integrate_seconds": round(integrate_s, 2),
         "sampling_failures": dict(failures),
+        "diverged_scenarios": diverged,
     }
     written = write_manifests(out_dir, records, norm_stats, build_config)
 

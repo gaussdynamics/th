@@ -108,6 +108,9 @@ class Case:
     draft_gear_table: np.ndarray | None = None
     draft_gear_k_transition: float = 1.0e8
     draft_gear_k_lock: float = 5.0e8
+    grade_model: str = "double_sine"
+    inertia_factor: np.ndarray | None = None
+    standstill_model: str = "none"
 
     def batch(self) -> TorchScenarioBatch:
         n = len(self.mass)
@@ -183,6 +186,10 @@ class Case:
             tau_brk_release_node=(
                 None if self.tau_brk_release_node is None
                 else t(np.asarray(self.tau_brk_release_node, float)[None])),
+            grade_model=self.grade_model,
+            inertia_factor=(None if self.inertia_factor is None
+                            else t(np.asarray(self.inertia_factor, float)[None])),
+            standstill_model=self.standstill_model,
         )
 
 

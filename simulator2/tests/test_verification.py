@@ -93,6 +93,14 @@ def test_double_sine_grade_characterized() -> None:
     assert rel == pytest.approx(-st * st / 6, rel=1e-3)
 
 
+def test_exact_grade_model_is_m_g_sin_theta() -> None:
+    """F7 fixed (physics v3): the route field is sin(theta), used as is."""
+    st = 0.04
+    t, y = rk4_fixed(_single(v0=20.0, sin_theta=st, grade_model="exact").batch(),
+                     30.0, DT, every=50)
+    assert np.abs(y[:, 1] - (20.0 - GRAVITY_MPS2 * st * t)).max() < 1e-9
+
+
 @pytest.mark.parametrize("force, p_max", [(20e3, 1e12), (150e3, 3.5e6)],
                          ids=["force-limited", "power-limited"])
 def test_balancing_speed(force: float, p_max: float) -> None:
@@ -234,3 +242,61 @@ def test_energy_balance_closes(realistic) -> None:
     audit = energy_audit(batch, 60.0, DT)
     assert audit["rel_residual"] < 1e-5, audit
     assert audit["work_damper"] > 0.0
+
+
+# -- F6: standstill holding (physics v3) ------------------------------------------
+
+_R_START = 0.0343        # TorchScenarioBatch.standstill_resistance_npkg
+
+
+def _standstill(**kw) -> Case:
+    base = dict(mass=np.full(1, 1e5), x0=np.zeros(1), v0=np.zeros(1),
+                grade_model="exact", standstill_model="breakaway", f_brk_max=1e6,
+                davis=(1000.0, 10.0, 1.0))
+    return Case(**{**base, **kw})
+
+
+def test_braked_vehicle_holds_on_a_grade_within_its_static_limit() -> None:
+    """Brake 30 kN + starting resistance 3.4 kN against a 1 % grade (9.8 kN):
+    held, at the production step, with no drift."""
+    t, y = rk4_fixed(_standstill(sin_theta=0.01, u_brk=30e3).batch(), 120.0, DT, every=500)
+    assert np.abs(y[:, 1]).max() < 1e-9 and np.abs(y[:, 0]).max() < 1e-9
+
+
+def test_breakaway_beyond_the_static_limit() -> None:
+    """Grade force above brake + starting resistance: the vehicle rolls back,
+    at first against the full static limit."""
+    m, st, brk = 1e5, 0.02, 10e3
+    case = _standstill(sin_theta=st, u_brk=brk)
+    t, y = rk4_fixed(case.batch(), 0.5, 0.001, every=10)
+    f_static = brk + _R_START * m
+    a0 = -(m * GRAVITY_MPS2 * st - f_static) / m
+    early = t < 0.3                                   # still inside the 0.1 m/s window
+    assert np.abs(y[early, 1] - a0 * t[early]).max() < 1e-9
+
+
+def test_unbraked_vehicle_rests_without_chatter() -> None:
+    """Legacy chatters about v = 0 under the hard sign (characterized above);
+    breakaway holds a vehicle at rest on the flat exactly."""
+    t, y = rk4_fixed(_standstill().batch(), 60.0, DT, every=50)
+    assert np.abs(y[:, 1]).max() == 0.0
+
+
+def test_braked_stop_stays_stopped_on_a_grade() -> None:
+    """A braked vehicle stops on an upgrade and stays there. Legacy never
+    stands still: the tanh blend balances the grade at a steady backward
+    creep (~3 cm/s here, about 2 m a minute)."""
+    kw = dict(v0=np.full(1, 5.0), sin_theta=0.01, u_brk=30e3)
+    _, y3 = rk4_fixed(_standstill(**kw).batch(), 60.0, DT, every=50)
+    _, yl = rk4_fixed(_standstill(standstill_model="none", **kw).batch(), 60.0, DT, every=50)
+    assert y3[-1, 1] == pytest.approx(0.0, abs=1e-9) and y3[:, 1].min() > -1e-6
+    assert -0.1 < yl[-1, 1] < -0.01 and yl[-1, 0] < yl[-10, 0]    # legacy creeps back
+
+
+def test_stiction_friction_never_exceeds_the_static_limit() -> None:
+    """Sliding inside the standstill window, the friction is the static limit
+    (Coulomb), not the regularisation's m v / tau: 0.0343 m/s^2, not 0.5."""
+    t, y = rk4_fixed(_standstill(v0=np.full(1, 0.05), davis=(0.0, 0.0, 0.0)).batch(),
+                     1.0, 0.001, every=10)
+    moving = y[:, 1] > 0.01
+    assert np.abs(y[moving, 1] - (0.05 - _R_START * t[moving])).max() < 1e-9

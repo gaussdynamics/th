@@ -22,6 +22,11 @@ Three classes of check:
    not a defect in the data -- ``--fd-tolerance`` is set accordingly. The
    scaling was verified separately: the residual falls from 2.2e-2 to 3.9e-5
    m/s^2 as dt_out goes from 0.25 to 0.01 on a fixed scenario.
+
+   Under the friction draft gear, a gear driven into its end stop gives an
+   impact (100+ m/s^2 within one output step) that no difference on the
+   output grid can resolve, so check points are moved off samples where any
+   gear is beyond its travel (``draft_gear_end_m``).
 3. **Distribution sanity** -- speed-limit violations, reversals, and consist
    sizes, so a build whose inputs went wrong is visible without opening files.
 """
@@ -39,13 +44,53 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
 
 
-def rebuild_rhs(d: dict, route: dict, t: float, y: np.ndarray) -> np.ndarray:
+def _notch_traction(n, speed, lp, v_eps):
+    """LTD benchmark Table 4 at integer notch n: (n/8) Te_max, power-capped."""
+    return np.minimum(n / 8.0 * lp[:, 0], (n / 8.0) ** 2 * lp[:, 1] / np.maximum(speed, v_eps))
+
+
+def _notch_db(n, speed, lp, v_eps):
+    """Benchmark Table 5 as read against its Figs 4b/5b (see torch_rhs)."""
+    db, p_db = lp[:, 2], lp[:, 3]
+    v_min, v_max = np.maximum(lp[:, 4], 1e-9), lp[:, 5]
+    ramp = speed / v_min * db
+    hyper = p_db / np.maximum(speed, v_eps)
+    level = np.where(n <= 3, n / 8.7, n / 7.5) * db - 10.0 * speed
+    partial = np.minimum(np.minimum(ramp, level), hyper)
+    full = np.where(speed <= v_min, ramp, np.where(speed <= v_max, db - 10.0 * speed, hyper))
+    f = np.where(n >= 7, full, partial)
+    return np.where(n > 0, np.maximum(f, 0.0), 0.0)
+
+
+def _notch_force(z, v, lp, v_eps):
+    """Signed locomotive force at lagged notch z, blended between notches."""
+    speed = np.abs(v)
+    mag = np.minimum(np.abs(z), 8.0)
+    lo = np.floor(mag)
+    hi = np.minimum(lo + 1.0, 8.0)
+    w = mag - lo
+    trac = (_notch_traction(lo, speed, lp, v_eps) * (1 - w)
+            + _notch_traction(hi, speed, lp, v_eps) * w)
+    brake = _notch_db(lo, speed, lp, v_eps) * (1 - w) + _notch_db(hi, speed, lp, v_eps) * w
+    sgn = np.where(speed < 1e-9, 0.0, np.sign(v))
+    return np.where(z >= 0, trac, -brake * sgn)
+
+
+def rebuild_rhs(d: dict, route: dict, t: float, y: np.ndarray,
+                k: int | None = None) -> np.ndarray:
     """The extended RHS, from the stored arrays alone.
 
     Deliberately a standalone reimplementation -- importing ``simulator2.rhs``
     or ``torch_rhs`` would let a shared bug hide, and the point of this check is
     that the files are sufficient on their own.
+
+    Files from a non-legacy physics configuration carry ``physics_json`` and
+    the per-vehicle arrays it needs. Under the friction draft gear the
+    coupler force depends on the gears' history, so the stored ``F_cpl`` at
+    output sample ``k`` is used, and the check is that it is consistent with
+    the node accelerations.
     """
+    phys = json.loads(str(d["physics_json"])) if "physics_json" in d else {}
     n = d["node_static"].shape[0]
     x, v = y[:n], y[n:2 * n]
     z_brk, z_trac = y[2 * n:3 * n], y[3 * n:4 * n]
@@ -57,9 +102,12 @@ def rebuild_rhs(d: dict, route: dict, t: float, y: np.ndarray) -> np.ndarray:
     delta = (x[:-1] - x[1:]) - es[:, 0]
     ddot = v[:-1] - v[1:]
     slack, k_d, c_d, k_b, c_b = es[:, 1], es[:, 2], es[:, 3], es[:, 4], es[:, 5]
-    f_c = np.zeros(n - 1)
-    f_c = np.where(delta > slack, k_d * (delta - slack) + c_d * ddot, f_c)
-    f_c = np.where(delta < -slack, k_b * (delta + slack) + c_b * ddot, f_c)
+    if phys.get("coupler_model") == "draft_gear":
+        f_c = d["edge_dynamic"][k, :, 2].astype(np.float64)
+    else:
+        f_c = np.zeros(n - 1)
+        f_c = np.where(delta > slack, k_d * (delta - slack) + c_d * ddot, f_c)
+        f_c = np.where(delta < -slack, k_b * (delta + slack) + c_b * ddot, f_c)
 
     tt = d["t"].astype(np.float64)
     u_t = np.array([np.interp(t, tt, d["u_trac"][:, i].astype(np.float64))
@@ -70,9 +118,9 @@ def rebuild_rhs(d: dict, route: dict, t: float, y: np.ndarray) -> np.ndarray:
 
     sgn = np.where(np.abs(v) < 1e-9, 0.0, np.sign(v))
     r = (d_a + d_b * np.abs(v) + d_c * v * v) * sgn
-    g = mass * 9.81 * np.sin(
-        np.interp(x, route["route_s"], route["route_sin_theta"])
-    )
+    sin_th = np.interp(x, route["route_s"], route["route_sin_theta"])
+    # the legacy code applied sin to a field that already holds sin(theta)
+    g = mass * 9.81 * (sin_th if phys.get("grade_model") == "exact" else np.sin(sin_th))
     kap = np.interp(x, route["route_s"], route["route_kappa"])
     kcs = float(d["k_curv_scale"])
     # The curvature law is per-build, so it has to be read from the file rather
@@ -98,21 +146,36 @@ def rebuild_rhs(d: dict, route: dict, t: float, y: np.ndarray) -> np.ndarray:
     c_cur = np.where(np.abs(v) < 1e-9, 0.0, mag * sgn)
 
     zt, zb = np.maximum(z_trac, 0.0), np.maximum(z_brk, 0.0)
-    f_tr = np.where(
-        can_trac > 0,
-        np.minimum(zt, float(d["p_max_w"]) / np.maximum(np.abs(v), float(d["v_eps"]))),
-        0.0,
-    )
+    if phys.get("traction_model") == "notch":
+        lp = d["loco_table"].astype(np.float64)
+        f_tr = np.where(can_trac > 0, _notch_force(z_trac, v, lp, float(d["v_eps"])), 0.0)
+    else:
+        f_tr = np.where(
+            can_trac > 0,
+            np.minimum(zt, float(d["p_max_w"]) / np.maximum(np.abs(v), float(d["v_eps"]))),
+            0.0,
+        )
     f_br = np.minimum(zb, f_brk_max)
     if bool(d["brake_opposes_motion"]):
         f_br = f_br * np.tanh(v / float(d["v_brake_eps"]))
 
     f_in = np.concatenate([[0.0], f_c])
     f_out = np.concatenate([f_c, [0.0]])
-    dv = (f_tr - f_br - r - g - c_cur + f_in - f_out) / mass
+    inertia = mass * (d["inertia_factor"].astype(np.float64) if "inertia_factor" in d else 1.0)
+    net = f_tr - f_br - r - g - c_cur + f_in - f_out
+    if phys.get("standstill_model") == "breakaway":
+        drive = f_tr - g + f_in - f_out
+        f_static = np.minimum(zb, f_brk_max) + float(d["standstill_resistance_npkg"]) * mass
+        friction = np.clip(drive + inertia * v / float(d["standstill_tau_s"]),
+                           -f_static, f_static)
+        net = np.where(np.abs(v) < float(d["v_brake_eps"]), drive - friction, net)
+    if "tau_brk_node" in d:
+        tau_b = np.where(u_b < z_brk, d["tau_brk_release_node"], d["tau_brk_node"])
+    else:
+        tau_b = float(d["tau_brk_s"])
     return np.concatenate([
-        v, dv,
-        (u_b - z_brk) / float(d["tau_brk_s"]),
+        v, net / inertia,
+        (u_b - z_brk) / tau_b,
         (u_t - z_trac) / float(d["tau_trac_s"]),
     ])
 
@@ -199,8 +262,18 @@ def main() -> None:
         t = d["t"].astype(np.float64)
         n = st.shape[1]
         y = np.concatenate([st[:, :, 0], st[:, :, 1], st[:, :, 2], st[:, :, 3]], axis=1)
-        for k in (len(t) // 4, len(t) // 2, 3 * len(t) // 4):
-            dy = rebuild_rhs(d, route, float(t[k]), y[k])
+        locked = np.zeros(len(t), bool)
+        if "draft_gear_end_m" in d:
+            e = np.abs(d["edge_dynamic"][:, :, 0]) - d["edge_static"][None, :, 1]
+            locked = (e >= float(d["draft_gear_end_m"])).any(axis=1)
+        clear = ~(locked | np.roll(locked, 1) | np.roll(locked, -1))
+        clear[[0, -1]] = False
+        for k0 in (len(t) // 4, len(t) // 2, 3 * len(t) // 4):
+            ok = np.flatnonzero(clear)
+            if ok.size == 0:
+                continue
+            k = int(ok[np.abs(ok - k0).argmin()])
+            dy = rebuild_rhs(d, route, float(t[k]), y[k], k=k)
             fd = (y[k + 1] - y[k - 1]) / (t[k + 1] - t[k - 1])
             worst_x = max(worst_x, float(np.abs(dy[:n] - fd[:n]).max()))
             ev = float(np.abs(dy[n:2 * n] - fd[n:2 * n]).max())
@@ -231,6 +304,11 @@ def main() -> None:
     print(f"  F_max (N)               {idx.F_max.min():.3e} .. {idx.F_max.max():.3e}")
     print(f"  v_max_mps               {idx.v_max_mps.max():.2f}")
     print(f"  v_min_mps               {idx.v_min_mps.min():.2f}")
+    if "coupler_over_ultimate" in idx:
+        print(f"  F_max > knuckle yield   {int(idx.coupler_over_yield.sum())} "
+              f"({idx.coupler_over_yield.mean() * 100:.0f}%)   (1.8 MN)")
+        print(f"  F_max > knuckle ult.    {int(idx.coupler_over_ultimate.sum())} "
+              f"({idx.coupler_over_ultimate.mean() * 100:.0f}%)   (2.9 MN: would part)")
     print(f"  reversing (< -1 m/s)    {int((idx.v_min_mps < -1).sum())} "
           f"({(idx.v_min_mps < -1).mean() * 100:.0f}%)")
     if over is not None:

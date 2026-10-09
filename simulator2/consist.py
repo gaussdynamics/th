@@ -110,8 +110,19 @@ def build_consist(
     """
     if len(train.cars) < 1:
         raise ValueError("Train must have at least one car")
+    return build_consist_from_types(_resolve_car_types(train, library), library)
 
-    resolved = _resolve_car_types(train, library)
+
+def resolve_car_types(train: Train, library: CarLibrary) -> List[CarType]:
+    """The train's car types with per-instance overrides applied, front first."""
+    return _resolve_car_types(train, library)
+
+
+def build_consist_from_types(
+    resolved: List[CarType], library: CarLibrary
+) -> Tuple[List[VehicleParameters], List[CouplerParameters]]:
+    """:func:`build_consist` from already-resolved car types (which the v3
+    physics may have substituted, see :mod:`simulator2.physics_config`)."""
     vehicles = [ct.to_vehicle() for ct in resolved]
 
     couplers: List[CouplerParameters] = []

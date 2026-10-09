@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, Sequence
 
@@ -138,15 +138,15 @@ def sample_command_curve(curve: Any, t: np.ndarray) -> np.ndarray:
     return np.where(ts >= kt[-1], kf[-1], out)
 
 
-def materialize_commands_fast(
+def command_fractions(
     profile: Any, vehicles: Sequence[Any], t: np.ndarray, train: Any = None
 ) -> tuple[np.ndarray, np.ndarray]:
-    """``u_trac``, ``u_brk`` as ``[T, N]``, mirroring ``build_command_callables``.
+    """Traction fractions ``[T, N]`` (0 on unpowered vehicles) and the
+    train-wide brake fraction ``[T]``, as the profile commands them.
 
-    Brake applies train-wide; traction only to powered vehicles, from the curve
-    for their DPU role, each scaled by its own force ceiling. There are at most
-    three distinct traction curves however long the consist is, so each is
-    sampled once and broadcast.
+    Traction only reaches powered vehicles, from the curve for their DPU role.
+    There are at most three distinct traction curves however long the consist
+    is, so each is sampled once and broadcast.
     """
     from .control_profile import (
         ROLE_DPU_MID, ROLE_DPU_REAR, ROLE_HEAD_END, role_for_car,
@@ -154,13 +154,8 @@ def materialize_commands_fast(
 
     ts = np.asarray(t, dtype=np.float64)
     n = len(vehicles)
-
     brake_frac = np.maximum(0.0, sample_command_curve(profile.brake, ts))
-    f_brk_max = np.array([v.F_brk_max_N for v in vehicles], dtype=np.float64)
-    u_brk = brake_frac[:, None] * f_brk_max[None, :]
-
-    f_trac_max = np.array([v.F_trac_max_N for v in vehicles], dtype=np.float64)
-    u_trac = np.zeros((ts.size, n), dtype=np.float64)
+    trac_frac = np.zeros((ts.size, n), dtype=np.float64)
 
     if train is not None:
         curve_by_role = {
@@ -178,13 +173,29 @@ def materialize_commands_fast(
                 cache[role] = np.maximum(
                     0.0, sample_command_curve(curve_by_role[role], ts)
                 )
-            u_trac[:, i] = cache[role] * f_trac_max[i]
+            trac_frac[:, i] = cache[role]
     else:
         frac = np.maximum(0.0, sample_command_curve(profile.traction_head_end, ts))
         for i, v in enumerate(vehicles):
             if v.can_traction:
-                u_trac[:, i] = frac * f_trac_max[i]
+                trac_frac[:, i] = frac
+    return trac_frac, brake_frac
 
+
+def materialize_commands_fast(
+    profile: Any, vehicles: Sequence[Any], t: np.ndarray, train: Any = None
+) -> tuple[np.ndarray, np.ndarray]:
+    """``u_trac``, ``u_brk`` as ``[T, N]``, mirroring ``build_command_callables``.
+
+    Brake applies train-wide; traction only to powered vehicles, from the curve
+    for their DPU role (:func:`command_fractions`), each scaled by its own
+    force ceiling.
+    """
+    trac_frac, brake_frac = command_fractions(profile, vehicles, t, train)
+    f_brk_max = np.array([v.F_brk_max_N for v in vehicles], dtype=np.float64)
+    f_trac_max = np.array([v.F_trac_max_N for v in vehicles], dtype=np.float64)
+    u_brk = brake_frac[:, None] * f_brk_max[None, :]
+    u_trac = trac_frac * f_trac_max[None, :]
     return u_trac, u_brk
 
 
@@ -254,6 +265,9 @@ class ScenarioArrays:
     y0: np.ndarray              # [4N]
     constants: Dict[str, float]
     summaries: Dict[str, float]
+    #: Further arrays for non-legacy physics (``physics_config``): written as
+    #: extra keys, so legacy files keep exactly their old contents.
+    extras: Dict[str, Any] = field(default_factory=dict)
 
 
 def build_scenario_arrays(
@@ -265,12 +279,20 @@ def build_scenario_arrays(
     u_brk: np.ndarray,
     constants: Dict[str, float],
     target_chainage_m: float | None = None,
+    edge_dynamic: np.ndarray | None = None,
+    power: np.ndarray | None = None,
+    extras: Dict[str, Any] | None = None,
 ) -> ScenarioArrays:
     """Assemble one scenario's arrays from a flat state trajectory.
 
     ``y`` is ``[T, 4N]`` in the simulator's flat layout
     ``[x(N), v(N), z_brk(N), z_trac(N)]`` -- the same ordering the torch
     rollout and ``solve_ivp`` both produce, so this works for either path.
+
+    ``edge_dynamic`` and ``power`` override the Kelvin-Voigt coupler and the
+    force-lag traction power, for physics where those laws do not hold (the
+    friction draft gear's force depends on its own state; notch traction has
+    per-locomotive power). ``extras`` are written alongside.
     """
     t = np.asarray(t, dtype=np.float64)
     y = np.asarray(y, dtype=np.float64)
@@ -281,10 +303,12 @@ def build_scenario_arrays(
     state = np.stack(
         [y[:, 0:n], y[:, n:2 * n], y[:, 2 * n:3 * n], y[:, 3 * n:4 * n]], axis=-1
     )
-    edge_dynamic = coupler_dynamics(state, edge_static)
+    if edge_dynamic is None:
+        edge_dynamic = coupler_dynamics(state, edge_static)
     edge_index = np.stack([np.arange(n - 1), np.arange(1, n)]).astype(np.int32)
 
-    power = traction_power(state, node_static, float(constants["p_max_w"]))
+    if power is None:
+        power = traction_power(state, node_static, float(constants["p_max_w"]))
     x_lead = state[:, 0, 0]
     summaries = {
         "E_trip": float(np.trapezoid(power, t)),
@@ -308,6 +332,7 @@ def build_scenario_arrays(
         u_trac=np.asarray(u_trac, dtype=np.float64),
         u_brk=np.asarray(u_brk, dtype=np.float64),
         y0=y[0].copy(), constants=dict(constants), summaries=summaries,
+        extras=dict(extras or {}),
     )
 
 
@@ -357,6 +382,10 @@ def write_scenario_arrays(
         **{k: np.float32(v) for k, v in arrays.constants.items()},
         # I
         metadata_json=json.dumps(metadata, sort_keys=True),
+        # Non-legacy physics only (absent from legacy files)
+        **{k: (v if isinstance(v, str) else
+               np.float64(v) if np.ndim(v) == 0 else f32(v))
+           for k, v in arrays.extras.items()},
     )
     return path
 

@@ -196,6 +196,14 @@ def _interp_commands(cmd_t: Tensor, values: Tensor, t: float | Tensor) -> Tensor
     return v_lo + w * (v_hi - v_lo)
 
 
+#: Starting resistance under ``standstill_model = "breakaway"`` [N/kg]: 3.5 N/kN
+#: for roller-bearing wagons, the lower value in Handbook of Railway Vehicle
+#: Dynamics 2nd ed., p. 468. Shared with :mod:`simulator2.speed_planner`.
+STANDSTILL_RESISTANCE_NPKG = 0.0343
+#: Holding time constant of the regularised stiction [s].
+STANDSTILL_TAU_S = 0.1
+
+
 # ---------------------------------------------------------------------------
 # the batch
 # ---------------------------------------------------------------------------
@@ -263,18 +271,45 @@ class TorchScenarioBatch:
     #: command (cylinder exhaust) [s], or ``None`` to use the application
     #: time constant both ways. Padding entries must stay positive.
     tau_brk_release_node: Tensor | None = None   # (B, N)
+    #: ``"double_sine"`` (the Chapter 4 code, default) or ``"exact"``: see
+    #: :func:`_grade_force`. Batch-level, set by
+    #: :func:`simulator2.physics_config.configure_batch`.
+    grade_model: str = "double_sine"
+    #: Per-vehicle inertia factor ``1 + J_f`` (rotating mass, finding F9), or
+    #: ``None`` for 1. Multiplies the mass in the acceleration only; grade and
+    #: resistance keep the plain mass (Handbook Eq. 13.2). Padding must stay
+    #: positive.
+    inertia_factor: Tensor | None = None   # (B, N)
+    #: ``"none"`` (Chapter 4, default) or ``"breakaway"``: static friction at
+    #: standstill (finding F6). Below ``v_brake_eps`` a vehicle is held while
+    #: its driving forces (traction, grade, couplers) stay within its static
+    #: limit, the full brake force plus the starting resistance
+    #: ``standstill_resistance_npkg`` times its mass; beyond that it breaks
+    #: away against the limit. The friction is what would stop the vehicle
+    #: within ``standstill_tau_s``, clamped to the limit (Karnopp's
+    #: regularised stiction). Without it, the
+    #: ``tanh(v / v_brake_eps)`` brake blend vanishes at rest and a braked
+    #: train cannot stand still.
+    standstill_model: str = "none"
+    #: See :data:`STANDSTILL_RESISTANCE_NPKG`.
+    standstill_resistance_npkg: float = STANDSTILL_RESISTANCE_NPKG
+    standstill_tau_s: float = STANDSTILL_TAU_S
 
     def __post_init__(self) -> None:
         if self.coupler_model not in ("kelvin_voigt", "draft_gear"):
             raise ValueError(f"unknown coupler_model {self.coupler_model!r}")
         if self.coupler_model == "draft_gear" and self.draft_gear_table is None:
             raise ValueError("coupler_model 'draft_gear' needs draft_gear_table")
-        for name in ("tau_brk_node", "tau_brk_release_node"):
+        for name in ("tau_brk_node", "tau_brk_release_node", "inertia_factor"):
             tau = getattr(self, name)
             if tau is not None and tuple(tau.shape) != tuple(self.node_mask.shape):
                 raise ValueError(
                     f"{name} must be {tuple(self.node_mask.shape)}, "
                     f"got {tuple(tau.shape)}")
+        if self.standstill_model not in ("none", "breakaway"):
+            raise ValueError(f"unknown standstill_model {self.standstill_model!r}")
+        if self.grade_model not in ("double_sine", "exact"):
+            raise ValueError(f"unknown grade_model {self.grade_model!r}")
         if self.traction_model not in ("force_lag", "notch"):
             raise ValueError(f"unknown traction_model {self.traction_model!r}")
         if self.traction_model == "notch" and self.loco_table is None:
@@ -284,6 +319,8 @@ class TorchScenarioBatch:
         # save us. Substitute a harmless unit mass in the padded slots.
         mass = self.node_static[..., NodeStatic.MASS_KG]
         self._mass_safe = torch.where(self.node_mask, mass, torch.ones_like(mass))
+        self._inertia_safe = (self._mass_safe if self.inertia_factor is None
+                              else self._mass_safe * self.inertia_factor)
         self._node_maskf = self.node_mask.to(self.y0.dtype)
         self._edge_maskf = self.edge_mask.to(self.y0.dtype)
 
@@ -677,16 +714,23 @@ def _curvature_force(
     return k_scale * mass * GRAVITY_MPS2 * w_c * sgn_v
 
 
-def _grade_force(mass: Tensor, sin_theta_field: Tensor) -> Tensor:
-    """``m g sin(theta(x))`` as the NumPy path computes it.
+def _grade_force(mass: Tensor, sin_theta_field: Tensor, model: str = "double_sine") -> Tensor:
+    """Grade force. ``"exact"``: ``m g sin(theta)``, the route field being
+    ``sin(theta)``. ``"double_sine"`` (default): ``m g sin(sin(theta))``, as the
+    NumPy path computes it (finding F7):
 
     ``forces.grade_force`` calls ``np.sin`` on the value returned by
     ``RouteProfile.sin_theta_at``, which is already ``sin(theta)``. The extra
     ``sin`` is therefore applied to a sine. It is reproduced here because the
     NumPy path is the oracle and the fixtures encode it; at the grades in play
     (``|sin theta| <= 0.04``) the two differ by about 1e-5 relative. Flagged in
-    the port report rather than silently corrected.
+    the port report rather than silently corrected. (The difference is
+    ``-sin^2(theta)/6`` relative: 2.7e-4 at 4 %.)
     """
+    if model == "exact":
+        return mass * GRAVITY_MPS2 * sin_theta_field
+    if model != "double_sine":
+        raise ValueError(f"unknown grade_model {model!r}")
     return mass * GRAVITY_MPS2 * torch.sin(sin_theta_field)
 
 
@@ -829,7 +873,7 @@ def torch_rhs(
     # scenario in the batch actually has a nonzero curvature scale.
     route_idx, route_w = _interp_weights(batch.route_s, x)
     sin_theta = _apply_weights(batch.route_sin_theta, route_idx, route_w)
-    f_grade = _grade_force(mass, sin_theta)
+    f_grade = _grade_force(mass, sin_theta, batch.grade_model)
 
     if batch._needs_curvature:
         kappa = _apply_weights(batch.route_kappa, route_idx, route_w)
@@ -865,7 +909,18 @@ def torch_rhs(
     net = f_trac - f_brake - r_davis - f_grade + f_in - f_out
     if f_curv is not None:
         net = net - f_curv
-    dv = net / batch._mass_safe
+    if batch.standstill_model == "breakaway":
+        # Karnopp stiction: the friction that would stop the vehicle within
+        # standstill_tau_s, clamped to the static limit. At rest it cancels any
+        # drive up to the limit; beyond it the vehicle breaks away against the
+        # limit. (Not clamping it let held cars act as anchors with unbounded
+        # friction while creeping.)
+        drive = f_trac - f_grade + f_in - f_out
+        f_static = torch.minimum(zb, f_brk_max) + batch.standstill_resistance_npkg * mass
+        stop = drive + batch._inertia_safe * v / batch.standstill_tau_s
+        friction = torch.maximum(torch.minimum(stop, f_static), -f_static)
+        net = torch.where(abs_v < batch.v_brake_eps, drive - friction, net)
+    dv = net / batch._inertia_safe
 
     dx = v
     tau_brk = batch.tau_brk_s if batch.tau_brk_node is None else batch.tau_brk_node

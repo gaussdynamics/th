@@ -67,6 +67,10 @@ class RandomizationConfig:
     v0_mps_range: Tuple[float, float] = (0.0, 24.0)
     #: Never start above this fraction of the route speed limit at the start point.
     v0_vmax_fraction: float = 0.9
+    #: Cap v0 by the lowest limit anywhere under the train, not only at the
+    #: lead (a train must not start with its tail inside a slower zone).
+    #: Off for the legacy corpora; on for physics v3 (finding F8).
+    v0_limit_over_train: bool = False
     #: Probability the run starts from a standstill even when a rolling start
     #: was allowed (keeps genuine cold starts represented).
     v0_rest_probability: float = 0.10
@@ -277,6 +281,11 @@ def make_randomized_scenario(
 
     # ---- initial speed ---------------------------------------------------
     v_limit_here = route.v_max_at(x_lead_m)
+    if cfg.v0_limit_over_train and route.v_max_nodes is not None:
+        s_n = np.asarray(route.s_nodes_m, dtype=float)
+        under = (s_n >= x_lead_m - consist_len_m) & (s_n <= x_lead_m)
+        v_under = np.asarray(route.v_max_nodes, dtype=float)[under]
+        v_limit_here = min([v_limit_here, *v_under[np.isfinite(v_under)]])
     v_hi = cfg.v0_mps_range[1]
     if math.isfinite(v_limit_here):
         v_hi = min(v_hi, cfg.v0_vmax_fraction * v_limit_here)
