@@ -1,0 +1,48 @@
+\chapter{Critique: What the First Experiment Rests On}
+\label{ch:critique}
+
+% ---------------------------------------------------------------------------
+% Opens Part II. Planned sections (see the restructure plan, 2026-10-10):
+%   - The committee's question: verification, validation, claim dependence
+%   - What held up: Tier 1 verification of the legacy simulator
+%   - Integration error at contact events (reinterprets tab:gpu_step_size)
+%   - Physics findings F1-F9 (SIMULATOR_VALIDATION_NOTE.md)
+%   - Routes: the section below (moved from Ch. 5 on 2026-10-10)
+%   - Data: overspeed, reversals, empty control_eval, five corridors
+%   - The surrogate: coupler shape, convergence, single seeds
+%   - The Part I claim list, scored; the plan (tiers 1-4, fallback experiment)
+% ---------------------------------------------------------------------------
+
+% TODO: chapter introduction.
+
+\section{A corridor that was not on the track}
+\label{sec:route_raw_qa}
+
+The first weakness to surface was in the routes rather than the simulator. Once the first results of \cref{ch:training} were in, the grade field of \texttt{route\_line2} was examined more closely. Its rms grade was 2.46\%, against 0.83--1.03\% on the other four corridors, and its grade sat at the 4\% limit on 22.7\% of its length (\cref{tab:route_grade_stats_v2}).
+
+A grade field can be wrong in two ways. The elevation can be correct but too noisy for the chosen smoothing window, in which case a wider window fixes it. Or the elevation can be wrong at the source, because the samples do not lie on the track: the mapped centreline has drifted off the real alignment, or the elevation model does not resolve a cutting or embankment and reports the ground beside it. No smoothing window repairs the second case. Smoothing incorrect values only averages them, and widening the window far enough to hide the error also flattens the real terrain on every healthy corridor.
+
+The two cases can be told apart before any smoothing is done, by looking at the raw elevation directly. \Cref{tab:route_raw_qa} gives three measures of raw roughness for the five corridors. The key one is the share of 10\,m steps whose elevation changes by more than a metre. A one-metre change over ten metres is a 10\% grade, far steeper than any freight main line, so a corridor where this happens on a large share of steps is not following the track.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{lccc}
+        \toprule
+        Corridor & Median $|\Delta z|$ per step & Steps with $|\Delta z| > 1$\,m & Second-difference roughness \\
+        \midrule
+        \texttt{route\_line0} & 0.077\,m & 0.7\% & 0.021\,m \\
+        \texttt{route\_line2} & 0.234\,m & \textbf{19.3\%} & 0.143\,m \\
+        \texttt{route\_line3} & 0.047\,m & 1.5\% & 0.040\,m \\
+        \texttt{route\_line4} & 0.039\,m & 1.1\% & 0.036\,m \\
+        \texttt{route\_line5} & 0.045\,m & 1.0\% & 0.041\,m \\
+        \bottomrule
+    \end{tabular}
+    \caption{Roughness of the raw elevation, before any smoothing, for the five acquired corridors on a 10\,m grid. \texttt{route\_line2} exceeds a one-metre step on nearly a fifth of its length, against 0.7--1.5\% for the others. Its bridge and tunnel share is under 1\%, so structure correction does not explain the difference.}
+    \label{tab:route_raw_qa}
+\end{table}
+
+The expected explanation for the poor grade field on \texttt{route\_line2} was too little smoothing. The table shows that it was not. The raw elevation is already wrong before smoothing, and a search for a window wide enough to hide it settled on 1200\,m, a value that would have erased real terrain on the other four corridors to rescue one broken one.
+
+The corridor had passed unnoticed because the 4\% grade limit is well above the grades freight main lines are built to. The limit clipped the broken corridor's grade without drawing attention to it.
+
+This matters for Part~I in two ways. Much of the overspeed population of \cref{sec:dataset_limitations} comes from the corridor's false grades: in a pilot build, 39\% of its scenarios exceeded the limit by more than 5\,m/s, against 2\% on \texttt{route\_line5}. And the \texttt{ood\_grade} split, selected as the steepest corridor, is built on it. That split therefore tests extrapolation to false grades rather than to real steep terrain, and results on it should be read in that light. The repair, a check on the raw elevation before any smoothing, is described in \cref{sec:route_grade_fix}.

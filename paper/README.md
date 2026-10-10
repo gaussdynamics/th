@@ -1,6 +1,17 @@
-# Thesis: Hybrid Physics-Transformer Surrogate Modeling for Train System Dynamics
+# Thesis: A Graph Neural Surrogate for Longitudinal Train Dynamics
 
-This repository contains a LaTeX thesis scaffold focused on an internal modeling framework (hybrid physics + transformer surrogate) for train system modeling.
+LaTeX source of the thesis. Since 2026-10-10 it is organized in three parts that
+follow the order the work was done in:
+
+- **Part I, A First Surrogate** (Ch. 1-9): the problem, the legacy simulator,
+  five corridors, the v2 corpus, the first graph network simulator and its results.
+- **Part II, Interrogating the Simulator** (Ch. 10-12): the critique, the
+  international benchmark, and the v3 simulator.
+- **Part III, The Rebuilt System** (Ch. 13-17): the full corridor set and v3
+  corpus, the revised surrogate, Results II, control, and the conclusion.
+
+Part I numbers are a record of the legacy simulator and the v2 corpus. Do not
+overwrite them with v3 results; those go in Part III.
 
 ## Repository Structure
 
@@ -15,7 +26,18 @@ thesis/
 │   ├── 03_problem_formulation.tex
 │   ├── 04_reference_simulator.tex
 │   ├── 05_route_acquisition.tex
-│   └── 06_raillab.tex
+│   ├── 06_raillab.tex
+│   ├── 07_gpu_integrator_dataset.tex
+│   ├── 08_surrogate_architecture.tex
+│   ├── 09_training_first_results.tex
+│   ├── 10_critique.tex              # Part II
+│   ├── 11_benchmark.tex
+│   ├── 12_air_brake_v3.tex
+│   ├── 13_corridors_corpus.tex      # Part III
+│   ├── 14_surrogate_revised.tex
+│   ├── 15_results_ii.tex
+│   ├── 16_control.tex
+│   └── 17_conclusion.tex
 ├── figures/                    # Figure files (PDF, PNG, etc.)
 ├── tables/                     # Table source files (if separate)
 ├── refs/                       # Bibliography

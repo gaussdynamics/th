@@ -3,9 +3,11 @@
 
 % ---------------------------------------------------------------------------
 % Numbers in this chapter that depend on the training corpus (data/v2, Ch. 7).
-% Update these, not the arguments, after a corpus rebuild. Source for all of
-% them: SURROGATE_FORMULATION_NOTE.md and scripts/measure_formulation.py on
-% branch surrogate-gns.
+% FROZEN: they are the Part I record of the legacy simulator and the first
+% surrogate. Do not update them after the v3 rebuild; the v3 measurements go
+% in Ch. 14 (ch:surrogate_revised), which repeats these measurements and
+% compares. Source for all of them: SURROGATE_FORMULATION_NOTE.md and
+% scripts/measure_formulation.py on branch surrogate-gns.
 %   - tab:arch_anchor_velocity, tab:arch_anchor_position, fig:arch_anchor
 %   - tab:arch_stiffness (omega from 60 sampled consists), omega*h = 7.45
 %   - couplers outside the slack 91.1% of the time
@@ -20,7 +22,7 @@
 
 \Cref{ch:problem} stated the surrogate as a learned step $\mathcal{S}_\theta$ on the tensor state (\cref{eq:tensor_step_operator}), and \cref{ch:gpu_dataset} produced the data it is trained on. This chapter builds $\mathcal{S}_\theta$. It answers two questions in turn. The first is what the neural network should be asked to predict: which parts of the next state it produces, and which are computed exactly from known physics. The second is how the network itself is built, so that one set of learned weights can advance a train of any length.
 
-Both answers are driven by measurement rather than convention, and the measurements are given where each decision is made. They were taken on the training corpus \texttt{data/v2}; \cref{sec:dataset_limitations} explains why that corpus will be rebuilt. The decisions rest on properties of the physics and of the step size, not on the particular corpus, and the reported numbers would shift in magnitude rather than in direction.
+Both answers are driven by measurement rather than convention, and the measurements are given where each decision is made. They were taken on the training corpus \texttt{data/v2}. The decisions rest on properties of the physics and of the step size rather than on the particular corpus, so the expectation is that a different corpus would shift the reported numbers in magnitude rather than in direction. That expectation is tested in \cref{ch:surrogate_revised}, where the same measurements are repeated on a corpus generated with revised physics.
 
 \section{What a neural network contributes here}
 \label{sec:arch_nn_primer}
@@ -300,8 +302,7 @@ The network is trained to predict its two targets, the mean acceleration of \cre
     \mathcal{L}(\theta) = \frac{1}{N}\sum_i \bigl(\hat a_i - \bar a_i\bigr)^2 + \frac{1}{N-1}\sum_j \bigl(\hat c_j - c_j\bigr)^2 ,
     \label{eq:arch_loss}
 \end{equation}
-with hats denoting predictions. Because both targets are standardized, this weights them equally relative to their own spread rather than by their physical magnitudes, which differ by orders of magnitude. The imposed channels contribute nothing: they are exact, so there is no error in them to fit. This is the concrete form of the objective of \cref{eq:training_loss}. Parameters are updated with the Adam optimizer \cite{kingma2015adam}, with a learning rate decaying from $10^{-3}$ along a cosine schedule and gradients clipped to a norm of 1. A model trained only to predict one step from true states does not remain stable when fed its own predictions; the techniques that make it stable over long rollouts are the subject of the training chapter.
-% TODO: \cref the training chapter once it exists.
+with hats denoting predictions. Because both targets are standardized, this weights them equally relative to their own spread rather than by their physical magnitudes, which differ by orders of magnitude. The imposed channels contribute nothing: they are exact, so there is no error in them to fit. This is the concrete form of the objective of \cref{eq:training_loss}. Parameters are updated with the Adam optimizer \cite{kingma2015adam}, with a learning rate decaying from $10^{-3}$ along a cosine schedule and gradients clipped to a norm of 1. A model trained only to predict one step from true states does not remain stable when fed its own predictions; the techniques that make it stable over long rollouts are the subject of \cref{ch:training}.
 
 \section{Relation to graph network simulators}
 \label{sec:arch_relation_gns}

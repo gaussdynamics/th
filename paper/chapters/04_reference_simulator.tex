@@ -12,7 +12,7 @@ It follows a Jupyter notebook that constructs the model stage by stage using onl
 
 The parameters used, vehicle mass, resistance coefficients, coupler stiffness, traction limits, are realistic in shape but are not tuned to match any specific real locomotive or railcar.
 The goal at this stage is a simulator whose structure is right, not one whose numbers are certified against a real test train.
-This distinction matters when interpreting later results: the surrogate and the control experiments built on top of this simulator are validated against the simulator itself, not against real-world rail data.
+This distinction matters when interpreting later results: the surrogate and the control experiments built on top of this simulator are validated against the simulator itself, not against real-world rail data. \Cref{ch:critique} returns to this distinction and asks how far the simulator described here can be trusted.
 Time integration uses adaptive Runge-Kutta or implicit methods as needed when stiff coupler dynamics appear, and the figures in this chapter are exported directly from the notebook at representative numerical settings.
 
 \section{Stage 1: single powered vehicle}
@@ -170,7 +170,7 @@ with $P_{\max}$ an illustrative constant power ceiling and $\varepsilon$ a small
 
 \section{Stage 8: scope relative to industrial high fidelity}
 
-This build-up closes with a structured discussion of effects commonly associated with ``high fidelity'' in operational or research simulators: hysteretic draft gear, pneumatic brake pipe dynamics, distributed traction and adhesion limits, stochastic parameters, and calibration to field data. Those modules are not part of the reference code path summarised here; they mark the boundary between the intermediate-fidelity simulator used for learning experiments in this thesis and a fully industrial toolchain. Packaging this right-hand side as a batched GPU integrator for dataset generation is described in \cref{ch:gpu_dataset}.
+This build-up closes with a structured discussion of effects commonly associated with ``high fidelity'' in operational or research simulators: hysteretic draft gear, pneumatic brake pipe dynamics, distributed traction and adhesion limits, stochastic parameters, and calibration to field data. Those modules are not part of the reference code path summarised here; they mark the boundary between the intermediate-fidelity simulator used for the first learning experiments in this thesis and a fully industrial toolchain. Part~II returns to the first two: a friction draft gear in \cref{ch:benchmark} and brake pipe propagation in \cref{ch:v3_sim}. Packaging this right-hand side as a batched GPU integrator for dataset generation is described in \cref{ch:gpu_dataset}.
 
 \section{Chapter summary}
 

@@ -70,7 +70,13 @@ The trained surrogate then serves as the world model for a fuel-optimal control 
 
 \mainmatter
 
-% Chapters
+% Chapters, in three parts that follow the order the work was done in
+% (restructure of 2026-10-10): the first experiment, the critique of what it
+% rested on, and the rebuilt system. Part I numbers are a record of the legacy
+% simulator, the v2 corpus and the first surrogate; do not overwrite them with
+% v3 results.
+
+\part{A First Surrogate}
 \input{chapters/01_introduction}
 \input{chapters/02_related_work}
 \input{chapters/03_problem_formulation}
@@ -79,9 +85,19 @@ The trained surrogate then serves as the world model for a fuel-optimal control 
 \input{chapters/06_raillab}
 \input{chapters/07_gpu_integrator_dataset}
 \input{chapters/08_surrogate_architecture}
-% Chapters 7 onward (architecture, training, evaluation, control, discussion,
-% conclusion) are not yet written. The old skeletons were deleted 2026-09-23;
-% see THESIS_AUDIT_2026-09-22.md, section 1.
+\input{chapters/09_training_first_results}
+
+\part{Interrogating the Simulator}
+\input{chapters/10_critique}
+\input{chapters/11_benchmark}
+\input{chapters/12_air_brake_v3}
+
+\part{The Rebuilt System}
+\input{chapters/13_corridors_corpus}
+\input{chapters/14_surrogate_revised}
+\input{chapters/15_results_ii}
+\input{chapters/16_control}
+\input{chapters/17_conclusion}
 
 % ============================================================================
 % Back Matter
