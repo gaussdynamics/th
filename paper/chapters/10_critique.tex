@@ -2,18 +2,17 @@
 \label{ch:critique}
 
 % ---------------------------------------------------------------------------
-% Opens Part II. Planned sections (see the restructure plan, 2026-10-10):
-%   - The committee's question: verification, validation, claim dependence
-%   - What held up: Tier 1 verification of the legacy simulator
-%   - Integration error at contact events (reinterprets tab:gpu_step_size)
-%   - Physics findings F1-F9 (SIMULATOR_VALIDATION_NOTE.md)
-%   - Routes: the section below (moved from Ch. 5 on 2026-10-10)
-%   - Data: overspeed, reversals, empty control_eval, five corridors
-%   - The surrogate: coupler shape, convergence, single seeds
-%   - The Part I claim list, scored; the plan (tiers 1-4, fallback experiment)
+% Opens Part II. Sources: SIMULATOR_VALIDATION_NOTE.md (the question, tiers,
+% Tier 1 results, findings F1-F9, convergence study), ROUTE_PIPELINE_NOTE.md
+% Phase A (route_line2, overspeed cause), SURROGATE_FORMULATION_NOTE.md and
+% Ch. 9 (surrogate limitations). The verification suite is
+% simulator2/verification.py, simulator2/tests/test_verification.py and
+% scripts/verify_simulator_convergence.py.
 % ---------------------------------------------------------------------------
 
-% TODO: chapter introduction.
+Every result of \cref{ch:training} is a comparison between the surrogate and the simulator that generated its data. The claims of \cref{tab:train_claims} are only as strong as what lies under that comparison: the simulator, the routes it runs on, the scenarios it was given, and the experiment itself. This chapter examines each in turn.
+
+Two things prompted the examination. The first was a defect in the routes, found while reading the first results, and it is described first. The second was a question asked at the committee meeting that followed: how is it known that the simulator is accurate? Answering it properly requires separating three questions that are easy to run together, and the bulk of the chapter is organized around them. The chapter ends by scoring each Part~I claim as standing, qualified or withdrawn, and by setting out the plan that the rest of Part~II carries out.
 
 \section{A corridor that was not on the track}
 \label{sec:route_raw_qa}
@@ -46,4 +45,214 @@ The expected explanation for the poor grade field on \texttt{route\_line2} was t
 
 The corridor had passed unnoticed because the 4\% grade limit is well above the grades freight main lines are built to. The limit clipped the broken corridor's grade without drawing attention to it.
 
-This matters for Part~I in two ways. Much of the overspeed population of \cref{sec:dataset_limitations} comes from the corridor's false grades: in a pilot build, 39\% of its scenarios exceeded the limit by more than 5\,m/s, against 2\% on \texttt{route\_line5}. And the \texttt{ood\_grade} split, selected as the steepest corridor, is built on it. That split therefore tests extrapolation to false grades rather than to real steep terrain, and results on it should be read in that light. The repair, a check on the raw elevation before any smoothing, is described in \cref{sec:route_grade_fix}.
+This matters for Part~I in two ways. Much of the overspeed population of \cref{sec:dataset_limitations} comes from the corridor's false grades: in a pilot build, 39\% of its scenarios exceeded the limit by more than 5\,m/s, against 2\% on \texttt{route\_line5}. And the \texttt{ood\_grade} split, selected as the steepest corridor, is built on it. That split therefore tests extrapolation to false grades rather than to real steep terrain, and the \texttt{ood\_grade} results of \cref{ch:training} cannot be read as evidence about steep track. The repair, a check on the raw elevation before any smoothing, is described in \cref{sec:route_grade_fix}.
+
+\section{How is it known that the simulator is accurate?}
+\label{sec:critique_question}
+
+The answer given at the committee meeting was that the contribution of the thesis is the surrogate framework, not the simulator, so the simulator's accuracy is not required. That answer is defensible, and the claims of \cref{tab:train_claims} are all phrased as fidelity to the simulator for that reason (\cref{ch:refsim}). But at the time it was asserted rather than shown. Nearly every number in the thesis apart from the route profiles comes from the simulator: the corpora, the surrogate's training targets and error metrics, and the fuel figures the control demonstration will report. The question deserved a measured answer.
+
+Answering it means keeping three questions apart (\cref{tab:critique_three_questions}).
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabular}{>{\raggedright}p{2.4cm}>{\raggedright}p{5.6cm}>{\raggedright\arraybackslash}p{5.6cm}}
+        \toprule
+        & Question & Status at the end of Part~I \\
+        \midrule
+        Verification & Does the code solve the equations \cref{ch:refsim} writes down? & Checked stage by stage against plots, and the GPU port against the NumPy reference (\cref{sec:gpu_port}). Never against exact solutions. \\
+        Validation & Do those equations describe a real freight train? & Not established. Parameters are illustrative and several simplifications are known (\cref{sec:refsim_stage8}). \\
+        Claim dependence & Which claims need validation at all? & Not stated. Surrogate-against-simulator claims do not; claims about real trains and real fuel do. \\
+        \bottomrule
+    \end{tabular}
+    \caption{Three questions behind ``is the simulator accurate?''}
+    \label{tab:critique_three_questions}
+\end{table}
+
+The distinction matters because the three have different consequences. A verification failure would mean the Part~I data are not what \cref{ch:refsim} says they are, and every result of \cref{ch:training} would be suspect. A validation failure leaves the Part~I results intact as statements about the model and limits only what they can be taken to mean about trains. And claim dependence decides which of the two matters for each claim. The next two sections take verification and validation in turn.
+
+\section{Verification: the code solves its equations}
+\label{sec:critique_verification}
+
+Verification was done first, because a failure there would undercut everything else. Each force law of the simulator was run in isolation, or in the smallest assembly that exercises it, and compared with a reference that shares no code with the simulator: a closed-form solution, or a conservation law. Every case runs the production path that generated \texttt{data/v1} and \texttt{data/v2}: the GPU right-hand side under fixed-step fourth-order Runge--Kutta at $\Delta t = 0.02$\,s, in double precision. Light masses are used where the closed form allows, so that a case needs thousands of steps rather than hundreds of thousands; the closed forms hold for any parameters, and what is checked is the implementation of each law and its integration at the production step. \Cref{tab:critique_verification} lists the cases.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabular}{>{\raggedright}p{4.2cm}>{\raggedright}p{5.2cm}>{\raggedright\arraybackslash}p{4.2cm}}
+        \toprule
+        Case & Exact reference & Error at the production step \\
+        \midrule
+        Coastdown, Davis resistance only & arctangent closed form & $5\times10^{-14}$\,m/s \\
+        Constant grade & linear in time & $9\times10^{-13}$\,m/s \\
+        Balancing speed, force- and power-limited & roots of a quadratic and a cubic & $< 10^{-6}$ relative \\
+        Actuator lag & exponential & $8\times10^{-13}$ relative \\
+        Brake to a stop, $\tanh$ blend & $v_0^2/2a + \varepsilon^2\pi^2/12a$ & $10^{-6}$\,m over 100\,m \\
+        Slack oscillator, asymmetric stiffness, undamped & piecewise-harmonic period and amplitude & $6\times10^{-4}$ (period), $1.7\times10^{-3}$ (amplitude); $3\times10^{-7}$ at $\Delta t = 0.001$\,s \\
+        Damped contact & Kelvin--Voigt restitution, 0.283 & 0.3\% at $\Delta t = 0.001$\,s \\
+        Chain normal modes, $N = 10$ & $\omega_j = 2\sqrt{k/m}\,\sin(j\pi/2N)$, cosine mode shapes & leakage $10^{-11}$; phase error equal to the dispersion of the method \\
+        Momentum, couplers internal & $\sum m\dot v = \sum$ external force & $2\times10^{-15}$ relative \\
+        Energy audit, realistic 10-car consist & kinetic + grade + spring energy against work done & $10^{-7}$ of energy throughput \\
+        \bottomrule
+    \end{tabular}
+    \caption{Verification of the legacy simulator against exact references, at $\Delta t = 0.02$\,s in double precision unless stated.}
+    \label{tab:critique_verification}
+\end{table}
+
+A test suite is only evidence if it can fail. Two bugs were therefore planted deliberately. Reversing the direction of the coupler forces was caught by the oscillator test. Removing the coupler damper was caught by the energy and contact tests. Where the simulator does something physically questionable but deliberate, such as the hard sign function in the resistance, the suite pins the behaviour down with a test that describes it, rather than skipping it, so that a later change to the physics fails loudly instead of silently.
+
+The conclusion is the one that protects Part~I. The code solves the equations of \cref{ch:refsim} to the precision of the method, and \texttt{data/v2} is what that chapter says it is. The results of \cref{ch:training} stand as statements about the surrogate's fidelity to that model.
+
+\section{Integration error at contact events}
+\label{sec:critique_convergence}
+
+One part of the verification did not come out as cleanly as the rest. A convergence study on the realistic 10-car consist compared runs at four step sizes against a reference at $\Delta t = 0.000625$\,s (\cref{tab:critique_convergence}). The reference agrees with a run at half its step to $6\times10^{-4}$\,m/s.
+
+\begin{table}[htbp]
+    \centering
+    \begin{tabular}{ccccc}
+        \toprule
+        $\Delta t$ (s) & Max $|\Delta v|$ (m/s) & 99th pct. & Median & Final $|\Delta x|$ (m) \\
+        \midrule
+        0.02 (production) & $7.5\times10^{-3}$ & $1.0\times10^{-3}$ & $7.5\times10^{-7}$ & $2.5\times10^{-5}$ \\
+        0.01   & $1.1\times10^{-2}$ & $1.5\times10^{-3}$ & $1.3\times10^{-6}$ & $4.0\times10^{-5}$ \\
+        0.005  & $2.6\times10^{-3}$ & $3.7\times10^{-4}$ & $3.7\times10^{-7}$ & $1.1\times10^{-5}$ \\
+        0.0025 & $3.3\times10^{-3}$ & $4.4\times10^{-4}$ & $4.1\times10^{-7}$ & $1.2\times10^{-5}$ \\
+        \bottomrule
+    \end{tabular}
+    \caption{Velocity and position error of the legacy simulator on a realistic 10-car consist over 60\,s, against a reference at $\Delta t = 0.000625$\,s.}
+    \label{tab:critique_convergence}
+\end{table}
+
+The typical error at the production step is about $10^{-6}$\,m/s, negligible by any standard, and the position error after 60\,s is 25\,$\mu$m. The largest error, however, is $7.5\times10^{-3}$\,m/s, and it does not fall steadily as the step shrinks: halving the step from 0.02 to 0.01\,s makes it larger. The 99th percentile behaves the same way. The cause is the coupler contact. When a coupler leaves its slack, its damper engages discontinuously and the force jumps by $c\dot\delta$, so the instant of impact is resolved only to within a step. Small shifts in timing then change which impact produces the largest error.
+
+This reinterprets one measurement of Part~I. The step-size sweep of \cref{tab:gpu_step_size} chose $\Delta t = 0.02$\,s on a maximum velocity error of 0.0063\,m/s, read as the method converging. It is better read as a bound set by contact events: integration error at the production step is negligible away from impacts and bounded at about $10^{-2}$\,m/s at them, but it is not cleanly convergent there. That is a property of the discontinuous contact model, not a defect of the integrator, and it is one more reason to look at the coupler model itself.
+
+\section{Validation: do the equations describe a freight train?}
+\label{sec:critique_validation}
+
+Verification asks whether the code does what the equations say. Validation asks whether the equations are right. A review of the simulator's physics against the longitudinal dynamics literature found nine places where the legacy model is verified but physically questionable (\cref{tab:critique_findings}). Each is pinned by a test describing the current behaviour, so the next part of the thesis can change them deliberately.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabular}{>{\raggedright}p{0.6cm}>{\raggedright}p{8.4cm}>{\raggedright\arraybackslash}p{2.0cm}}
+        \toprule
+        & Finding & Severity \\
+        \midrule
+        F1 & Brake force of 250\,kN on every vehicle regardless of load, with no adhesion limit; an empty car can decelerate at about 0.85\,$g$. & High \\
+        F2 & No brake-pipe propagation: every car brakes at the same instant. & High \\
+        F3 & Coupler is a Kelvin--Voigt spring-damper with a deadband and no hysteresis; on unloading it pushes while still stretched. & High \\
+        F4 & Davis $A$ and $B$ coefficients two to four times below Davis's values for a loaded four-axle car. & Medium \\
+        F5 & No tractive-effort curve and no dynamic brake; locomotives of 130\,t and 300\,kN, with 3.5\,MW for every type. & Medium \\
+        F6 & Resistance uses a hard sign function, so a stopped vehicle chatters about $v = 0$ and nothing holds a train on a grade. & Low--medium \\
+        F7 & Grade force computed as $mg\sin(\sin\theta)$. & Negligible \\
+        F8 & Speed limits are not enforced by the scenario generator. & Scenario realism \\
+        F9 & Grade applied at a point per vehicle; no allowance for rotating inertia. & Low \\
+        \bottomrule
+    \end{tabular}
+    \caption{Physics findings on the legacy simulator.}
+    \label{tab:critique_findings}
+\end{table}
+
+\subsection{Braking: magnitude and timing}
+
+The two braking findings are rated highest because they bear directly on the quantity the control problem constrains. \textbf{F1} is a matter of magnitude. A conventional freight car's brake force is fixed by its brake rigging and does not change with load, so a load-independent force is the right form. But 250\,kN is several times the force a loaded car's brakes produce, and with no adhesion limit the model lets an empty car decelerate at a rate that would lock its wheels.
+
+\textbf{F2} is a matter of timing, and it is the more serious of the two. On a real train the brake command travels down the brake pipe as a pressure wave, so the front of the train brakes seconds before the rear, and the rear runs in against the front. That run-in is the main source of compressive in-train force during braking. In the legacy model every car brakes at once. On a consist of identical cars every car then decelerates at the same rate, and the run-in force is exactly zero. The corpora therefore cannot contain braking run-in on uniform consists, and a surrogate trained on them cannot have learned it. \Cref{ch:v3_sim} measures what is missing: with a brake pipe calibrated to measured data, the same train sees a peak compressive force of several hundred kilonewtons.
+
+\subsection{The coupler}
+
+\textbf{F3} concerns the element where, as \cref{ch:intro} noted, most of the nonlinearity and most of the computational cost of longitudinal dynamics sits. Real draft gear dissipates energy mainly through friction, and its force depends on whether it is being compressed or released: it follows a higher curve on loading and a lower one on unloading, a hysteresis loop. The legacy coupler is a spring and a damper. On unloading its damper term reverses sign while the coupler is still stretched, so it pushes the vehicles apart, by about a quarter of the preceding peak pull in a measured case. Draft gear is also where published simulators disagree most with one another \cite{Wu2018BenchmarkResults}, so it is the first place an independent comparison would test.
+
+F3 also matters for the surrogate. A friction draft gear has memory: its force depends on its loading history, not only on its current stretch and rate. The coupler force the GNS-1 edge features compute from stretch and rate (\cref{sec:arch_network}) would no longer be a function of those inputs alone, and the coupler would become a harder, history-dependent learning problem.
+
+\subsection{Resistance, traction and the rest}
+
+\textbf{F4}: the legacy Davis coefficients for a 100\,t four-axle car are $A = 600$\,N and $B = 12$\,N\,s/m, against about 1.1\,kN and 49\,N\,s/m from Davis's original formulae for the same car. % TODO: cite the Davis source (Handbook ch. on LTD, or Hay).
+The quadratic term $C$ is plausible. Running resistance is therefore understated at low and moderate speed, which flatters coasting and understates energy.
+
+\textbf{F5}: traction is a single force limit and a single power limit, the same 3.5\,MW for every locomotive type, with no notch structure and no dynamic brake. The SD70-class locomotive is modelled at 130\,t and 300\,kN, where the real unit weighs about 180\,t and produces well over 600\,kN at low speed. Without a dynamic brake, the corpus regime named dynamic-brake descent (\cref{sec:dataset_regimes}) modulates the air brake as a stand-in.
+
+\textbf{F6}: resistance uses $(A + B|v| + Cv^2)\,\mathrm{sgn}(v)$ with no static friction, so a stopped vehicle chatters about zero speed instead of resting, and nothing holds a stopped train on a grade. This, together with standing starts on graded track, is behind the 22\% of scenarios in \texttt{data/v2} that roll backwards faster than 1\,m/s (\cref{sec:dataset_limitations}).
+
+\textbf{F7}: the grade force applies a sine to a field that already stores $\sin\theta$. The relative error is $\sin^2\theta/6$, at most $2.7\times10^{-4}$ at the 4\% limit, and \cref{sec:gpu_port} kept it deliberately so that the GPU port matched its reference. It is negligible but trivially fixed.
+
+\textbf{F8}: nothing in the scenario generator respects the speed limit, which is the subject of the next section. \textbf{F9}: grade is evaluated at each vehicle's centre rather than averaged over its length, and the rotating mass of wheelsets and motors, which adds a few percent to a wagon's effective inertia and more to a locomotive's, is ignored.
+
+\subsection{What is not known}
+
+The findings above are the questionable features a careful reading finds. They are not a validation. The legacy simulator has never been compared with another simulator or with measurements, so there is no bound on how far its in-train forces are from those of a real train, or from those of the established tools. Closing that gap needs an external reference, which is the subject of the plan in \cref{sec:critique_plan}.
+
+\section{The data built on the simulator}
+\label{sec:critique_data}
+
+Some weaknesses lie in the scenarios rather than the physics. \Cref{sec:dataset_limitations} recorded them when the corpora were built. Seen together with the findings above, they look different.
+
+\textbf{Overspeed has a cause in the driving commands.} In \texttt{data/v2}, 17.8\% of scenarios exceed the speed limit by more than 5\,m/s. The false grades of \texttt{route\_line2} explain the extreme tail, but not the bulk: compared on the same four corridors, the share is unchanged by the corrected grade field (\cref{sec:route_grade_fix}). The cause is that driving commands are drawn from the regime library independently of the terrain they run on. A coasting regime on a long 1\% descent accelerates without limit, which is correct physics applied to a command sequence no driver would give. The surrogate has spent part of its training on such runs.
+
+\textbf{The splits are thin where it matters.} With five corridors, the corridor-level claims rest on one held-out corridor each (\cref{sec:train_results}), one of which is the broken \texttt{route\_line2}. The control-evaluation split is empty, so the corpus cannot support the control demonstration at all.
+
+\textbf{The corpus does not contain some of what a controller will do.} Because of F2, there is no braking run-in on uniform consists. Because of F5, there is no dynamic braking. Because of F8, there is no speed-limited driving. A surrogate's accuracy on these manoeuvres cannot be inferred from its accuracy on \texttt{data/v2}.
+
+\section{The surrogate's own open problems}
+\label{sec:critique_surrogate}
+
+The experiment of \cref{ch:training} has weaknesses of its own, independent of the simulator.
+
+\begin{itemize}
+    \item \textbf{Coupler shape does not extrapolate.} Stretch error on long consists after 200 steps is only 1.2 times better than holding the state (\cref{sec:train_shape}). The control problem's safety constraint is on coupler force, on long consists, over long horizons, which is exactly this corner.
+    \item \textbf{Coupler force itself is not evaluated.} The model's errors are reported on stretch, from which force follows through the coupler law. With a stateful draft gear that link weakens, and force should be scored directly.
+    \item \textbf{Training is not converged.} Doubling training from 3,000 to 6,000 updates nearly halved the velocity error after 200 steps, from 0.12 to 0.065\,m/s on 	exttt{val} (\cref{tab:train_push_sweep,tab:train_rollout}), so the reported accuracy is a point on a curve that is still falling.
+    \item \textbf{The design sweeps used one seed.} Noise size and the number of pushforward steps were chosen on single-seed sweeps, where differences under about 20\% are not meaningful (\cref{tab:train_noise_sweep,tab:train_push_sweep}).
+    \item \textbf{Two promised baselines were not run.} The residual MLP and the transformer ablation of \cref{ch:intro} have no results in Part~I.
+    \item \textbf{The measured speedup is modest.} One network evaluation replaces fifty, but in wall clock the surrogate is only 1.2 to 3.0 times faster than the GPU integrator as implemented (\cref{tab:train_cost}).
+\end{itemize}
+
+\section{The Part~I claims, scored}
+\label{sec:critique_claims}
+
+With the foundations examined, each claim of \cref{tab:train_claims} can be marked (\cref{tab:critique_claims}). A claim \emph{stands} if what it rests on survived this chapter; it is \emph{qualified} if it survives only in a narrower form; and it is \emph{withdrawn} if its evidence does not support it.
+
+\begin{table}[htbp]
+    \centering
+    \small
+    \begin{tabular}{>{\raggedright}p{0.6cm}>{\raggedright}p{4.0cm}>{\raggedright}p{1.9cm}>{\raggedright\arraybackslash}p{6.6cm}}
+        \toprule
+        & Claim & Status & Reason \\
+        \midrule
+        C1 & The network learns the step. & Stands & Verification confirms the data are the stated model (\cref{sec:critique_verification}). As a statement about the legacy simulator, not about trains. \\
+        C2 & Rollouts stay accurate over 200 steps. & Qualified & True on the corpus as built, but the corpus lacks run-in braking, dynamic braking and speed-limited driving (\cref{sec:critique_data}); 50\,s is also short of a control horizon. \\
+        C3 & Velocity extrapolates to longer consists. & Qualified & Holds for the legacy coupler. With a history-dependent draft gear (F3) the learning problem is harder and the result must be shown again. \\
+        C4 & Coupler shape does not extrapolate. & Stands & A negative result; nothing in this chapter weakens it, and F3 makes it more pressing. \\
+        C5 & Generalizes to an unseen corridor. & Qualified & One held-out corridor, with grades like the training corridors. \\
+        C6 & Extrapolates to steeper terrain. & Withdrawn & \texttt{ood\_grade} is built on false grades (\cref{sec:route_raw_qa}); it shows extrapolation to wrong terrain, not steep terrain. \\
+        C7 & One evaluation replaces fifty. & Qualified & Structurally true; measured wall clock is 1.2--3.0$\times$. Holds only for a 0.02\,s integrator step. \\
+        \bottomrule
+    \end{tabular}
+    \caption{The claims of \cref{tab:train_claims}, after the critique.}
+    \label{tab:critique_claims}
+\end{table}
+
+The most important result in the table is that no claim falls because of a verification failure. The simulator does what \cref{ch:refsim} says, so the Part~I comparisons are sound. What falls or narrows does so because of what the simulator, the routes and the scenarios leave out.
+
+\section{The plan}
+\label{sec:critique_plan}
+
+The critique sets the work of the rest of the thesis. Four tiers of evidence were planned, in increasing order of difficulty.
+
+\begin{enumerate}
+    \item \textbf{Verification against exact solutions.} Done, in \cref{sec:critique_verification}.
+    \item \textbf{Sourced parameters and corrected physics.} Replace illustrative values with cited ones and fix F1--F9. All changes are made before the data are regenerated, so the corpus is rebuilt once rather than once per fix.
+    \item \textbf{A code-to-code benchmark.} The international benchmark of longitudinal train dynamics simulators \cite{Spiryagin2017BenchmarkQuestions} specifies four freight trains, a 50\,km track and the driving commands, and its companion paper \cite{Wu2018BenchmarkResults} reports the results of nine established simulators. Reproducing its cases and landing within the spread of those simulators is the strongest external reference available. The benchmark tests couplers, traction, dynamic braking, resistance and grade, the in-train force problem, and deliberately excludes air brakes, so F1 and F2 need a separate basis in measured brake data.
+    \item \textbf{Measured field data.} Public in-train force measurements are scarce. Unless they become available this tier is a stated limitation.
+\end{enumerate}
+
+Beside the tiers sits one experiment that answers the committee's question in a different way. If the same surrogate architecture is trained on data from the legacy simulator and on data from the corrected one, and its error against its own generator barely changes, then the framework's accuracy does not depend on the accuracy of the simulator, and that becomes a measured result rather than an assertion. If its error does change, the corrected physics has made the learning problem harder, and that is worth knowing too. \Cref{ch:results2} reports it.
+
+The rest of Part~II carries out tiers 2 and 3. \Cref{ch:benchmark} builds a friction draft gear, notch traction and a dynamic brake, and compares the simulator with the nine published ones. \Cref{ch:v3_sim} builds an air brake calibrated to measured data, fixes the remaining findings, and assembles the corrected simulator. Part~III then rebuilds the corridors and the corpus on it, revises the surrogate where the new physics requires, and repeats the experiment of \cref{ch:training}.
+
+\section{Chapter summary}
+
+The first experiment rests on a simulator, on routes, on scenarios and on its own design. The simulator was verified against exact solutions, conservation laws and planted bugs, and it solves its equations to the precision of the method, with one caveat: integration error at coupler impacts is bounded but not cleanly convergent. Every comparison in \cref{ch:training} is therefore sound as a statement about the model. Whether the model describes a freight train is a separate question, and the answer at the end of Part~I is that it has not been shown. Nine physics findings were identified, the most serious being that every car brakes at once, that the coupler has no hysteresis, and that the brake force is several times too large. One corridor was found to have elevation that does not follow the track, which withdraws the steep-terrain claim, and the scenario generator ignores the speed limit. Of the seven Part~I claims, two stand, four are qualified and one is withdrawn. The next two chapters correct the simulator and compare it with the established tools.
