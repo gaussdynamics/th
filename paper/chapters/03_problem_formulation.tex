@@ -277,7 +277,7 @@ A penalty term is the right tool when a model is free to violate a relation and 
 \textbf{On the safety margin.} The coupler-force margin that the control routine relies on (\cref{sec:risk_metrics}) is treated as an evaluation target rather than as a separate distributional head.
 This follows the narrower role assigned to uncertainty in \cref{sec:uncertainty_sources}: what the controller needs is a trustworthy estimate of the peak force a plan will produce, and that is a question about the accuracy of the predicted force channel, not about calibrating a distribution over it.
 
-\textbf{Remark.} \Cref{sec:arch_objective} instantiates these terms for the graph neural network used in this thesis, and the training chapter adds the perturbation scheme that makes a single-step model stable when iterated over long horizons.
+\textbf{Remark.} \Cref{sec:arch_objective} instantiates these terms for the graph neural network used in this thesis, and \cref{ch:training} adds the perturbation scheme that makes a single-step model stable when iterated over long horizons.
 
 \section{Conceptual pipeline}
 
