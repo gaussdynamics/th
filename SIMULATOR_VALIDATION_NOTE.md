@@ -931,3 +931,43 @@ works cited from memory: check edition and chapter when requesting them.
     against a legacy model trained on thousands. Judge on the regenerated
     corpus; if it persists, suspects are the impacts above the 0.25 s
     Nyquist (2026-10-08 entry) and the stateless-ablation comparison.
+- **2026-10-16 (output spacing for the regeneration)** — The
+  2026-10-08 entry left open whether lighter v3 power puts in-train content
+  above the 0.25 s Nyquist. The v2 check (`SURROGATE_FORMULATION_NOTE.md`,
+  "A negative result worth recording") does not carry over: friction gear,
+  end stops and lighter power are all new. Re-measured on the same 64-scenario
+  seed-0 smoke corpus, built at 0.01 s output and decimated
+  (`scripts/check_output_rate.py`), so every difference is sampling. Built on
+  CPU (M5 Pro, ~10 min), placeholder brake forces.
+  - **The 4001-sample cap.** `RandomizationConfig.max_time_samples` silently
+    cut every run to its first 40 s at 0.01 s output (1000 s at 0.25 s, 200 s
+    at 0.05 s). `build_dataset.py --max-time-samples` now exposes it; any
+    finer output spacing needs it raised.
+  - Results (63 scenarios with coupler force, 20 with a peak above 500 kN):
+
+    | | 0.05 s | 0.10 s | 0.25 s |
+    |---|---|---|---|
+    | train peak missed, runs > 500 kN, worst | 0.07 % (0.4 kN) | 0.32 % | 1.12 % (6.6 kN) |
+    | train peak missed, all runs, worst | 0.51 % | 7.8 % | 23 % (a 74 kN run) |
+    | yield (1.8 MN) flips | 0 | 0 | 0 |
+    | own peak missed, couplers > 500 kN, worst | 1.0 % | 4.5 % | 22 % (178 kN) |
+    | coupler-force power above Nyquist, median / worst | 0.01 / 0.17 % | 0.04 / 0.78 % | 0.10 / 2.0 % |
+    | in-train velocity power above Nyquist, median / worst | 0.03 / 0.27 % | 0.20 / 2.2 % | 0.87 / 8.9 % |
+    | disk, compressed, median 324 s run | 9.0 MB | 4.6 MB | 1.85 MB |
+    | per 100k scenarios | 904 GB | 457 GB | 185 GB |
+
+  - **Where the content above Nyquist is.** Large relative misses at 0.25 s
+    are on low-force runs (coast and notch-up at 25-80 kN). The 178 kN
+    per-coupler miss and all 27 end-stop contacts (3 shorter than 0.25 s)
+    are one run: a 132-car emergency application, slack run-in, peak 2.10 MN.
+    The 0.25 s grid catches that train's peak to 0.05 %; it misses the impact
+    peaks on couplers that are not the train's maximum.
+  - **Recommendation: keep 0.25 s.** The quantities the control chapter and the
+    knuckle rule use (the train's peak |F_cpl|) are captured to about 1 % where
+    forces are high, and 5x the disk (900 GB at 100k) is not affordable. The
+    stored state is complete, so the 0.25 s step is still a well-defined
+    map; the cost is that impacts are hard to learn, not that they are absent.
+  - Bears on the 2026-10-12 suspicion: end-stop impacts occur in 1 of 64
+    smoke runs (emergency only), so they explain the closing-rate outliers but
+    are unlikely to be why the 45-scenario v3 smoke model learned poorly.
+    Report surrogate error on emergency runs separately.

@@ -465,6 +465,10 @@ def main() -> None:
                     help="integration step (s); default per --physics "
                          "(0.02 legacy, 0.01 with the draft gear)")
     ap.add_argument("--dt-out", type=float, default=0.25, help="output sample spacing (s)")
+    ap.add_argument("--max-time-samples", type=int, default=4001,
+                    help="cap on stored samples per scenario; runs longer than "
+                         "this many samples are cut short (4001 is 1000 s at the "
+                         "default --dt-out, 40 s at 0.01)")
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--dtype", default="float64", choices=("float32", "float64"),
                     help="integration precision; float64 costs ~20 %% on this "
@@ -528,6 +532,7 @@ def main() -> None:
     cfg = RandomizationConfig(
         duration_s_range=tuple(args.duration_range),
         dt_s=args.dt_out,
+        max_time_samples=args.max_time_samples,
         k_curv_scale=args.k_curv_scale,
         curvature_model=args.curvature_model,
         v0_limit_over_train=physics.speed_planner,
