@@ -1,0 +1,230 @@
+% Data request proposal for rail organizations.
+% Generic by design: fill in the four fields below, and optionally the
+% recipient, before sending. Build with:  latexmk -pdf data_request_proposal.tex
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[hidelinks]{hyperref}
+
+% ---------------------------------------------------------------------------
+% Fill these in before sending.
+% ---------------------------------------------------------------------------
+\newcommand{\authorname}{George James}
+\newcommand{\authoraffil}{School of Engineering, Colorado State University Pueblo}
+\newcommand{\contactemail}{\textcolor{red}{[your email]}}
+\newcommand{\contactphone}{\textcolor{red}{[your phone]}}
+\newcommand{\advisor}{\textcolor{red}{[advisor name and title]}}
+\newcommand{\recipient}{your organization}   % e.g. "Example Railroad"
+\newcommand{\usefulby}{\textcolor{red}{[date]}}
+% ---------------------------------------------------------------------------
+
+\setlist{itemsep=2pt, topsep=4pt}
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\setlength{\parskip}{4pt}
+\setlength{\parindent}{0pt}
+
+\title{\vspace{-1.5em}\textbf{Request for Freight Train Operating Data}\\[4pt]
+  \large Validating a Longitudinal Train Dynamics Model for Fuel-Efficient Train Control}
+\author{\authorname\\ \small\authoraffil}
+\date{\today}
+
+\begin{document}
+\maketitle
+\vspace{-1em}
+
+\section*{Summary}
+
+I am a graduate student building a fast, learned model of how freight trains
+move: their speed, the forces between cars, and the energy used. The model is
+meant to support fuel-efficient driving advice and planning. It is trained on
+a physics-based simulator, and the most important open question in my work is
+how closely that simulator matches real trains.
+
+I am asking \recipient{} for a modest amount of recorded operating data
+(locomotive event-recorder downloads and the matching train makeup) from a
+handful of ordinary freight trips. I would use it only to check and calibrate
+the model. I will handle it under whatever confidentiality terms you require,
+and I will share the results with you. Section~\ref{sec:data} lists exactly
+which data would help, in priority order. Even the first tier alone would be
+valuable.
+
+\section*{The research}
+
+My master's thesis, \emph{A Graph Neural Surrogate for Longitudinal Train
+Dynamics: Toward Fuel-Optimal Control of Freight Consists}, has three parts.
+\begin{enumerate}
+  \item \textbf{A reference simulator.} A longitudinal train dynamics model
+    that treats every car as its own mass, joined by couplers with slack and
+    draft gear. It includes traction and dynamic braking, rolling and curving
+    resistance, and grade, on real route profiles built from public elevation
+    and track data. It runs on a GPU, so thousands of trips can be simulated.
+  \item \textbf{A learned surrogate.} A graph neural network that represents
+    the train as a chain of cars and learns to reproduce the simulator. It
+    is far faster than the simulator and handles any train length.
+  \item \textbf{A control demonstration.} Using the surrogate to plan throttle
+    and dynamic brake settings that reduce fuel use while respecting speed
+    limits and coupler-force limits.
+\end{enumerate}
+
+\subsection*{Why real data matters}
+
+Nearly every result in the thesis comes from the simulator. I have verified
+that the code solves its equations correctly, and I am comparing it against
+an international benchmark of published train dynamics simulators. Neither
+shows that the equations describe a real train with real parameters. Measured
+data is the only way to establish that, and it is what would let the fuel and
+coupler-force results be stated with confidence rather than as results
+``within the model.''
+
+\section*{What data would help}
+\label{sec:data}
+
+The tiers are in priority order. Tier~1 by itself is enough to test the model
+against reality. Anything partial is still useful, and I can work with
+whatever format your systems export.
+
+\subsection*{Tier 1: one trip, recorded}
+
+For each trip, the locomotive event-recorder download (lead locomotive, and
+remote units if the train runs distributed power) together with its consist
+list.
+
+\smallskip
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.33\linewidth} l L@{}}
+\toprule
+\textbf{Parameter} & \textbf{Units} & \textbf{What it is used for} \\
+\midrule
+Time stamp & s & Aligning every channel \\
+Speed & mph or km/h & The main quantity the model is checked against \\
+Position (GPS or milepost) & lat/lon or mi & Locating the train on the grade and curve profile \\
+Throttle notch & 0--8 & The driver's input; the model is run on exactly these commands \\
+Dynamic brake setting & notch or \% & Same \\
+Brake pipe pressure & psi & When and how hard the air brakes were applied \\
+Brake cylinder pressure, if recorded & psi & Brake force actually developed \\
+Independent (locomotive) brake & psi & Separating locomotive and train braking \\
+Traction motor current or tractive effort, if recorded & A or lbf & Checking the locomotive force model directly \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\textbf{Consist list for the same trip}, front to rear:
+
+\smallskip
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.40\linewidth} L@{}}
+\toprule
+\textbf{Per vehicle} & \textbf{What it is used for} \\
+\midrule
+Position in train & The model is built car by car, in order \\
+Locomotive model, or car type (e.g.\ covered hopper, tank) & Resistance, length and coupler type \\
+Gross weight, or tare and load & Mass, the most important single parameter \\
+Length over couplers & Spacing of masses along the train \\
+Number of axles & Axle load, which enters rolling resistance \\
+Distributed-power unit positions & Where remote locomotives sit \\
+\bottomrule
+\end{tabularx}
+
+\medskip
+\textbf{Sampling rate.} Whatever the recorder stores. One sample per second
+is useful; faster is better.
+
+\textbf{How much.} Five to twenty trips would be a strong data set. Variety
+matters more than volume: loaded and empty trains, steep and level
+territory, and if possible a trip or two with distributed power.
+
+\subsection*{Tier 2: the route}
+
+If the trips cover territory I cannot reconstruct from public data:
+\begin{itemize}
+  \item Track profile or track charts: grade (\%) and curvature (degrees or
+    radius) by milepost.
+  \item Timetable or posted speed restrictions over the same miles.
+  \item A milepost-to-coordinate reference, if position is recorded only by
+    milepost.
+\end{itemize}
+
+\subsection*{Tier 3: any of these, if they exist}
+
+These are rarer, so I list them only in case they are on hand.
+\begin{itemize}
+  \item \textbf{End-of-train device data}: rear brake pipe pressure and
+    motion, which show how a brake application travels along the train.
+  \item \textbf{Fuel or energy}: fuel consumed per trip, or fuel rate from
+    the locomotive. This is the quantity the control chapter tries to reduce.
+  \item \textbf{Instrumented-car measurements}: coupler or drawbar forces
+    from a load-cell car, at any position in a train.
+  \item \textbf{Component data}: draft gear test curves, tractive-effort and
+    dynamic-brake curves for your locomotive models, or car net braking ratios.
+  \item \textbf{Resistance tests}: coast-down or other train resistance
+    measurements.
+\end{itemize}
+
+\section*{How the data would be used}
+
+\begin{itemize}
+  \item \textbf{Validation.} Run the simulator on the recorded notch and brake
+    commands over the recorded route, and compare its predicted speed with
+    the measured speed along the whole trip.
+  \item \textbf{Calibration.} Estimate the parameters that public sources give
+    only roughly: train resistance, braking force, and locomotive force at
+    each notch. Filtering methods (Kalman-type estimators) give these with
+    statistical uncertainty, and test whether the model's errors behave like
+    noise or show a systematic bias.
+  \item \textbf{Reporting.} The thesis would report aggregate results only:
+    error statistics and fitted parameters. No raw records or identifying
+    details would be published.
+\end{itemize}
+
+\section*{Confidentiality and handling}
+
+I understand operating data is sensitive. I will:
+\begin{itemize}
+  \item use the data only for this research, and not share or redistribute
+    it;
+  \item store it on encrypted storage that only I can access;
+  \item accept data with train IDs, crew information, dates and car numbers
+    removed. Locations can also be withheld if the grade and curvature
+    profile along the trip is provided instead;
+  \item work under a non-disclosure or data use agreement, arranged through
+    the university if you prefer;
+  \item give you the chance to review any passage that describes your data
+    before the thesis is submitted, and acknowledge \recipient{} by name or
+    not at all, as you choose;
+  \item delete the data at the end of the project on request.
+\end{itemize}
+
+\section*{What you would receive}
+
+\begin{itemize}
+  \item A short report on how well the model reproduced your trains, with the
+    calibrated parameters (resistance, braking and locomotive force
+    estimates).
+  \item A copy of the finished thesis.
+  \item A briefing or call to walk through the results, if useful.
+\end{itemize}
+
+\section*{Timing and contact}
+
+Data received by \usefulby{} can be included in the thesis. A single trip
+with its consist list is enough to start, and I am happy to begin with a
+small sample before anything larger is considered.
+
+\medskip
+\begin{tabular}{@{}l l@{}}
+\authorname & \authoraffil \\
+Email & \contactemail \\
+Phone & \contactphone \\
+Thesis advisor & \advisor \\
+\end{tabular}
+
+\medskip
+Thank you for considering this request.
+
+\end{document}
