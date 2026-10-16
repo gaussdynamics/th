@@ -150,10 +150,18 @@ def main() -> int:
     ap.add_argument("--sample", type=int, default=None,
                     help="evenly spaced sample of the index (deterministic)")
     ap.add_argument("--only", nargs="*", default=None, help="explicit corridor ids")
+    ap.add_argument("--only-file", type=Path, default=None,
+                    help="JSON list of corridor ids, or {'all': [...]}; too many "
+                         "ids for a command line")
+    ap.add_argument("--resume", action="store_true",
+                    help="skip corridors whose .npz already exists under --out")
     args = ap.parse_args()
 
     cdir = Path(args.corridors)
     index = {r["corridor_id"]: r for r in csv.DictReader(open(cdir / "index.csv"))}
+    if args.only_file:
+        blob = json.loads(args.only_file.read_text())
+        args.only = blob["all"] if isinstance(blob, dict) else list(blob)
     if args.only:
         ids = list(args.only)
     elif args.pilot:
@@ -179,6 +187,9 @@ def main() -> int:
     records, t_all = [], time.time()
     n_pts_total = 0
     for k, cid in enumerate(ids, 1):
+        if args.resume and (out / "routes" / ("%s.npz" % cid)).exists():
+            print("[%3d/%d] %-34s skip (already built)" % (k, len(ids), cid))
+            continue
         t0 = time.time()
         feat = json.loads((cdir / "corridors" / ("%s.geojson" % cid)).read_text())
 
@@ -247,6 +258,7 @@ def main() -> int:
     ok = [r for r in records if r["status"] == "ok"]
     rejected = [r for r in records if r["status"] != "ok"]
     report = {
+        "resumed": bool(args.resume),
         "n_corridors": len(records), "n_ok": len(ok), "n_rejected": len(rejected),
         "rejected_ids": [r["corridor_id"] for r in rejected],
         "ds_m": args.ds_m, "smooth_window_m": args.smooth_window_m,
