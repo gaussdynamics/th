@@ -21,11 +21,14 @@ section 4.2) for studies where the air brake is not itself the object:
 * **Control valve.** The cylinder follows the local pipe reduction upwards
   only: a fast inshot to a fixed level, then a choke-limited service rate,
   never faster than the pipe allows. Holding the pipe laps the valve.
-* **Brake force.** Conventional North American cars without empty/load
-  equipment carry a fixed shoe force set by the *design* gross weight, so an
-  empty car gets the same retarding force as a loaded one, capped at
-  wheel-rail adhesion on its actual weight. (F1 described the defect as load
-  independence; the defect is the 250 kN magnitude and the missing cap.)
+* **Brake force.** A conventional North American car carries a fixed shoe
+  force set by its loaded net braking ratio on the gross rail load. AAR
+  S-401 also limits the empty braking ratio to 38 % of light weight, which a
+  light car meets only with empty/load equipment, so the shoe force is
+  capped at that limit on the car's actual weight (an upper bound: a real
+  device proportions in a step). The retarding force is capped at wheel-rail
+  adhesion. (F1 described the defect as load independence; the defect is
+  the 250 kN magnitude and the missing caps.)
 * **Direct release.** A freight control valve cannot release partially: any
   release is a full release, and the brake can be re-applied only once the
   brake pipe has recharged. The cylinder then exhausts with its own time
@@ -34,8 +37,8 @@ section 4.2) for studies where the air brake is not itself the object:
 Distances are along the brake pipe, which can be much longer than the
 train (Spiryagin et al. 2017, p. 214; Wu et al. 2017 have 13.5 m of pipe per
 wagon). The sources measure in pipe metres, so ``pipe_length_factor`` (pipe
-metres per metre of train) converts vehicle positions. Its default of 1.0 is
-an assumption without a source.
+metres per metre of train) converts vehicle positions. Its default, 1.081,
+is the brake pipe to train length ratio of the NTSB's TOES consists.
 
 Pressures are carried as fractions of a full-service application, which
 maps linearly onto the driver's brake fraction and onto the brake force.
@@ -55,10 +58,14 @@ The valve type is not named. The release speed is measured by Wu et al.
 (2017) on a 150-wagon test rig, also in pipe metres; the exhaust time
 constant and recharge come from Wei et al. (Chinese 120 valve).
 
-**Force parameters** (net braking ratio, shoe friction, adhesion, design
-gross weight) are still placeholders: the sources report cylinder pressures,
-not forces. :func:`require_sourced` names them and refuses to pass until they
-have citations in ``AirBrakeParams.sources``.
+**Force parameters** come from public documents that quote AAR S-401 (the
+standard itself was not obtained): the NTSB's Casselton braking study for the
+net braking ratio and pipe length, Snyder et al. (2000) for the gross rail
+load and the empty limit, and Sun et al. (2024) for shoe friction and
+wet-rail adhesion. NBR is the *actual* normal shoe force over weight on rail
+(measured at the shoe), so rigging losses are inside it and are not applied
+again. :func:`require_sourced` refuses any physical field without a citation
+in ``AirBrakeParams.sources``.
 """
 
 from __future__ import annotations
@@ -93,6 +100,19 @@ WU2017 = ("Wu, Cole, Spiryagin, Wang, Ma & Wei (2017), Railway air brake model a
 #: 001 to 150) over 149 x 13.5 m give 176 m/s; the stated figure is used.
 WU2017_RELEASE_MPS = 162.52
 
+# -- brake force: public sources quoting AAR S-401 ----------------------------------
+
+NTSB2015 = ("NTSB (2015), Casselton, ND Train Braking Simulation Study (accident "
+            "docket), TOES simulations")
+SNYDER2000 = ("Snyder, Lonsdale, McConnell & Rees (2000), Testing for current freight "
+              "car braking ratios on Union Pacific Railroad, 92nd Air Brake Assoc. Conf.")
+SUN2024 = ("Sun, Nafis Ahmad, Persson, Spiryagin, Bernal Arango & Cole (2024), Freight "
+           "container wagon modelling and simulation analysis due to braking, "
+           "VSD 62(12):3255-3275")
+
+#: 286,000 lb gross rail load [kg].
+GRL_286K_KG = 286_000 * 0.45359237
+
 # -- calibration: Wei et al. (2017) ------------------------------------------------
 
 WEI2017 = ("Wei, Hu, Wu, Zhao, Zhang & Zhang (2017), An air brake model for "
@@ -124,9 +144,9 @@ class AirBrakeParams:
     release_propagation_mps: float = WU2017_RELEASE_MPS
     #: Brake pipe length per metre of train [-]: converts the distance between
     #: vehicle centres into pipe distance, in which the speeds and the
-    #: diffusivity are measured. ASSUMPTION: 1.0 (pipe as long as the train);
-    #: real pipes are longer, which slows the front and the pipe lag.
-    pipe_length_factor: float = 1.0
+    #: diffusivity are measured. NTSB (2015) Table 4: 1.081 for all four
+    #: consist lengths (tank car trains, 5 locomotives, 2 buffer cars).
+    pipe_length_factor: float = 1.081
     #: Brake pipe diffusivity of the pressure reduction [m^2/s]. Sets the pipe
     #: lag: the slowest mode of a pipe of length L is ``4 L^2 / (pi^2 D)``,
     #: 65 s for 2000 m.
@@ -143,17 +163,24 @@ class AirBrakeParams:
     service_rate_per_s: float = 0.0430
     #: Cylinder exhaust time constant on release [s]; no trend along the train.
     tau_release_s: float = float(np.mean(WEI2017_TAU_RELEASE_S))
-    #: Design gross weight of a freight car: brake rigging is sized for it,
-    #: so it sets the shoe force whatever the car carries [kg].
-    #: PLACEHOLDER: 286,000 lb, the common North American rating.
-    car_design_gross_kg: float = 129_700.0
-    #: Net braking ratio at full service: total shoe force over design gross
-    #: weight. PLACEHOLDER: needs the AAR requirement.
+    #: Gross rail load of a freight car: the loaded NBR is defined on it, so
+    #: it sets the shoe force whatever the car carries [kg]. 286,000 lb, the
+    #: rating of the aluminium hoppers in Snyder et al. (2000), Table 2.
+    car_design_gross_kg: float = GRL_286K_KG
+    #: Loaded net braking ratio at full service from 90 psi: actual normal
+    #: shoe force over gross rail load. NTSB (2015) section 2.2.4.1: 10 %
+    #: nominal fleet value; S-401 requires 11-14 % for cars built after 2004
+    #: (8.5-13 % before).
     net_braking_ratio: float = 0.10
-    #: Brake shoe friction coefficient (composite shoe). PLACEHOLDER.
+    #: Maximum empty braking ratio: shoe force over light weight (S-401).
+    max_empty_braking_ratio: float = 0.38
+    #: Brake shoe friction coefficient (high-friction composition shoe).
+    #: Sun et al. (2024) give the AAR loaded form 0.32 - 0.002 V/3.6 (V in
+    #: km/h); 0.30 is its mean over 0-80 km/h (0.298). Held constant.
     shoe_friction: float = 0.30
-    #: Wheel-rail adhesion available to braking. PLACEHOLDER.
-    adhesion: float = 0.15
+    #: Wheel-rail adhesion available to braking: wet rail, ~0.25 (Sun et al.
+    #: 2024, Fig. 5, after Spiryagin, Polach & Cole 2013); dry is ~0.36.
+    adhesion: float = 0.25
     #: Model the freight control valve's direct release.
     direct_release: bool = True
     #: Brake pipe recharge time before a released brake can re-apply [s].
@@ -183,6 +210,12 @@ class AirBrakeParams:
         "service_rate_per_s": _FIT,
         "tau_release_s": f"{WEI2017}, Fig. 5",
         "recharge_s": f"{WEI2017}, section 4, point (2)",
+        "pipe_length_factor": f"{NTSB2015}, Table 4 (brake pipe vs train length)",
+        "car_design_gross_kg": f"{SNYDER2000}, Table 2",
+        "net_braking_ratio": f"{NTSB2015}, section 2.2.4.1 (quoting AAR S-401)",
+        "max_empty_braking_ratio": f"{SNYDER2000}, Table 1 (AAR S-401-99); {NTSB2015}, fn. 4",
+        "shoe_friction": f"{SUN2024}, section 2.4 (AAR loaded form, mean 0-80 km/h)",
+        "adhesion": f"{SUN2024}, Fig. 5 (wet rail)",
     })
 
 
@@ -192,7 +225,7 @@ PHYSICAL_FIELDS = (
     "pipe_diffusivity_m2ps",
     "quick_service_frac", "inshot_frac", "inshot_rate_per_s", "service_rate_per_s",
     "tau_release_s", "car_design_gross_kg", "net_braking_ratio",
-    "shoe_friction", "adhesion", "recharge_s",
+    "max_empty_braking_ratio", "shoe_friction", "adhesion", "recharge_s",
 )
 
 
@@ -215,13 +248,17 @@ def brake_capacity_n(mass_kg: np.ndarray, is_loco: np.ndarray,
                      p: AirBrakeParams) -> np.ndarray:
     """Full-service retarding force per vehicle [N].
 
-    Cars: shoe force from the design gross weight (fixed per car), times the
-    shoe friction coefficient. Locomotives: from their own weight. Both are
-    capped at adhesion on the vehicle's actual weight.
+    Cars: shoe force from the gross rail load (fixed per car), at most the
+    empty braking ratio on the car's actual weight, times the shoe friction
+    coefficient. Locomotives: from their own weight. Both are capped at
+    adhesion on the vehicle's actual weight.
     """
     mass = np.asarray(mass_kg, float)
-    design = np.where(np.asarray(is_loco, bool), mass, p.car_design_gross_kg)
-    retard = p.shoe_friction * p.net_braking_ratio * design * GRAVITY_MPS2
+    is_loco = np.asarray(is_loco, bool)
+    shoe = np.where(is_loco, p.net_braking_ratio * mass,
+                    np.minimum(p.net_braking_ratio * p.car_design_gross_kg,
+                               p.max_empty_braking_ratio * mass))
+    retard = p.shoe_friction * shoe * GRAVITY_MPS2
     return np.minimum(retard, p.adhesion * mass * GRAVITY_MPS2)
 
 
@@ -414,7 +451,7 @@ def vehicle_commands(t: np.ndarray, driver_frac: np.ndarray, x0: np.ndarray,
 
 
 __all__ = [
-    "AirBrakeParams", "BrakeCommands", "C80_PITCH_M", "PHYSICAL_FIELDS",
+    "AirBrakeParams", "BrakeCommands", "C80_PITCH_M", "GRL_286K_KG", "PHYSICAL_FIELDS",
     "brake_capacity_n", "cylinder_level", "direct_release", "distance_behind_lead_m",
     "onset_delay_s", "pipe_modes", "release_delay_s", "require_sourced",
     "unsourced", "vehicle_commands",

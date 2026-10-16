@@ -61,6 +61,11 @@ class PhysicsConfig:
     #: F8. Shape commands with a point-mass pre-simulation so runs respect
     #: the route speed limits.
     speed_planner: bool = False
+    #: F5. ``"manifest"``: the locomotive count the consist was generated
+    #: with. ``"ruling_grade"``: re-sized per scenario so the sourced units'
+    #: continuous tractive effort holds the train on the route's ruling grade
+    #: (:mod:`simulator2.power_assignment`).
+    power_sizing: str = "manifest"
 
     def __post_init__(self) -> None:
         allowed = {
@@ -70,6 +75,7 @@ class PhysicsConfig:
             "traction_model": ("force_lag", "notch"),
             "coupler_model": ("kelvin_voigt", "draft_gear"),
             "standstill_model": ("none", "breakaway"),
+            "power_sizing": ("manifest", "ruling_grade"),
         }
         for name, ok in allowed.items():
             if getattr(self, name) not in ok:
@@ -77,6 +83,9 @@ class PhysicsConfig:
         if self.traction_model == "notch" and self.locomotives != "sourced":
             raise ValueError("traction_model 'notch' needs locomotives 'sourced' "
                              "(the catalog has no notch tables)")
+        if self.power_sizing == "ruling_grade" and self.locomotives != "sourced":
+            raise ValueError("power_sizing 'ruling_grade' needs locomotives 'sourced' "
+                             "(the catalog has no continuous ratings)")
 
     @property
     def default_dt_s(self) -> float:
@@ -108,6 +117,7 @@ V3 = PhysicsConfig(
     air_brake=True,
     standstill_model="breakaway",
     speed_planner=True,
+    power_sizing="ruling_grade",
 )
 
 PRESETS = {"legacy": LEGACY, "v3": V3}

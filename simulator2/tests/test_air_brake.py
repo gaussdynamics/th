@@ -42,24 +42,33 @@ DATA = Path(__file__).resolve().parents[1] / "data/spiryagin2017_air_brake"
 
 # -- brake force ------------------------------------------------------------------
 
-def test_capacity_is_fixed_per_car_and_capped_at_adhesion() -> None:
-    mass = np.array([P.car_design_gross_kg, 20_000.0, 60_000.0, 180_000.0])
+def test_capacity_is_fixed_per_car_and_capped_for_empty_cars() -> None:
+    mass = np.array([P.car_design_gross_kg, 26_000.0, 60_000.0, 180_000.0])
     loco = np.array([False, False, False, True])
     f = brake_capacity_n(mass, loco, P)
     design = P.shoe_friction * P.net_braking_ratio * P.car_design_gross_kg * G
     assert f[0] == pytest.approx(design)                     # loaded car
     assert f[2] == pytest.approx(design)                     # part load: same shoe force
-    assert f[1] == pytest.approx(P.adhesion * 20_000.0 * G)  # light empty: adhesion binds
+    # empty: shoe force at the AAR empty maximum on light weight
+    assert f[1] == pytest.approx(P.shoe_friction * P.max_empty_braking_ratio * 26_000.0 * G)
     assert f[1] < design
     assert f[3] == pytest.approx(P.shoe_friction * P.net_braking_ratio * 180_000.0 * G)
     assert np.all(f <= P.adhesion * mass * G + 1e-9)
 
 
-def test_force_parameters_are_still_flagged_as_placeholders() -> None:
-    assert unsourced(P) == ["pipe_length_factor", "car_design_gross_kg",
-                            "net_braking_ratio", "shoe_friction", "adhesion"]
+def test_capacity_is_capped_at_adhesion() -> None:
+    p = replace(P, adhesion=0.02)  # below the loaded demand, 0.30 x 0.10
+    mass = np.array([26_000.0, P.car_design_gross_kg])
+    f = brake_capacity_n(mass, np.array([False, False]), p)
+    np.testing.assert_allclose(f, 0.02 * mass * G)
+
+
+def test_default_parameters_are_all_sourced() -> None:
+    assert unsourced(P) == []
+    require_sourced(P)
     with pytest.raises(ValueError, match="net_braking_ratio"):
-        require_sourced(P)
+        require_sourced(replace(P, sources={k: v for k, v in P.sources.items()
+                                            if k != "net_braking_ratio"}))
     require_sourced(AirBrakeParams(sources={f: "test" for f in PHYSICAL_FIELDS}))
 
 
@@ -135,7 +144,7 @@ def test_front_arrives_at_the_propagation_speed() -> None:
     u, tau, tau_rel, f_max = vehicle_commands(t, driver, x0, np.full(100, 1e5),
                                               np.zeros(100, bool), P)
     for i in (0, 40, 99):
-        onset = 1.0 + 15.0 * i / P.propagation_mps
+        onset = 1.0 + 15.0 * P.pipe_length_factor * i / P.propagation_mps
         assert np.all(u[t < onset - P.dt_s, i] == 0.0)
         assert np.all(u[t > onset + 2 * P.dt_s, i] > 0.0)
     assert np.all(tau == P.actuator_tau_s) and np.all(tau_rel == P.tau_release_s)
@@ -184,7 +193,7 @@ def test_release_travels_with_the_slower_release_wave() -> None:
     x0 = -15.0 * np.arange(60)
     u, *_ = vehicle_commands(t, driver, x0, np.full(60, 1e5), np.zeros(60, bool), P)
     for i in (0, 20, 59):
-        off = 30.0 + 15.0 * i / P.release_propagation_mps
+        off = 30.0 + 15.0 * P.pipe_length_factor * i / P.release_propagation_mps
         held = (t > 20.0) & (t < off - P.dt_s)
         assert np.all(u[held, i] > 0.0)
         assert np.all(np.diff(u[held, i]) >= -1e-9)           # no partial release

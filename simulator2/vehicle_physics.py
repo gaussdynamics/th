@@ -139,27 +139,34 @@ class LocoSpec:
     length_m: float
     n_axles: int
     table: tuple[float, float, float, float, float, float]
+    #: Maximum continuous tractive effort [N] and the minimum continuous
+    #: speed it is rated at [m/s]; used to size the power for a ruling grade
+    #: (:mod:`simulator2.power_assignment`).
+    te_cont_n: float
+    v_cont_mps: float
     source: str
 
 
 #: SD70ACe: Spiryagin et al. Table 2.9 (195 t, 22.63 m, C-C, 850 kN starting,
-#: 472 kN dynamic brake). Table 2.9 gives no traction power; the LTD
+#: 698 kN continuous at 14.16 km/h, 472 kN dynamic brake). Table 2.9 gives no traction power; the LTD
 #: benchmark's locomotive type 2, the same 195 t / 850 kN / 472 kN unit
 #: (Spiryagin, Wu & Cole 2017, Tables 3 and 6), supplies P_max 3207 kW and the
 #: dynamic brake curve (5500 kW, 5-43 km/h), as in ``ltd_benchmark``.
 SD70ACE = LocoSpec(
     name="SD70ACe", mass_kg=195_000.0, length_m=22.63, n_axles=6,
     table=(850e3, 3207e3, 472e3, 5500e3, 1.39, 11.94),
+    te_cont_n=698e3, v_cont_mps=14.16 / 3.6,
     source=f"{SPIRYAGIN2017_CH2}, Table 2.9; {BENCHMARK_EQ1.split(', Eq.')[0]}, Tables 3 and 6",
 )
 
 #: ES44DC: Spiryagin et al. Table 2.3 (189.6 t, 22.3 m, C-C, traction power
-#: 4390 hp = 3274 kW, 631.64 kN starting, 332.17 kN dynamic brake from 42 down
-#: to 14.5 km/h). The dynamic brake power is not tabulated; P_db_max is set to
+#: 4390 hp = 3274 kW, 631.64 kN starting, 470.08 kN continuous at 21 km/h,
+#: 332.17 kN dynamic brake from 42 down to 14.5 km/h). The dynamic brake power is not tabulated; P_db_max is set to
 #: DB_max x 42 km/h so the curve is continuous at that corner (derived).
 ES44DC = LocoSpec(
     name="ES44DC", mass_kg=189_600.0, length_m=22.30, n_axles=6,
     table=(631.64e3, 4390 * 745.7, 332.17e3, 332.17e3 * 42.0 / 3.6, 14.5 / 3.6, 42.0 / 3.6),
+    te_cont_n=470.08e3, v_cont_mps=21.0 / 3.6,
     source=f"{SPIRYAGIN2017_CH2}, Table 2.3 (P_db_max derived)",
 )
 

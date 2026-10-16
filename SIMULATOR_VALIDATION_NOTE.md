@@ -744,3 +744,190 @@ works cited from memory: check edition and chapter when requesting them.
     (item 2). The regime library is unchanged apart from the dynamic brake
     and the notch limit; v3 trains are much stronger (850 / 632 kN starting
     vs 300 / 180 kN) with the legacy locomotive counts.
+- **2026-10-08 (v3 power sizing and the overload rule)** — Two decisions
+  for the regeneration, both v3 only (legacy unchanged).
+  - **Locomotive counts per route** (`simulator2/power_assignment.py`,
+    `PhysicsConfig.power_sizing = "ruling_grade"`). The generated consists
+    were sized for the illustrative 300 / 180 kN units by an unsourced
+    0.12 N/kg rule. v3 now re-sizes each scenario's power for its corridor,
+    as a railroad assigns power: the fewest units whose maximum continuous
+    tractive effort holds the whole train at minimum continuous speed on the
+    ruling grade. Ratings from Spiryagin et al. 2017: SD70ACe 698 kN at
+    14.16 km/h (Table 2.9), ES44DC 470.08 kN at 21 km/h (Table 2.3). Load =
+    modified Davis at that speed (lead factor on the first unit) + m g sin θ
+    for wagons and locomotives. Ruling grade = steepest climb averaged over
+    the train's trailing length, over the whole corridor in the direction
+    of travel (any segment can then be run). Curvature resistance is not
+    included. The train keeps its layout: head-end stays head-end; a DP train
+    keeps ≥ 1 head unit and splits the rest over the remote positions it had
+    (as `train_generator`); one unit → head end only. More than 12 units →
+    scenario skipped (none on the current corridors). The index gains
+    `loco_count_manifest` and `ruling_grade_pct`; `loco_count`,
+    `total_mass_kg` and `distributed_power` describe the sized consist.
+    - All 500 trains × 5 corridors: mean count 2.53 → 1.66, range 1-5
+      (5 SD70ACe on route_line0 at its 4 % clamp). route_line4 (net downhill
+      at train length) is all single units.
+  - **Knuckle overload rule** (decided before the regeneration). A run whose
+    |F_cpl| peak exceeds the 2.9 MN ultimate is **not written** (the train
+    would have parted; `over_knuckle_ultimate_scenarios` in
+    `build_config.json`). Runs between 1.8 MN yield and 2.9 MN are **kept and
+    flagged** (`coupler_over_yield`): they occur in service, dropping them
+    would bias the corpus to gentle driving, and the control use needs the
+    surrogate right where forces are high; report surrogate error on that
+    subset separately. The rule uses |F|, so a buff peak above 2.9 MN is
+    excluded too (conservative: buff capacity is not the knuckle's).
+  - **Smoke corpus, same 64 scenarios, seed 0** (validate: PASSED):
+
+    | | v3, manifest counts | v3, sized |
+    |---|---|---|
+    | F_max max | 2.38 MN | 1.51 MN |
+    | > 1.8 MN yield / > 2.9 MN | 1 / 0 | 0 / 0 |
+    | over limit > 5 m/s, reversing < -1 m/s | 0 % / 0 % | 0 % / 0 % |
+    | cost, batch 64 | 948 ms | 978 ms |
+    | dv/dt residual (0.25 s output) | 2.7 m/s² | 5.4 m/s² |
+
+    Counts: 25 scenarios kept their manifest count, 39 dropped by 1-3.
+    The residual rise is output resolution, not a mismatch: the worst run is
+    a 130-car train on one SD70ACe in cruise, with slack oscillation through
+    the train (vehicle speed spread 0.7-1 m/s) faster than the 0.25 s grid;
+    rebuilt at 0.05 s output the corpus maximum falls to 0.64 m/s².
+    Lighter power means more in-train content above the output Nyquist,
+    which matters for what the surrogate can learn from 0.25 s samples.
+  - **Caveat on the rule.** It is a minimum (tonnage-rating) sizing: a
+    train can just climb the ruling grade at 14-21 km/h. On easy corridors
+    that is one unit for 13,000 t, which is slow to accelerate and below what
+    a railroad would assign for schedule; a horsepower-per-trailing-ton floor
+    would fix that but needs a source.
+- **2026-10-12 (reading list item 5: Specchia, Afshari, Shabana & Caldwell
+  2012)** — `paper/refs/papers/6221471.pdf`, Proc IMechE F 227(1):19-37,
+  doi 10.1177/0954409712447230. **No force parameters.** It models the 26C
+  locomotive automatic brake valve (regulating, relay and cut-off valves)
+  and the brake pipe (1-D isothermal continuity + momentum, FE in x, wall
+  friction from a Reynolds-number factor, leakage and branch flows). The
+  valve and pipe are given symbolically: no numerical tables, no results.
+  No net braking ratio, shoe friction, design gross weight, adhesion or
+  pipe length per car. Shoe force, the CCU and all numerical examples are
+  deferred to the companion paper (its ref. 26 = reading list item 6,
+  Afshari et al. 2012, 227(1):38-55), which is the one to get next.
+  - Usable as a citation for the model's *form* only: a constant
+    propagation speed "cannot be justified in many applications" and
+    misses coupler forces in severe braking (their argument against
+    Sanborn et al.). Our model no longer assumes that (diffusion lag on top
+    of the front), so this supports the 2026-10-07 change.
+  - The four force fields and `pipe_length_factor` remain unsourced;
+    `require_sourced` still refuses.
+- **2026-10-12 (brake force fields from public secondary sources)** — No
+  reply yet to the AAR requests, so: public documents that quote S-401.
+  Nothing wired in; `require_sourced` unchanged.
+  - **NTSB, Casselton ND Train Braking Simulation Study** (docket, July
+    2015; TOES simulations). §2.2.4.1 quotes the AAR definition: NBR = sum
+    of *actual normal* shoe forces / actual weight on rail, full service from
+    90 psi brake pipe. "The NBR for cars built after January 1, 2004 must
+    fall within 11% to 14%" (S-401, its Table 8). Pre-2004 cars 8.5-13 %
+    loaded, empty ≤ 38 %. Study uses **10 %** as the nominal fleet value
+    ("older tank cars ... likely 9% to 10%"); BNSF ECP cars measured
+    9.5-11.9 %. Car-to-car NBR variation raises in-train forces.
+    Table 4: brake pipe vs train length for 4 consist lengths gives
+    **pipe_length_factor = 1.081** in every case (tank car trains, 5 locos).
+    Its shoe friction curve (Attachment 2, from AAR R-469, 1981) is not in
+    the docket copy.
+  - **Snyder, Lonsdale, McConnell & Rees (2000)**, "Testing for current
+    freight car braking ratios on Union Pacific Railroad", 92nd Air Brake
+    Assoc. Conf. S-401-99 table (high-friction composition shoes, 30 psi
+    reduction from 90): loaded 8.5-13 % (TOFC/COFC 11-13 %), empty ≤ 38 %.
+    Loaded ratio is on **gross rail load**, empty on light weight. Measured
+    with Jim Shoe dynamometers at the shoe, so **rigging losses are inside
+    the NBR**: the model's μ·NBR·W must not apply them again (answers the
+    reading list item 1 question). Measured loaded 7.7-10.6 % on 9 in-service
+    cars; aluminum hoppers with **GRL 286,000 lb** (sources
+    `car_design_gross_kg` = 129,727 kg as a real rating). Adhesion demand =
+    μ_shoe x NBR must stay below wet-rail adhesion.
+  - **Sun, Nafis Ahmad, Persson, Spiryagin, Bernal Arango & Cole (2024)**,
+    VSD 62(12):3255-3275 (CQU repository copy). Max brake force = NBR
+    (S-401 table) x wagon weight, our form. "AAR formulas": shoe CoF
+    **0.32 - 0.002 V/3.6 loaded**, 0.45 - 0.0015 V/3.6 empty (V km/h):
+    0.32 at rest, 0.28 at 80 km/h; placeholder 0.30 sits inside. Secondary
+    (AAR document not named). Wheel-rail: dry max ~0.36, wet ~0.25 (from
+    Spiryagin, Polach & Cole 2013). Their Table 1 is the pre-2004 8.5-13 %
+    band although it cites S-401 rev. 2018; NTSB's 11-14 % is preferred.
+  - **Model-form issue found:** the empty ≤ 38 % rule. Shoe force fixed by
+    GRL on a 26-30 t tare car is 0.10 x 129.7 / 26-30 = 43-50 % of tare,
+    above the AAR maximum. Real light cars must carry an empty/load device,
+    so "cars without them" is non-compliant for our tares. Cap empty shoe
+    force at 0.38 x tare (or model the device) before regenerating.
+  - With loaded NBR ≤ 14 % and μ_shoe ≤ 0.32, loaded adhesion demand is
+    ≤ 0.045 and empty ≤ 0.12: the adhesion cap binds only on bad rail, so
+    its value matters little once the empty cap is in.
+- **2026-10-12 (brake force fields wired in; `require_sourced` passes)** —
+  Values from the entry above are now the `AirBrakeParams` defaults, each
+  with a per-field source: NBR 0.10 (NTSB nominal fleet), GRL 286,000 lb
+  (129,727 kg), shoe friction 0.30 (mean of the AAR loaded form over
+  0-80 km/h), adhesion 0.25 (wet), `pipe_length_factor` 1.081 (NTSB
+  Table 4). New sourced field `max_empty_braking_ratio` = 0.38: car shoe
+  force = min(NBR x GRL, 0.38 x actual mass). Capacities: loaded 286k car
+  38.2 kN (0.29 m/s²), 26 t empty 29.1 kN; empty cars are now set by the
+  AAR limit, not by adhesion. PDFs added to `paper/refs/papers/`
+  (NTSB_2015_..., Snyder_2000_..., Sun_2024_...).
+  - Tests: 25 air brake (new: empty cap, adhesion cap, all defaults
+    sourced; the two timing tests now scale distance by the pipe factor).
+    Full suite 352 passed. `--allow-unsourced-brake` is no longer needed.
+  - Not done: NBR per car (8.5-14 %) as a randomised parameter; the F2
+    run-in figures still use the old placeholder capacity.
+- **2026-10-12 (item 2: how the surrogate carries the gear state — measured)** —
+  v3 smoke corpus, 64 scenarios, seed 0, sourced brake (1.87 s/scenario).
+  Script: `gear_state_info.py` (scratchpad; promote to `scripts/` if kept).
+  Coupler samples in contact, 0.25 s steps: 4.2 M, F rms 218.7 kN; 74.6 %
+  are *inside* the loop (sticking), envelope width rms 232.6 kN.
+  - **Stateless edge inputs lose a quarter of the force.** Best predictor of
+    F from (deflection, closing rate), binned conditional mean: residual
+    **51.5 kN rms** (p99 205 kN), 24 % of F rms; from deflection alone
+    60.1 kN. A lower bound (small bins overfit). No network on these
+    inputs can do better: hysteresis is not a function of the present.
+  - **A carried gear state recovers it.** With the true z at k and the true
+    deflection at k+1: keeping z (clamped to the envelope at k+1) misses
+    6.0 kN rms; the elastic return map
+    `z1 = clamp(z0 + k_t (e1 - e0), lo(e1), hi(e1))` misses **1.7 kN rms**
+    (p99 5.3 kN), 0.8 % of F rms, with nothing learned.
+  - **Proposed form:** z becomes an edge state alongside delta. F_cpl =
+    clamp(z, envelope) exactly, as `coupler_features` does for
+    Kelvin-Voigt today; z advances by the return map on the predicted
+    deflection, optionally plus a learned edge-head residual (the analogue
+    of `ddelta_corr`). The "stateless" variant is the ablation for Ch. 6.
+  - **Other v3 changes the surrogate must take before training on v3**
+    (found while mapping the files): per-vehicle brake application/release
+    time constants (`tau_brk_node`, `tau_brk_release_node`; `actuator_step`
+    assumes one scalar tau), notch traction and dynamic brake through
+    `loco_table`, `inertia_factor`, and the standstill model. Edge static
+    columns k/c are Kelvin-Voigt values with no meaning under the gear.
+- **2026-10-12 (item 2 implemented: surrogate on v3 corpora)** — `surrogate/`
+  reads v3 files (detected from the arrays; partial v3 refused) and keeps
+  the legacy path unchanged.
+  - **Gear state carried, not predicted.** Edge input
+    `[delta, delta_dot, F_cpl, z, lo, hi]` (+ static): `GearLaw` in
+    `step.py` gives F_cpl = clamp(z, envelope) exactly; `advance` moves z
+    by the elastic return map on the predicted stretch. No learned gear
+    residual yet (the floor is 1.7 kN rms; add one if rollouts show it
+    matters).
+  - **Brake per vehicle:** `brake_step`, release tau chosen once per step
+    from the mid-step command: 3.5e-4 N rms against the corpus (sub-stepping
+    changes nothing). `z_trac` (lagged notch) stays exact.
+  - **Node inputs +3:** locomotive force at the start and end notch through
+    the notch tables (`_notch_force`), inertia factor. 20 node / 12 edge
+    features (legacy 17 / 9). Checkpoints record physics and feature counts;
+    old checkpoints load as legacy.
+  - `_Block.carry/features/advance` is now the one path for training,
+    rollout and `eval_gns1.py`. Rollouts also report coupler-force error
+    (`F`, kN), legacy included.
+  - **Checks:** legacy eval of `gns1_seed0` on data/v2 is bit-identical to
+    the previous code on every metric. 8 new tests (`test_v3.py`, builds a
+    12-scenario v3 corpus in ~25 s): true targets reproduce v, delta to
+    1e-9, z_brk to < 0.05 N, gear force within the return-map floor; the
+    stored F_cpl is reproduced from (delta, z); oracle rollout stays
+    bounded. Surrogate suite 24 passed.
+  - **Smoke training, v3 (45 train scenarios, 1500 steps): runs, learns
+    poorly** (velocity 1.2x better than zero one-step, shape worse; loss
+    rises once pushforward starts). Inputs are well scaled except closing
+    rate (|max| 80 sd: end-stop impacts). Not a verdict: 45 scenarios
+    against a legacy model trained on thousands. Judge on the regenerated
+    corpus; if it persists, suspects are the impacts above the 0.25 s
+    Nyquist (2026-10-08 entry) and the stateless-ablation comparison.

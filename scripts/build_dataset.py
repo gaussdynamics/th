@@ -77,10 +77,19 @@ from simulator2.physics_config import (
     materialize_commands,
     scenario_outputs,
 )
+from simulator2.power_assignment import (
+    DPU_MID_LABEL,
+    DPU_REAR_LABEL,
+    MAX_LOCOS,
+    locos_required,
+    ruling_sin_theta,
+    with_loco_count,
+)
 from simulator2.randomize import RandomizationConfig, make_randomized_scenario
 from simulator2.route import RouteProfile
 from simulator2.torch_rhs import TorchScenarioBatch, rollout_rk4
 from simulator2.train_generator import ensure_extended_car_library
+from simulator2.vehicle_physics import LOCO_SUBSTITUTES
 
 DEFAULT_ROUTE_DIR = _REPO_ROOT / "route_generator" / "route_profiles"
 DEFAULT_TRAIN_MANIFEST = _REPO_ROOT / "saved_trains" / "generated" / "manifest.json"
@@ -199,6 +208,48 @@ def snap_to_lattice(scenario, dt_s: float):
     return scenario, n_samples, duration
 
 
+class PowerSizer:
+    """Per-scenario locomotive counts under ``power_sizing = "ruling_grade"``.
+
+    Consists are cached by (train, count) and ruling grades by (route, train),
+    so a corpus builds each distinct consist once.
+    """
+
+    def __init__(self, physics: PhysicsConfig):
+        self.physics = physics
+        self.library = ensure_extended_car_library()
+        self._consists: Dict[Tuple[str, int], dict] = {}
+        self._ruling: Dict[Tuple[str, str], float] = {}
+
+    def power(self, tr: dict, route_id: str, route: RouteProfile) -> dict:
+        """``tr`` re-powered for ``route``: a dict like :func:`load_trains`'s
+        entries plus ``loco_count`` and ``ruling_grade_pct``. Raises
+        ``ValueError`` if the route needs more than ``MAX_LOCOS`` units."""
+        key = tr["entry"]["filename"]
+        wagons = [ct for ct, lo in zip(tr["consist"].car_types, tr["consist"].is_loco)
+                  if not lo]
+        if (route_id, key) not in self._ruling:
+            self._ruling[(route_id, key)] = ruling_sin_theta(
+                route, sum(ct.length_m for ct in wagons))
+        sin_r = self._ruling[(route_id, key)]
+        spec = LOCO_SUBSTITUTES[tr["train"].cars[0].car_type_id]
+        n = locos_required(wagons, spec, sin_r)
+        if n > MAX_LOCOS:
+            raise ValueError(f"needs more than {MAX_LOCOS} locomotives for the ruling grade")
+        if (key, n) not in self._consists:
+            train = with_loco_count(tr["train"], self.library, n)
+            consist = configure_consist(train, self.library, self.physics)
+            self._consists[(key, n)] = {
+                "train": train, "consist": consist,
+                "vehicles": consist.vehicles, "couplers": consist.couplers,
+                "total_mass_kg": float(sum(v.mass_kg for v in consist.vehicles)),
+                "distributed_power": any(c.label in (DPU_MID_LABEL, DPU_REAR_LABEL)
+                                         for c in train.cars),
+            }
+        return {**tr, **self._consists[(key, n)], "loco_count": n,
+                "ruling_grade_pct": 100.0 * sin_r}
+
+
 def sample_scenarios(
     n_scenarios: int,
     routes: Dict[str, RouteProfile],
@@ -206,8 +257,10 @@ def sample_scenarios(
     cfg: RandomizationConfig,
     policy: Dict[str, object],
     seed: int,
+    physics: PhysicsConfig = LEGACY,
 ) -> Tuple[List[dict], Counter]:
     """Build the scenario specs. Cheap relative to integration, so done up front."""
+    sizer = PowerSizer(physics) if physics.power_sizing == "ruling_grade" else None
     rng = random.Random(seed)
     split_rng = random.Random(seed + 1)
     route_ids = sorted(routes)
@@ -224,7 +277,17 @@ def sample_scenarios(
         scenario_seed = seed * 1_000_003 + i
 
         profile = generate_regime_profile(regime, seed=scenario_seed)
+        power = {
+            "loco_count": int(tr["entry"].get("loco_count", 0)),
+            "distributed_power": bool(tr["entry"].get("distributed_power", False)),
+            "total_mass_kg": float(tr["entry"].get("total_mass_kg", 0.0)),
+        }
         try:
+            if sizer is not None:
+                tr = sizer.power(tr, route_id, route)
+                power = {k: tr[k] for k in ("loco_count", "distributed_power", "total_mass_kg")}
+                power["loco_count_manifest"] = int(tr["entry"].get("loco_count", 0))
+                power["ruling_grade_pct"] = round(tr["ruling_grade_pct"], 4)
             scenario, meta = make_randomized_scenario(
                 route, tr["vehicles"], tr["couplers"], profile,
                 train=tr["train"], seed=scenario_seed, config=cfg,
@@ -249,9 +312,7 @@ def sample_scenarios(
             "region": "unknown",  # the route pipeline does not yet emit one
             "consist_label": tr["entry"].get("consist_label", ""),
             "control_label": str(regime.value),
-            "loco_count": int(tr["entry"].get("loco_count", 0)),
-            "distributed_power": bool(tr["entry"].get("distributed_power", False)),
-            "total_mass_kg": float(tr["entry"].get("total_mass_kg", 0.0)),
+            **power,
             "T": int(n_samples),
             "duration_s": round(float(duration), 6),
             "dt_s": round(float(cfg.dt_s), 6),
@@ -281,11 +342,16 @@ def run_batches(
     progress_every: int = 5,
     physics: PhysicsConfig = LEGACY,
     diverged: Optional[List[str]] = None,
+    parted: Optional[List[str]] = None,
 ) -> List[dict]:
     """Integrate the specs in batches and write one ``.npz`` per scenario.
 
     Scenarios whose state goes non-finite are not written; their ids are
-    appended to ``diverged``.
+    appended to ``diverged``. If ``parted`` is a list, scenarios whose peak
+    coupler force exceeds the knuckle's ultimate strength are not written
+    either, and their ids are appended to it: the real train would have parted
+    there and the model has no coupler failure. Runs between yield and
+    ultimate are kept and flagged.
     """
     # Sort by (T, N): T sets the step count and therefore the real cost, while
     # throughput is flat in N, so grouping by T first keeps batches homogeneous
@@ -358,6 +424,11 @@ def run_batches(
             meta.update({k: float(v) for k, v in arrays.summaries.items()})
             meta["coupler_over_yield"] = bool(meta["F_max"] > KNUCKLE_YIELD_N)
             meta["coupler_over_ultimate"] = bool(meta["F_max"] > KNUCKLE_ULTIMATE_N)
+            if parted is not None and meta["coupler_over_ultimate"]:
+                print(f"  NOT WRITTEN (coupler force {meta['F_max'] / 1e6:.2f} MN above "
+                      f"the knuckle ultimate): {meta['scenario_id']}", flush=True)
+                parted.append(meta["scenario_id"])
+                continue
             route = routes[meta["route_id"]]
             meta.update(speed_limit_stats(
                 arrays.state,
@@ -465,7 +536,7 @@ def main() -> None:
     print(f"sampling {args.n_scenarios} scenarios")
     t0 = time.perf_counter()
     specs, failures = sample_scenarios(args.n_scenarios, routes, trains, cfg,
-                                       policy, args.seed)
+                                       policy, args.seed, physics=physics)
     for spec in specs:
         spec["meta"]["physics"] = physics.name
         if unsourced_brake:
@@ -480,11 +551,15 @@ def main() -> None:
           f"batch={args.batch_size}, dt={args.dt}")
     t0 = time.perf_counter()
     diverged: List[str] = []
+    # Legacy corpora keep their original contents, so the exclusion is v3 only.
+    parted: Optional[List[str]] = None if physics.is_legacy else []
     records = run_batches(specs, routes, out_dir, args.batch_size, args.dt,
                           args.device, dtype, compress=not args.no_compress,
-                          physics=physics, diverged=diverged)
+                          physics=physics, diverged=diverged, parted=parted)
     if diverged:
         print(f"  {len(diverged)} scenario(s) diverged and were not written")
+    if parted:
+        print(f"  {len(parted)} scenario(s) exceeded the knuckle ultimate and were not written")
     integrate_s = time.perf_counter() - t0
 
     print("writing route fields")
@@ -528,6 +603,7 @@ def main() -> None:
         "integrate_seconds": round(integrate_s, 2),
         "sampling_failures": dict(failures),
         "diverged_scenarios": diverged,
+        "over_knuckle_ultimate_scenarios": parted,
     }
     written = write_manifests(out_dir, records, norm_stats, build_config)
 
