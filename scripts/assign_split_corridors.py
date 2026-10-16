@@ -56,6 +56,24 @@ def evenly_spaced(items: list, n: int) -> list:
     return [items[int(i * step)] for i in range(n)]
 
 
+def interleave(items: list, n_a: int, n_b: int) -> tuple[list, list]:
+    """Deal ``items`` into two lists of ``n_a`` and ``n_b``, alternating in
+    proportion so both span the whole of ``items``.
+
+    Taking every other item gives each list half, whatever was asked for: 30 and
+    20 out of 50 came out 25 and 25. Short of ``n_a + n_b`` items, the two lists
+    shrink in the same proportion.
+    """
+    total = n_a + n_b
+    a, b = [], []
+    for i, item in enumerate(items[:total]):
+        if (i + 1) * n_a // total > i * n_a // total:
+            a.append(item)
+        else:
+            b.append(item)
+    return a, b
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -97,8 +115,8 @@ def main() -> None:
     # ood_corridor and control_eval are drawn across the remaining grade range,
     # interleaved so neither gets a systematically steeper half.
     picks = evenly_spaced(remaining, args.n_ood_corridor + args.n_control_eval)
-    ood_corridor = picks[0::2][:args.n_ood_corridor]
-    control_eval = picks[1::2][:args.n_control_eval]
+    ood_corridor, control_eval = interleave(picks, args.n_ood_corridor,
+                                            args.n_control_eval)
     # The buffer band is excluded here too -- leaving it in the training pool
     # would put the gap back exactly where it was meant to be opened.
     reserved = set(ood_grade) | set(ood_corridor) | set(control_eval) | set(buffer_band)
@@ -124,6 +142,12 @@ def main() -> None:
         print("  WARNING: the gap could not be met even after excluding the")
         print("  buffer band -- the pool does not contain enough steep corridors.")
         print("  Widen the mountain stratum rather than lowering --gap-pp.")
+    if (len(ood_corridor), len(control_eval)) != (args.n_ood_corridor,
+                                                  args.n_control_eval):
+        print(f"  WARNING: only {len(remaining)} corridors below the buffer band;"
+              f" ood_corridor and control_eval got {len(ood_corridor)} and"
+              f" {len(control_eval)} of {args.n_ood_corridor} and"
+              f" {args.n_control_eval}.")
 
     out = {
         "source_routes": str(args.routes),

@@ -189,3 +189,38 @@ def test_splits_are_disjoint(tmp_path):
         cur = set(res[k])
         assert not (cur & seen), k
         seen |= cur
+
+
+# --------------------------------------------------------------------------- #
+# ood_corridor / control_eval sizes
+# --------------------------------------------------------------------------- #
+def test_interleave_gives_each_list_its_requested_size():
+    """Taking every other pick gave 25 and 25 when 30 and 20 were asked for."""
+    from assign_split_corridors import interleave
+    a, b = interleave(list(range(50)), 30, 20)
+    assert (len(a), len(b)) == (30, 20)
+    assert not set(a) & set(b)
+
+
+def test_interleave_spreads_both_lists_across_the_range():
+    """Neither list may take one end of the grade ranking."""
+    from assign_split_corridors import interleave
+    a, b = interleave(list(range(50)), 30, 20)
+    for picks in (a, b):
+        assert picks[0] < 5 and picks[-1] > 44
+
+
+def test_interleave_shrinks_in_proportion_when_short():
+    from assign_split_corridors import interleave
+    a, b = interleave(list(range(25)), 30, 20)
+    assert (len(a), len(b)) == (15, 10)
+
+
+def test_split_sizes_match_the_request(tmp_path):
+    grades = {f"c{i:03d}": 0.1 + i * 0.01 for i in range(200)}
+    grades.update({f"steep{i}": 3.0 + i * 0.1 for i in range(20)})
+    res = _run_assign(tmp_path, grades, n_ood_grade=20, n_ood_corridor=30,
+                      n_control_eval=20, gap_pp=0.25)
+    assert len(res["ood_grade_corridors"]) == 20
+    assert len(res["ood_corridors"]) == 30
+    assert len(res["control_eval_corridors"]) == 20
