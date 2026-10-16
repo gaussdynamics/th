@@ -94,3 +94,6 @@ media/videos/**/partial_movie_files/
 media/texts/
 media/Tex/
 media/images/
+
+# Reference papers (copyrighted; kept locally)
+paper/refs/papers/
