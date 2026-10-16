@@ -48,8 +48,7 @@ def main() -> None:
     blk = ds.blocks[args.n]
     model, tgt_std = load_model(args.checkpoint, args.device)
     ok = torch.nonzero(blk.lengths > args.steps + 1).squeeze(-1)
-    kw = dict(route_s=ds.route_s, route_f=ds.route_f, nrm=ds.norm, h=ds.h,
-              tau_brk=ds.tau_brk, tau_trac=ds.tau_trac, tgt_std=tgt_std)
+    kw = dict(route_s=ds.route_s, route_f=ds.route_f, tgt_std=tgt_std)
     for b in args.b:
         si = ok[torch.arange(b, device=args.device) % ok.numel()]
         k0 = torch.zeros(b, dtype=torch.long, device=args.device)

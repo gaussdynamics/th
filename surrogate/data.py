@@ -36,7 +36,8 @@ import pandas as pd
 import torch
 from torch import Tensor
 
-from surrogate.step import edge_targets, node_targets
+from surrogate.step import (GearLaw, actuator_step, advance, coupler_features,
+                            edge_targets, node_targets)
 
 #: Node channels fed to the network. Absolute chainage ``x`` is deliberately
 #: absent: it ranges over 0-30 km and carries no transferable information. What
@@ -44,6 +45,17 @@ from surrogate.step import edge_targets, node_targets
 #: instead, already sampled per vehicle.
 N_NODE_FEATURES = 3 + 4 + 7 + 3   # (v, z_brk, z_trac) + u(k,k+1) + static + route
 N_EDGE_FEATURES = 3 + 6           # (delta, delta_dot, F_cpl) + static
+
+#: v3 corpora (``simulator2.physics_config``) add, per vehicle, the locomotive
+#: force at the start and at the end of the step (``z_trac`` is a lagged notch
+#: there, read through the notch tables) and the inertia factor; per coupler,
+#: the gear state and its envelope. See :func:`build_features`.
+N_NODE_FEATURES_V3 = N_NODE_FEATURES + 3
+N_EDGE_FEATURES_V3 = N_EDGE_FEATURES + 3
+
+#: ``(inertia_factor - 1)`` scale: the corpus has 0.015 (wagons) and 0.125
+#: (locomotives), Handbook p. 459.
+INERTIA_SCALE = 0.1
 
 #: Bytes per vehicle-step held on the device: state(4) + u(2) + route(3) +
 #: edge_dynamic(~3) float32 channels. Used to size the subsample before loading.
@@ -55,24 +67,35 @@ _ROUTE_FIELDS = ("route_sin_theta", "route_kappa", "route_vmax")
 def build_features(
     st: Tensor, ed: Tensor, node_static: Tensor, edge_static: Tensor,
     route: Tensor, u0: Tensor, u1: Tensor, nrm: dict[str, Tensor],
+    node_extra: Tensor | None = None,
 ) -> tuple[Tensor, Tensor]:
     """Network inputs from raw tensors.
 
     Shared by the training sampler and the rollout so the two cannot drift
     apart -- a train/inference feature mismatch is the classic silent way for a
     step model to look fine one-step and fall apart rolled out.
+
+    v3: ``ed`` has the six gear columns of :func:`coupler_features`; the gear
+    state and envelope are forces, so they take the ``F_cpl`` statistics.
+    ``node_extra`` is already scaled (:meth:`_Block.node_extra`).
     """
-    node = torch.cat([
+    parts = [
         (st[..., 1:4] - nrm["state_mean"][1:4]) / nrm["state_std"][1:4],
         (u0 - nrm["u_mean"]) / nrm["u_std"],
         (u1 - nrm["u_mean"]) / nrm["u_std"],
         (node_static - nrm["node_static_mean"]) / nrm["node_static_std"],
         (route - nrm["route_mean"]) / nrm["route_std"],
-    ], dim=-1)
-    edge = torch.cat([
-        (ed - nrm["edge_dyn_mean"]) / nrm["edge_dyn_std"],
+    ]
+    if node_extra is not None:
+        parts.append(node_extra)
+    node = torch.cat(parts, dim=-1)
+    edge_parts = [
+        (ed[..., :3] - nrm["edge_dyn_mean"]) / nrm["edge_dyn_std"],
         (edge_static - nrm["edge_static_mean"]) / nrm["edge_static_std"],
-    ], dim=-1)
+    ]
+    if ed.shape[-1] > 3:
+        edge_parts.append((ed[..., 3:] - nrm["edge_dyn_mean"][2]) / nrm["edge_dyn_std"][2])
+    edge = torch.cat(edge_parts, dim=-1)
     return node, edge
 
 
@@ -110,16 +133,27 @@ class Batch:
     route: Tensor
     u0: Tensor
     u1: Tensor
+    si: Tensor | None = None       # [B] scenario index within the block
+    gear0: Tensor | None = None    # [B, N-1] gear state at k (v3)
 
 
 class _Block:
-    """Every loaded scenario of one consist size, resident on ``device``."""
+    """Every loaded scenario of one consist size, resident on ``device``.
+
+    Also the one place that knows how this corpus's physics turns a carried
+    state into network inputs (:meth:`features`) and advances it
+    (:meth:`advance`), so training, rollout and evaluation cannot disagree.
+    """
 
     def __init__(self, n: int, recs: list[dict], norm: dict[str, Tensor],
-                 device: str) -> None:
+                 device: str, *, h: float, tau_brk: float, tau_trac: float,
+                 law: GearLaw | None = None) -> None:
         self.n = n
         self.device = device
         self.norm = norm
+        self.h, self.tau_brk, self.tau_trac = h, tau_brk, tau_trac
+        self.law = law
+        self.v3 = law is not None
         lengths = [r["state"].shape[0] for r in recs]
         t_max = max(lengths)
 
@@ -137,6 +171,16 @@ class _Block:
             np.stack([r["node_static"] for r in recs])).to(device)
         self.edge_static = torch.from_numpy(
             np.stack([r["edge_static"] for r in recs])).to(device)
+        if self.v3:
+            self.gear = pad("gear_state", (n - 1,))
+            stack = lambda key: torch.from_numpy(  # noqa: E731
+                np.stack([r[key] for r in recs])).to(device)
+            self.tau_apply = stack("tau_brk_node")
+            self.tau_release = stack("tau_brk_release_node")
+            self.loco_table = stack("loco_table")
+            self.inertia = stack("inertia_factor")
+            self.v_eps = torch.tensor([r["v_eps"] for r in recs],
+                                      dtype=torch.float32, device=device)
 
         self.corridor = torch.tensor([r["corridor"] for r in recs],
                                      dtype=torch.long, device=device)
@@ -147,6 +191,62 @@ class _Block:
     def __len__(self) -> int:
         return self.pairs.shape[0]
 
+    # -- the corpus's physics on carried state -------------------------------------
+
+    def carry(self, si: Tensor, k: Tensor) -> tuple[Tensor, Tensor, Tensor | None]:
+        """Stored ``(state, delta, gear)`` at step ``k``; ``gear`` is None for legacy."""
+        gear = self.gear[si, k] if self.v3 else None
+        return self.state[si, k], self.edge_dyn[si, k][..., 0], gear
+
+    def node_extra(self, st: Tensor, u0: Tensor, u1: Tensor, si: Tensor) -> Tensor | None:
+        """v3 node inputs: locomotive force at the step's start and end notch, inertia.
+
+        ``z_trac`` is a lagged notch under v3, and the force behind it is a
+        table lookup in notch and speed (benchmark Tables 4-6), so the force
+        is handed over rather than left for the network to learn. The end
+        notch is exact (:func:`actuator_step`); both forces are taken at the
+        start speed, the only one known. Scaled by the corpus's spread of
+        ``F_trac_max_N``.
+        """
+        if not self.v3:
+            return None
+        from simulator2.torch_rhs import _notch_force
+
+        lp = self.loco_table[si].to(st.dtype)
+        v = st[..., 1]
+        v_eps = self.v_eps[si, None].to(st.dtype)
+        zt1 = actuator_step(st[..., 3], u0[..., 0], u1[..., 0], self.tau_trac, self.h)
+        scale = self.norm["node_static_std"][5]
+        return torch.stack([
+            _notch_force(st[..., 3], v, lp, v_eps) / scale,
+            _notch_force(zt1, v, lp, v_eps) / scale,
+            (self.inertia[si].to(st.dtype) - 1.0) / INERTIA_SCALE,
+        ], dim=-1)
+
+    def features(self, st: Tensor, delta: Tensor, gear: Tensor | None, si: Tensor,
+                 k: Tensor, route: Tensor) -> tuple[Tensor, Tensor, Tensor, Tensor]:
+        """``(node, edge, u0, u1)`` for a carried state at step ``k``."""
+        u0, u1 = self.u[si, k], self.u[si, k + 1]
+        es = self.edge_static[si]
+        ed = coupler_features(delta, st[..., 1], es, gear, self.law)
+        node, edge = build_features(st, ed, self.node_static[si], es, route, u0, u1,
+                                    self.norm, self.node_extra(st, u0, u1, si))
+        return node, edge, u0, u1
+
+    def advance(self, st: Tensor, delta: Tensor, gear: Tensor | None, abar: Tensor,
+                dcorr: Tensor, si: Tensor, k: Tensor,
+                ) -> tuple[Tensor, Tensor, Tensor | None]:
+        """One step from physical (de-normalized) predictions."""
+        u0, u1 = self.u[si, k], self.u[si, k + 1]
+        es = self.edge_static[si]
+        if not self.v3:
+            return advance(st, delta, abar, dcorr, u0, u1, es[..., 0],
+                           tau_brk=self.tau_brk, tau_trac=self.tau_trac, h=self.h)
+        return advance(st, delta, abar, dcorr, u0, u1, es[..., 0],
+                       tau_brk=self.tau_apply[si], tau_brk_release=self.tau_release[si],
+                       tau_trac=self.tau_trac, h=self.h,
+                       gear=gear, law=self.law, slack_half=es[..., 1])
+
     def assemble(self, si: Tensor, k: Tensor, h: float,
                  tgt_std: dict[str, Tensor] | None) -> Batch:
         st0, st1 = self.state[si, k], self.state[si, k + 1]
@@ -154,9 +254,17 @@ class _Block:
         es = self.edge_static[si]
         ed0, ed1 = self.edge_dyn[si, k], self.edge_dyn[si, k + 1]
         nrm = self.norm
+        gear0 = None
+        ed_in = ed0
+        if self.v3:
+            # Stored edge channels as in legacy, plus the gear columns.
+            gear0 = self.gear[si, k]
+            lo, hi = self.law.envelope(ed0[..., 0], es[..., 1])
+            ed_in = torch.cat([ed0, torch.stack([gear0, lo, hi], dim=-1)], dim=-1)
 
-        node, edge = build_features(st0, ed0, self.node_static[si], es,
-                                    self.route[si, k], u0, u1, nrm)
+        node, edge = build_features(st0, ed_in, self.node_static[si], es,
+                                    self.route[si, k], u0, u1, nrm,
+                                    self.node_extra(st0, u0, u1, si))
         abar = node_targets(st0, st1, h)
         dcorr = edge_targets(ed0[..., 0], ed1[..., 0], st0, st1, h)
         if tgt_std is not None:
@@ -165,7 +273,7 @@ class _Block:
         return Batch(node=node, edge=edge, abar=abar, dcorr=dcorr,
                      n_vehicles=self.n, st0=st0, ed0=ed0,
                      node_static=self.node_static[si], edge_static=es,
-                     route=self.route[si, k], u0=u0, u1=u1)
+                     route=self.route[si, k], u0=u0, u1=u1, si=si, gear0=gear0)
 
 
 class ScenarioSet:
@@ -196,7 +304,10 @@ class ScenarioSet:
         # Shuffle first, then fill the budget, so the subsample is not biased
         # toward whichever consist sizes happen to sort first.
         rows = rows.sample(frac=1.0, random_state=seed)
-        cost = (BYTES_PER_VEHICLE_STEP * rows.N * rows["T"]).to_numpy()
+        self.v3 = _is_v3(self.root / "scenarios" / rows.iloc[0].route_id
+                         / f"{rows.iloc[0].scenario_id}.npz")
+        per_step = BYTES_PER_VEHICLE_STEP + (BYTES_GEAR_PER_STEP if self.v3 else 0)
+        cost = (per_step * rows.N * rows["T"]).to_numpy()
         keep = np.cumsum(cost) <= budget_gib * 2 ** 30
         rows = rows[keep]
         if max_scenarios is not None:
@@ -226,6 +337,12 @@ class ScenarioSet:
                     # quantization, larger than the signal being learned.
                     "edge_dynamic": f["edge_dynamic"].astype(np.float32),
                 }
+                if _is_v3_keys(f.files) != self.v3:
+                    raise ValueError(f"{p.name}: mixes legacy and v3 physics in one set")
+                if self.v3:
+                    for key in V3_KEYS:
+                        rec[key] = f[key].astype(np.float32)
+                    rec["v_eps"] = float(f["v_eps"])
                 if h is None:
                     t = f["t"].astype(np.float64)
                     h = float(t[1] - t[0])
@@ -262,7 +379,13 @@ class ScenarioSet:
         self.route_f = torch.from_numpy(f_tab).to(device)
 
         self.h, self.tau_brk, self.tau_trac = float(h), float(tau_brk), float(tau_trac)
-        self.blocks = {n: _Block(n, recs, norm, device)
+        # tau_brk is the legacy scalar lag; v3 files still carry it, unused,
+        # and brake per vehicle (_Block.advance).
+        self.law = GearLaw.default(device) if self.v3 else None
+        self.n_node_features = N_NODE_FEATURES_V3 if self.v3 else N_NODE_FEATURES
+        self.n_edge_features = N_EDGE_FEATURES_V3 if self.v3 else N_EDGE_FEATURES
+        self.blocks = {n: _Block(n, recs, norm, device, h=self.h, tau_brk=self.tau_brk,
+                                 tau_trac=self.tau_trac, law=self.law)
                        for n, recs in sorted(by_n.items())}
         counts = torch.tensor([len(b) for b in self.blocks.values()],
                               dtype=torch.float64, device=device)
@@ -321,6 +444,29 @@ class ScenarioSet:
             a.append(b.abar.flatten())
             d.append(b.dcorr.flatten())
         return {"abar": torch.cat(a).std(), "dcorr": torch.cat(d).std()}
+
+
+#: Per-scenario arrays a v3 corpus adds that the surrogate needs: the gear
+#: state, the brake lags per vehicle, the notch tables and the inertia factor.
+V3_KEYS = ("gear_state", "tau_brk_node", "tau_brk_release_node", "loco_table",
+           "inertia_factor")
+#: Extra bytes per vehicle-step held for the gear state (float32, per coupler).
+BYTES_GEAR_PER_STEP = 4
+
+
+def _is_v3_keys(keys) -> bool:
+    """All v3 arrays or none: the feature layout depends on every one of them."""
+    present = [k in keys for k in V3_KEYS]
+    if any(present) and not all(present):
+        missing = [k for k, p in zip(V3_KEYS, present) if not p]
+        raise ValueError(f"partial v3 scenario, missing {missing}; the surrogate "
+                         "supports the legacy and the full v3 physics only")
+    return all(present)
+
+
+def _is_v3(path: Path) -> bool:
+    with np.load(path) as f:
+        return _is_v3_keys(f.files)
 
 
 def _load_norm(root: Path, device: str) -> dict[str, Tensor]:

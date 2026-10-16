@@ -19,8 +19,8 @@ from __future__ import annotations
 import torch
 from torch import Tensor
 
-from surrogate.data import build_features, interp_route
-from surrogate.step import advance, coupler_features, edge_targets, node_targets
+from surrogate.data import interp_route
+from surrogate.step import coupler_features, edge_targets, node_targets
 
 
 def add_noise(
@@ -63,49 +63,49 @@ def noisy_targets(
 @torch.no_grad()
 def rollout(
     model, blk, si: Tensor, k0: Tensor, horizon: int,
-    *, route_s: Tensor, route_f: Tensor, nrm: dict[str, Tensor],
-    h: float, tau_brk: float, tau_trac: float,
+    *, route_s: Tensor, route_f: Tensor,
     tgt_std: dict[str, Tensor],
 ) -> dict[str, Tensor]:
     """Run ``horizon`` steps from ``(si, k0)`` on the model's own predictions.
 
     Returns per-step absolute errors against the stored trajectory, shaped
-    ``[horizon, B]``: ``v`` and ``delta`` as max-over-consist, plus the
-    zero-order baseline of simply holding the initial state.
+    ``[horizon, B]``: ``v``, ``delta`` and the coupler force ``F`` as
+    max-over-consist, plus the zero-order baseline of simply holding the
+    initial state. ``F`` is read off the carried state with the corpus's own
+    coupler law (and, for v3, the carried gear state), as the model sees it.
     """
     es = blk.edge_static[si]
-    ns = blk.node_static[si]
-    l0 = es[..., 0]
     rs = route_s[blk.corridor[si]]
     rf = route_f[blk.corridor[si]]
 
-    st = blk.state[si, k0]
-    delta = blk.edge_dyn[si, k0][..., 0]
+    st, delta, gear = blk.carry(si, k0)
     st_hold, delta_hold = st, delta
+    f_hold = blk.edge_dyn[si, k0][..., 2]
 
-    v_err, d_err, v_hold, d_hold = [], [], [], []
+    v_err, d_err, f_err, v_hold, d_hold, f_hold_err = [], [], [], [], [], []
     for j in range(horizon):
         kj = k0 + j
-        u0, u1 = blk.u[si, kj], blk.u[si, kj + 1]
-        ed = coupler_features(delta, st[..., 1], es)
         route = interp_route(rs, rf, st[..., 0])
-        node, edge = build_features(st, ed, ns, es, route, u0, u1, nrm)
+        node, edge, _, _ = blk.features(st, delta, gear, si, kj, route)
 
         a_hat, d_hat = model(node, edge)
-        st, delta = advance(st, delta, a_hat * tgt_std["abar"],
-                            d_hat * tgt_std["dcorr"], u0, u1, l0,
-                            tau_brk=tau_brk, tau_trac=tau_trac, h=h)
+        st, delta, gear = blk.advance(st, delta, gear, a_hat * tgt_std["abar"],
+                                      d_hat * tgt_std["dcorr"], si, kj)
 
         st_true = blk.state[si, kj + 1]
-        d_true = blk.edge_dyn[si, kj + 1][..., 0]
+        ed_true = blk.edge_dyn[si, kj + 1]
+        f = coupler_features(delta, st[..., 1], es, gear, blk.law)[..., 2]
         v_err.append((st[..., 1] - st_true[..., 1]).abs().amax(-1))
-        d_err.append((delta - d_true).abs().amax(-1))
+        d_err.append((delta - ed_true[..., 0]).abs().amax(-1))
+        f_err.append((f - ed_true[..., 2]).abs().amax(-1))
         v_hold.append((st_hold[..., 1] - st_true[..., 1]).abs().amax(-1))
-        d_hold.append((delta_hold - d_true).abs().amax(-1))
+        d_hold.append((delta_hold - ed_true[..., 0]).abs().amax(-1))
+        f_hold_err.append((f_hold - ed_true[..., 2]).abs().amax(-1))
 
     return {
-        "v": torch.stack(v_err), "delta": torch.stack(d_err),
+        "v": torch.stack(v_err), "delta": torch.stack(d_err), "F": torch.stack(f_err),
         "v_hold": torch.stack(v_hold), "delta_hold": torch.stack(d_hold),
+        "F_hold": torch.stack(f_hold_err),
     }
 
 
@@ -121,7 +121,8 @@ def rollout_metrics(
     """
     model.eval()
     gen = torch.Generator(device=ds.device).manual_seed(seed)
-    acc = {k: [] for k in ("v", "delta", "v_hold", "delta_hold")}
+    keys = ("v", "delta", "F", "v_hold", "delta_hold", "F_hold")
+    acc = {k: [] for k in keys}
     for _ in range(n_batches):
         bi = int(torch.multinomial(ds.block_p, 1, generator=gen).item())
         blk = ds.blocks[ds.block_keys[bi]]
@@ -134,9 +135,7 @@ def rollout_metrics(
         k0 = (torch.rand(batch_size, generator=gen, device=ds.device)
               * room[si].float()).long()
         out = rollout(model, blk, si, k0, horizon,
-                      route_s=ds.route_s, route_f=ds.route_f, nrm=ds.norm,
-                      h=ds.h, tau_brk=ds.tau_brk, tau_trac=ds.tau_trac,
-                      tgt_std=tgt_std)
+                      route_s=ds.route_s, route_f=ds.route_f, tgt_std=tgt_std)
         for k in acc:
             acc[k].append(out[k])
     model.train()
@@ -144,12 +143,7 @@ def rollout_metrics(
         return {}
     cat = {k: torch.cat(v, dim=1) for k, v in acc.items()}   # [horizon, B*]
     return {
-        j + 1: {
-            "v": float(cat["v"][j].median()),
-            "v_hold": float(cat["v_hold"][j].median()),
-            "delta": float(cat["delta"][j].median()),
-            "delta_hold": float(cat["delta_hold"][j].median()),
-        }
+        j + 1: {k: float(cat[k][j].median()) for k in keys}
         for j in range(cat["v"].shape[0])
     }
 
@@ -172,35 +166,31 @@ def training_batch(
     and it tightens automatically as the model improves. Gradients are not
     taken through the unrolled steps, so the cost is one extra forward pass per
     push and memory does not grow with horizon.
+
+    The v3 gear state is carried through the push like the rest of the state,
+    but not perturbed by the Gaussian noise: it is a force on the envelope's
+    scale, and the noise on ``delta`` already moves the gear within it.
     """
-    es = blk.edge_static[si]
-    ns = blk.node_static[si]
-    l0 = es[..., 0]
     rs = ds.route_s[blk.corridor[si]]
     rf = ds.route_f[blk.corridor[si]]
 
-    st = blk.state[si, k0]
-    delta = blk.edge_dyn[si, k0][..., 0]
+    st, delta, gear = blk.carry(si, k0)
     st, delta = add_noise(st, delta, gen, v_std=v_std, delta_std=delta_std)
 
-    def features(state, d, kj):
-        u0, u1 = blk.u[si, kj], blk.u[si, kj + 1]
-        ed = coupler_features(d, state[..., 1], es)
+    def features(state, d, g, kj):
         route = interp_route(rs, rf, state[..., 0])
-        return (*build_features(state, ed, ns, es, route, u0, u1, ds.norm), u0, u1)
+        return blk.features(state, d, g, si, kj, route)[:2]
 
     if n_push > 0:
         with torch.no_grad():
             for j in range(n_push):
-                node, edge, u0, u1 = features(st, delta, k0 + j)
+                node, edge = features(st, delta, gear, k0 + j)
                 a, d = model(node, edge)
-                st, delta = advance(st, delta, a * tgt_std["abar"],
-                                    d * tgt_std["dcorr"], u0, u1, l0,
-                                    tau_brk=ds.tau_brk, tau_trac=ds.tau_trac,
-                                    h=ds.h)
+                st, delta, gear = blk.advance(st, delta, gear, a * tgt_std["abar"],
+                                              d * tgt_std["dcorr"], si, k0 + j)
 
     kj = k0 + n_push
-    node, edge, _, _ = features(st, delta, kj)
+    node, edge = features(st, delta, gear, kj)
     st1 = blk.state[si, kj + 1]
     d1 = blk.edge_dyn[si, kj + 1][..., 0]
     abar, dcorr = noisy_targets(st, delta, st1, d1, ds.h)

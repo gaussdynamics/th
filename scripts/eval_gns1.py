@@ -35,9 +35,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from surrogate.data import N_EDGE_FEATURES, N_NODE_FEATURES, ScenarioSet, build_features, interp_route
+from surrogate.data import N_EDGE_FEATURES, N_NODE_FEATURES, ScenarioSet, interp_route
 from surrogate.model import ChainGNN
-from surrogate.step import advance, coupler_features, edge_targets, node_targets
+from surrogate.step import coupler_features, edge_targets, node_targets
 
 # "name@80" restricts a split to consists of at most 80 vehicles, the trained
 # range. ood_corridor and ood_grade hold every consist size, so without the
@@ -48,7 +48,9 @@ SPLITS = ("val", "test_id", "ood_size", "ood_corridor@80", "ood_corridor",
 
 def load_model(path: Path, device: str):
     ck = torch.load(path, map_location=device)
-    model = ChainGNN(N_NODE_FEATURES, N_EDGE_FEATURES,
+    # Checkpoints before the v3 port carry no feature counts: they are legacy.
+    model = ChainGNN(ck.get("n_node_features", N_NODE_FEATURES),
+                     ck.get("n_edge_features", N_EDGE_FEATURES),
                      hidden=ck["hidden"], rounds=ck["rounds"]).to(device)
     model.load_state_dict(ck["model"])
     model.eval()
@@ -81,13 +83,13 @@ def score(model, tgt_std, ds, horizons, n_starts, seed):
     starts = sample_starts(ds, hmax, max(1, n_starts // n_blocks), gen)
 
     one = {k: [] for k in ("a_model", "a_ca", "a_true", "c_model", "c_ca", "c_true")}
-    roll = {k: [] for k in ("v_model", "v_hold", "v_ca", "d_model", "d_hold", "d_ca")}
+    roll = {k: [] for k in ("v_model", "v_hold", "v_ca", "d_model", "d_hold", "d_ca",
+                            "f_model", "f_hold", "f_ca")}
 
     for blk, si, k0 in starts:
         for chunk in torch.split(torch.arange(si.numel(), device=ds.device), 256):
             s, k = si[chunk], k0[chunk]
-            es, ns = blk.edge_static[s], blk.node_static[s]
-            l0 = es[..., 0]
+            es = blk.edge_static[s]
             rs, rf = ds.route_s[blk.corridor[s]], ds.route_f[blk.corridor[s]]
 
             st_prev, st0 = blk.state[s, k - 1], blk.state[s, k]
@@ -95,18 +97,19 @@ def score(model, tgt_std, ds, horizons, n_starts, seed):
             a_ca = node_targets(st_prev, st0, h)
             c_ca = edge_targets(d_prev, d0, st_prev, st0, h)
 
-            st_m, d_m = st0, d0
-            st_c, d_c = st0, d0
+            g0 = blk.carry(s, k)[2]
+            f0 = blk.edge_dyn[s, k][..., 2]
+            st_m, d_m, g_m = st0, d0, g0
+            st_c, d_c, g_c = st0, d0, g0
             for j in range(hmax):
                 kj = k + j
-                u0, u1 = blk.u[s, kj], blk.u[s, kj + 1]
-                ed = coupler_features(d_m, st_m[..., 1], es)
                 route = interp_route(rs, rf, st_m[..., 0])
-                node, edge = build_features(st_m, ed, ns, es, route, u0, u1, ds.norm)
+                node, edge, _, _ = blk.features(st_m, d_m, g_m, s, kj, route)
                 a_hat, c_hat = model(node, edge)
                 a_hat, c_hat = a_hat * tgt_std["abar"], c_hat * tgt_std["dcorr"]
 
                 st_t, d_t = blk.state[s, kj + 1], blk.edge_dyn[s, kj + 1][..., 0]
+                f_t = blk.edge_dyn[s, kj + 1][..., 2]
                 if j == 0:
                     one["a_model"].append((a_hat - node_targets(st0, st_t, h)).flatten())
                     one["a_ca"].append((a_ca - node_targets(st0, st_t, h)).flatten())
@@ -116,10 +119,8 @@ def score(model, tgt_std, ds, horizons, n_starts, seed):
                     one["c_ca"].append((c_ca - c_true).flatten())
                     one["c_true"].append(c_true.flatten())
 
-                st_m, d_m = advance(st_m, d_m, a_hat, c_hat, u0, u1, l0,
-                                    tau_brk=ds.tau_brk, tau_trac=ds.tau_trac, h=h)
-                st_c, d_c = advance(st_c, d_c, a_ca, c_ca, u0, u1, l0,
-                                    tau_brk=ds.tau_brk, tau_trac=ds.tau_trac, h=h)
+                st_m, d_m, g_m = blk.advance(st_m, d_m, g_m, a_hat, c_hat, s, kj)
+                st_c, d_c, g_c = blk.advance(st_c, d_c, g_c, a_ca, c_ca, s, kj)
                 if (j + 1) in horizons:
                     roll["v_model"].append((j + 1, (st_m[..., 1] - st_t[..., 1]).abs().amax(-1)))
                     roll["v_hold"].append((j + 1, (st0[..., 1] - st_t[..., 1]).abs().amax(-1)))
@@ -127,6 +128,11 @@ def score(model, tgt_std, ds, horizons, n_starts, seed):
                     roll["d_model"].append((j + 1, (d_m - d_t).abs().amax(-1)))
                     roll["d_hold"].append((j + 1, (d0 - d_t).abs().amax(-1)))
                     roll["d_ca"].append((j + 1, (d_c - d_t).abs().amax(-1)))
+                    force = lambda st_, d_, g_: coupler_features(  # noqa: E731
+                        d_, st_[..., 1], es, g_, blk.law)[..., 2]
+                    roll["f_model"].append((j + 1, (force(st_m, d_m, g_m) - f_t).abs().amax(-1)))
+                    roll["f_hold"].append((j + 1, (f0 - f_t).abs().amax(-1)))
+                    roll["f_ca"].append((j + 1, (force(st_c, d_c, g_c) - f_t).abs().amax(-1)))
 
     rms = lambda xs: float(torch.cat(xs).pow(2).mean().sqrt())
     res = {
@@ -144,7 +150,8 @@ def score(model, tgt_std, ds, horizons, n_starts, seed):
         r = {}
         for key, vals in roll.items():
             x = torch.cat([v for (hh, v) in vals if hh == hz])
-            scale = 1e3 if key.startswith("d_") else 1.0
+            # mm for stretch, kN for force
+            scale = 1e3 if key.startswith("d_") else 1e-3 if key.startswith("f_") else 1.0
             r[key + "_med"] = scale * float(x.median())
         res["rollout"][hz] = r
     res["n_starts"] = int(sum(si.numel() for _, si, _ in starts))
@@ -190,7 +197,8 @@ def main() -> None:
                 q = r["rollout"][hz]
                 print(f"    {hz:4d}  v {q['v_model_med']:.4f} hold {q['v_hold_med']:.4f}"
                       f" ca {q['v_ca_med']:.4f}   d {q['d_model_med']:.2f} hold"
-                      f" {q['d_hold_med']:.2f} ca {q['d_ca_med']:.2f} mm")
+                      f" {q['d_hold_med']:.2f} ca {q['d_ca_med']:.2f} mm   F {q['f_model_med']:.1f}"
+                      f" hold {q['f_hold_med']:.1f} ca {q['f_ca_med']:.1f} kN")
         out["splits"][split] = info
         del ds
         torch.cuda.empty_cache()

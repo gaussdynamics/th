@@ -68,10 +68,11 @@ def test_targets_advance_round_trip(scenario):
 
     abar = node_targets(s0, s1, h)
     corr = edge_targets(dd0, dd1, s0, s1, h)
-    got, delta1 = advance(s0, dd0, abar, corr, u[:-1], u[1:], l0,
+    got, delta1, gear1 = advance(s0, dd0, abar, corr, u[:-1], u[1:], l0,
                           tau_brk=float(d["tau_brk_s"]),
                           tau_trac=float(d["tau_trac_s"]), h=h)
 
+    assert gear1 is None                                         # legacy: no gear
     assert torch.allclose(got[..., 1], s1[..., 1], atol=1e-9)   # v
     assert torch.allclose(delta1, dd1, atol=1e-9)               # coupler stretch
     # x: centroid trapezoid + exact shape, against float32-stored positions

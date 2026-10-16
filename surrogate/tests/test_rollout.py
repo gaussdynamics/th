@@ -62,8 +62,7 @@ def test_oracle_rollout_reproduces_the_trajectory(ds):
     std = {"abar": torch.tensor(1.0, device=DEVICE),
            "dcorr": torch.tensor(1.0, device=DEVICE)}
     out = rollout(_Oracle(blk, si, k0, ds.h, std), blk, si, k0, 30,
-                  route_s=ds.route_s, route_f=ds.route_f, nrm=ds.norm,
-                  h=ds.h, tau_brk=ds.tau_brk, tau_trac=ds.tau_trac, tgt_std=std)
+                  route_s=ds.route_s, route_f=ds.route_f, tgt_std=std)
     # float32 accumulation over 30 steps, on velocities of order 10 m/s
     assert float(out["v"].max()) < 1e-3
     assert float(out["delta"].max()) < 1e-4
@@ -97,7 +96,7 @@ def test_noisy_targets_land_on_the_true_next_state(ds):
     assert (st_p[..., 1] - st0[..., 1]).abs().max() > 1e-3   # noise really applied
 
     a, c = noisy_targets(st_p, d_p, st1, d1, ds.h)
-    got, got_d = advance(st_p, d_p, a, c, u0, u1, es[..., 0],
+    got, got_d, _ = advance(st_p, d_p, a, c, u0, u1, es[..., 0],
                          tau_brk=ds.tau_brk, tau_trac=ds.tau_trac, h=ds.h)
     assert (got[..., 1] - st1[..., 1]).abs().max() < 1e-9
     assert (got_d - d1).abs().max() < 1e-9

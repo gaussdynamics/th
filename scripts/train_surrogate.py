@@ -31,10 +31,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from surrogate.data import N_EDGE_FEATURES, N_NODE_FEATURES, ScenarioSet
+from surrogate.data import ScenarioSet
 from surrogate.model import ChainGNN
 from surrogate.rollout import rollout_metrics, training_batch
-from surrogate.step import coupler_features
 
 
 @torch.no_grad()
@@ -151,13 +150,14 @@ def main() -> None:
         print(f"  {name:9s} {len(ds.rows):5d} scenarios  {len(ds):>10,} transitions  "
               f"N {lo}-{hi} in {len(ds.blocks)} buckets  {ds.gib:.2f} GiB")
     print(f"  loaded in {time.time()-t_load:.1f}s   dt={train.h}s  "
-          f"tau_brk={train.tau_brk}s  tau_trac={train.tau_trac}s")
+          f"physics={'v3' if train.v3 else 'legacy'}  tau_trac={train.tau_trac}s"
+          + ("" if train.v3 else f"  tau_brk={train.tau_brk}s"))
 
     tgt_std = train.target_std()
     print(f"target std  abar {float(tgt_std['abar']):.4f} m/s^2   "
           f"ddelta_corr {float(tgt_std['dcorr'])*1e3:.3f} mm")
 
-    model = ChainGNN(N_NODE_FEATURES, N_EDGE_FEATURES,
+    model = ChainGNN(train.n_node_features, train.n_edge_features,
                      hidden=args.hidden, rounds=args.rounds,
                      zero_mean_edge=args.zero_mean).to(args.device)
     n_par = sum(p.numel() for p in model.parameters())
@@ -205,7 +205,10 @@ def main() -> None:
         args.save.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model": model.state_dict(),
                     "tgt_std": {k: float(v) for k, v in tgt_std.items()},
-                    "hidden": args.hidden, "rounds": args.rounds},
+                    "hidden": args.hidden, "rounds": args.rounds,
+                    "physics": "v3" if train.v3 else "legacy",
+                    "n_node_features": train.n_node_features,
+                    "n_edge_features": train.n_edge_features},
                    args.save)
         print(f"  saved to {args.save}")
 
@@ -242,13 +245,15 @@ def main() -> None:
             if roll:
                 print(f"  rollout (model on its own output), median over starts")
                 print(f"  {'steps':>7s} {'seconds':>8s} {'max|dv| [m/s]':>15s}"
-                      f" {'hold':>9s} {'max|ddelta| [mm]':>18s} {'hold':>9s}")
+                      f" {'hold':>9s} {'max|ddelta| [mm]':>18s} {'hold':>9s}"
+                      f" {'max|dF| [kN]':>13s} {'hold':>9s}")
                 for k in args.rollout:
                     if k not in roll:
                         continue
                     r = roll[k]
                     print(f"  {k:7d} {k*ds.h:8.2f} {r['v']:15.5f} {r['v_hold']:9.4f}"
-                          f" {r['delta']*1e3:18.3f} {r['delta_hold']*1e3:9.3f}")
+                          f" {r['delta']*1e3:18.3f} {r['delta_hold']*1e3:9.3f}"
+                          f" {r['F']/1e3:13.2f} {r['F_hold']/1e3:9.2f}")
 
 
 if __name__ == "__main__":
