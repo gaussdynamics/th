@@ -827,3 +827,116 @@
   eprint    = {1412.6980},
   archivePrefix = {arXiv}
 }
+
+% ======================================================================
+% ADDED October 16, 2026 — air brake, resistance and locomotives, Chapter 12
+%
+% Entered from the source strings in simulator2/air_brake.py and
+% simulator2/vehicle_physics.py and from SIMULATOR_VALIDATION_NOTE.md, not
+% yet checked against the PDFs in paper/refs/papers/ (gitignored; on the
+% workstation). Where a first name or DOI was not in those notes it is left
+% out rather than guessed.
+% TODO: verify each against its PDF before submission: authors' full names,
+% pages, DOIs, and for the Handbook chapter its exact title and authors.
+% ======================================================================
+
+@book{Spiryagin2017HeavyHaul,
+  author    = {Spiryagin, Maksym and Wolfs, Peter and Cole, Colin and
+               Spiryagin, Valentyn and Sun, Yan Quan and McSweeney, Tim},
+  title     = {Design and Simulation of Heavy Haul Locomotives and Trains},
+  publisher = {CRC Press},
+  address   = {Boca Raton, FL},
+  year      = {2017}
+}
+
+% Second edition of the Handbook; Cole2006HandbookLTD is the first. Chapter
+% 13, pp. 457--520, is cited for the modified Davis equation (Table 13.3),
+% rotating mass (p. 459), starting resistance (p. 468) and train braking
+% rates (p. 515). TODO: confirm the chapter title and its co-authors.
+@incollection{Cole2019HandbookLTD,
+  author    = {Cole, Colin},
+  title     = {Longitudinal Train Dynamics},
+  booktitle = {Handbook of Railway Vehicle Dynamics},
+  edition   = {2},
+  editor    = {Iwnicki, Simon and Spiryagin, Maksym and Cole, Colin and McSweeney, Tim},
+  chapter   = {13},
+  pages     = {457--520},
+  publisher = {CRC Press},
+  address   = {Boca Raton, FL},
+  year      = {2019}
+}
+
+@article{Wei2017AirBrake,
+  author  = {Wei and Hu and Wu, Qing and Zhao and Zhang and Zhang},
+  title   = {An air brake model for longitudinal train dynamics studies},
+  journal = {Vehicle System Dynamics},
+  volume  = {55},
+  number  = {4},
+  pages   = {517--533},
+  year    = {2017}
+}
+
+@article{Wu2017AirBrakeParallel,
+  author  = {Wu, Qing and Cole, Colin and Spiryagin, Maksym and Wang and Ma and Wei},
+  title   = {Railway Air Brake Model and Parallel Computing Scheme},
+  journal = {Journal of Computational and Nonlinear Dynamics},
+  volume  = {12},
+  number  = {5},
+  pages   = {051017},
+  year    = {2017},
+  doi     = {10.1115/1.4036421}
+}
+
+@article{Specchia2012AirBrake,
+  author  = {Specchia and Afshari and Shabana, Ahmed A. and Caldwell},
+  title   = {A train air brake force model: locomotive automatic brake valve and
+             brake pipe flow formulations},
+  journal = {Proceedings of the Institution of Mechanical Engineers, Part F:
+             Journal of Rail and Rapid Transit},
+  volume  = {227},
+  number  = {1},
+  pages   = {19--37},
+  year    = {2012},
+  doi     = {10.1177/0954409712447230}
+}
+
+% Cited in Chapter 12 only for the placeholder brake force section and the
+% pipe length factor (Table 4). A public accident-docket document.
+@techreport{NTSB2015Casselton,
+  author      = {{National Transportation Safety Board}},
+  title       = {Train Braking Simulation Study, Casselton, North Dakota},
+  type        = {Accident docket document},
+  institution = {National Transportation Safety Board},
+  address     = {Washington, DC},
+  year        = {2015},
+  note        = {Simulations with the Train Operations and Energy Simulator (TOES)}
+}
+
+@inproceedings{Snyder2000BrakingRatios,
+  author    = {Snyder and Lonsdale and McConnell and Rees},
+  title     = {Testing for Current Freight Car Braking Ratios on {Union Pacific Railroad}},
+  booktitle = {Proceedings of the 92nd Annual Conference of the Air Brake Association},
+  year      = {2000}
+}
+
+@article{Sun2024ContainerBraking,
+  author  = {Sun, Yan Quan and {Nafis Ahmad} and Persson and
+             Spiryagin, Maksym and {Bernal Arango} and Cole, Colin},
+  title   = {Freight container wagon modelling and simulation analysis due to braking},
+  journal = {Vehicle System Dynamics},
+  volume  = {62},
+  number  = {12},
+  pages   = {3255--3275},
+  year    = {2024}
+}
+
+@article{Karnopp1985StickSlip,
+  author  = {Karnopp, Dean},
+  title   = {Computer Simulation of Stick-Slip Friction in Mechanical Dynamic Systems},
+  journal = {Journal of Dynamic Systems, Measurement, and Control},
+  volume  = {107},
+  number  = {1},
+  pages   = {100--103},
+  year    = {1985},
+  doi     = {10.1115/1.3140698}
+}
