@@ -148,6 +148,12 @@ def physics_of(npz: Any) -> PhysicsConfig:
 KNUCKLE_YIELD_N = 1.8e6
 KNUCKLE_ULTIMATE_N = 2.9e6
 
+#: A v3 run in which any vehicle goes backwards faster than this is not
+#: written. The speed planner holds a train that stalls, so such a run is a
+#: planner failure, not driving. The same threshold as the corpus validator's
+#: reversing count.
+REVERSAL_LIMIT_MPS = -1.0
+
 
 # -- consist stage ------------------------------------------------------------------
 
@@ -256,27 +262,40 @@ def to_notches(frac: Any) -> Any:
 NOTCH_UP_INTERVAL_S = 8.0
 
 
+class NotchLimiter:
+    """The notch-up limit one command row at a time, so the speed planner can
+    simulate the notches the train will actually get. :func:`rate_limit_notches`
+    is this applied to a whole command array; the two must stay one rule."""
+
+    def __init__(self, u0: Any, interval_s: float = NOTCH_UP_INTERVAL_S) -> None:
+        import numpy as np
+        self.cur = np.array(u0, float)
+        self.last_up = np.full(self.cur.shape, -np.inf)
+        self.interval_s = interval_s
+
+    def step(self, want: Any, t: float) -> Any:
+        """The delivered signed notches for the commanded ``want`` at time ``t``."""
+        import numpy as np
+        want = np.asarray(want, float)
+        flip = np.sign(want) * np.sign(self.cur) < 0
+        cur = np.where(flip, 0.0, self.cur)             # traction <-> brake via 0
+        smaller = np.abs(want) <= np.abs(cur)
+        can_step = (t - self.last_up) >= self.interval_s - 1e-9
+        step = np.where(want >= 0, 1.0, -1.0)
+        up = ~smaller & can_step
+        self.cur = np.where(smaller, want, np.where(up, cur + step, cur))
+        self.last_up = np.where(up, t, self.last_up)
+        return self.cur.copy()
+
+
 def rate_limit_notches(u: Any, t: Any, interval_s: float = NOTCH_UP_INTERVAL_S) -> Any:
     """Signed notches ``(T, N)`` with each step up in magnitude at least
     ``interval_s`` after the previous one; reductions pass through."""
     import numpy as np
     u = np.asarray(u, float)
     t = np.asarray(t, float)
-    out = np.empty_like(u)
-    cur = u[0].copy()
-    last_up = np.full(u.shape[1], -np.inf)
-    for k in range(u.shape[0]):
-        want = u[k]
-        flip = np.sign(want) * np.sign(cur) < 0
-        cur = np.where(flip, 0.0, cur)                  # traction <-> brake via 0
-        smaller = np.abs(want) <= np.abs(cur)
-        can_step = (t[k] - last_up) >= interval_s - 1e-9
-        step = np.where(want >= 0, 1.0, -1.0)
-        up = ~smaller & can_step
-        cur = np.where(smaller, want, np.where(up, cur + step, cur))
-        last_up = np.where(up, t[k], last_up)
-        out[k] = cur
-    return out
+    limiter = NotchLimiter(u[0], interval_s)
+    return np.stack([limiter.step(u[k], t[k]) for k in range(u.shape[0])])
 
 
 def materialize_commands(profile: Any, consist: ConsistPhysics, t: Any, train: Any,

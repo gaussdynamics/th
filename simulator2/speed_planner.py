@@ -30,8 +30,9 @@ The governed curves replace the regime's (traction scaled, brake and dynamic
 brake taken as the larger of the regime's and the planner's), so commands
 stay open loop and the regime's character is kept away from the limits. The
 planner's model is cruder than the simulator (no slack action, no brake
-propagation, instant force); margins absorb the difference, and
-``speed_limit_stats`` measures what is left.
+propagation, no notch lag); margins absorb the difference, and
+``speed_limit_stats`` measures what is left. It does take the notch-up rate
+limit, since that changes how much traction a cycling governor delivers.
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ from typing import Any
 import numpy as np
 
 from .constants import DEFAULT_V_BRAKE_EPS, GRAVITY_MPS2
+from .physics_config import NotchLimiter, to_notches
 from .torch_rhs import STANDSTILL_RESISTANCE_NPKG, STANDSTILL_TAU_S
 
 __all__ = ["PlannerParams", "allowed_speed_field", "plan_commands"]
@@ -145,6 +147,7 @@ def plan_commands(t: np.ndarray, trac_frac: np.ndarray, brake_frac: np.ndarray,
     x_lead, v = float(x0[0]), float(v0)
     g, air_on, ready_at, holding = 1.0, False, -np.inf, False
     released_until = -np.inf
+    limiter = None
     for k in range(n_t):
         va = float(np.interp(x_lead, s_nodes, v_allow_nodes))
         v_plan[k], v_allow[k] = v, va
@@ -184,8 +187,19 @@ def plan_commands(t: np.ndarray, trac_frac: np.ndarray, brake_frac: np.ndarray,
         # forces under the governed, capped traction
         tf = out_trac[k][is_loco]
         if notch:
-            f_t = _notch_traction(np.rint(8 * tf), v, table).sum()
-            f_db = _dynamic_brake(np.rint(8 * np.full(tf.shape, out_db[k])), v, table).sum()
+            # The notches the train gets, not the ones commanded: the command
+            # stage rate-limits every rise (NOTCH_UP_INTERVAL_S). Planning on
+            # the commanded notches, a governor cycling traction under a
+            # 5.4 m/s limit on 3.5 % lost a quarter of its mean notch to the
+            # limit, so the train stalled where the planner's did not, was
+            # never held, and rolled back 2 km (2026-10-16).
+            n_db = to_notches(np.full(tf.shape, out_db[k]))
+            want = np.where(n_db > 0, -n_db, to_notches(tf))
+            if limiter is None:
+                limiter = NotchLimiter(want)
+            delivered = limiter.step(want, t[k])
+            f_t = _notch_traction(np.clip(delivered, 0.0, None), v, table).sum()
+            f_db = _dynamic_brake(np.clip(-delivered, 0.0, None), v, table).sum()
         else:
             f_t = (tf * f_trac_max[is_loco]).sum()
             f_db = 0.0

@@ -134,7 +134,8 @@ WEI2017_TAU_RELEASE_S = (6.89, 6.52)
 class AirBrakeParams:
     """Empirical air brake parameters.
 
-    Timing is calibrated (see ``sources``); force parameters are placeholders.
+    Timing is calibrated and the force parameters come from public documents
+    quoting AAR S-401 (see ``sources``).
     Overriding a sourced field does not update ``sources``: pass a new one.
     """
 

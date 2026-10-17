@@ -938,7 +938,8 @@ works cited from memory: check edition and chapter when requesting them.
   end stops and lighter power are all new. Re-measured on the same 64-scenario
   seed-0 smoke corpus, built at 0.01 s output and decimated
   (`scripts/check_output_rate.py`), so every difference is sampling. Built on
-  CPU (M5 Pro, ~10 min), placeholder brake forces.
+  CPU (M5 Pro, ~10 min), with the brake force values of the 2026-10-12
+  entry (NTSB / Snyder / Sun; `require_sourced` passes).
   - **The 4001-sample cap.** `RandomizationConfig.max_time_samples` silently
     cut every run to its first 40 s at 0.01 s output (1000 s at 0.25 s, 200 s
     at 0.05 s). `build_dataset.py --max-time-samples` now exposes it; any
@@ -971,3 +972,37 @@ works cited from memory: check edition and chapter when requesting them.
     smoke runs (emergency only), so they explain the closing-rate outliers but
     are unlikely to be why the 45-scenario v3 smoke model learned poorly.
     Report surrogate error on emergency runs separately.
+- **2026-10-16 (speed planner: notch rate limit; reversal backstop; F2 re-run)** —
+  Found while assembling Chapter 12's smoke-test table.
+  - **Bug.** The v3 smoke corpus (64, seed 0, sourced brake) had one run
+    reversing to **-19.97 m/s**: `route_line0_49km_run000059`, 11 vehicles,
+    873 t, one SD70ACe, `throttle_modulation`, under a 5.36 m/s limit on
+    grades up to 3.5 %. The governor cycled traction to stay under the limit;
+    `rate_limit_notches` runs *after* the planner and cut the delivered mean
+    notch from 2.75 to 1.98 (100-250 s). The train stalled; the planner's
+    point mass, on the commanded notches, held 3.85 m/s, so the hold never
+    triggered and the train rolled back 2 km, off the start of the route.
+  - **Fix.** `physics_config.NotchLimiter`, one step of the rate limit;
+    `rate_limit_notches` is it applied to an array, and the planner steps it
+    on its own signed notches (traction and dynamic brake), so the two
+    cannot drift. New test: a 0/8 notch command cycling every 2 s accelerates
+    the planner's train no faster than steady notch 1 (fails on the old
+    planner: 11.2 against 1.5 m/s). The notch *lag* is still not in the
+    planner.
+  - **Backstop.** `build_dataset.py` (v3 only) does not write a run with
+    `v_min_mps < REVERSAL_LIMIT_MPS` (-1.0, the validator's threshold);
+    `reversed_scenarios` in `build_config.json`.
+  - **Smoke corpus after the fix** (same 64; validate PASSED): reversing 0
+    (worst -0.69 m/s), over limit > 5 m/s 0, worst overspeed 1.6 m/s,
+    F_max max 2.10 MN (the `emergency` run, 132 cars, kept and flagged above
+    yield), mean locomotives 1.72, nothing refused. Legacy, same seed: 19 %
+    over by > 5 m/s, 28 % reversing (worst -19.2), F_max max 1.40 MN.
+  - **F2 re-run with the sourced capacity** (`scripts/air_brake_run_in.py`;
+    100 t cars, 15 m, full service from 20 m/s, pipe factor 1.081). Peak buff,
+    every car at once / brake pipe: 60 cars Kelvin-Voigt 0 / 281 kN, draft
+    gear 0 / 178 kN; 130 cars Kelvin-Voigt 0 / 828 kN, draft gear 0 / 702 kN.
+    The 2026-10-12 caveat (run-in figures on the placeholder capacity) is
+    closed.
+  - **Calibration figure** `paper/scripts/plot_air_brake.py`: defaults give
+    rms 15.9 kPa over the 11 curves (head 2.3-5.3 kPa), Wei 116th car
+    10.5 kPa, 4th car 26.7 kPa.

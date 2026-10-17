@@ -152,6 +152,31 @@ def test_planner_keeps_full_power_under_the_limit(train_and_library) -> None:
     assert tight["db_frac"].max() > 0.0
 
 
+def test_planner_simulates_the_rate_limited_notches(train_and_library) -> None:
+    """A command cycling between notch 0 and notch 8 every 2 s delivers at
+    most notch 1 under the notch-up limit, so the planner must see a train
+    that accelerates like one on notch 1, not one on the average notch 4.
+    Planning on the commanded notches let a stalled train go unheld and roll
+    back 2 km (SIMULATOR_VALIDATION_NOTE.md, 2026-10-16)."""
+    train, lib = train_and_library
+    physics = replace(pc.V3, speed_planner=True)
+    c = pc.configure_consist(train, lib, physics)
+    x0 = 1500.0 - np.cumsum([0.0] + [cp.L0_m for cp in c.couplers])
+    t = np.arange(0.0, 120.0, 0.25)
+    zero = np.zeros(t.size)
+    s = np.arange(0.0, 8000.0, 10.0)
+    route = RouteProfile(s_nodes_m=s, sin_theta_nodes=np.zeros_like(s),
+                         v_max_nodes=np.full_like(s, 1e3))
+
+    def end_speed(level):
+        trac = np.where(c.is_loco[None, :], 1.0, 0.0) * level[:, None]
+        return plan_commands(t, trac, zero, zero, c, x0, 0.0, route, physics)["v_plan"][-1]
+
+    cycling = end_speed(np.where((t // 2.0) % 2 == 0, 1.0, 0.0))
+    assert cycling <= end_speed(np.full(t.size, 1.0 / 8.0)) + 1e-9
+    assert cycling < 0.5 * end_speed(np.full(t.size, 0.5))
+
+
 def test_equilibrium_start_has_no_start_up_snatch(train_and_library) -> None:
     """A powered v3 train started at speed with its gears in equilibrium: the
     start is loaded and the coupler forces stay at their initial tensions.

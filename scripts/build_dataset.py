@@ -71,6 +71,7 @@ from simulator2.physics_config import (
     KNUCKLE_YIELD_N,
     LEGACY,
     PRESETS,
+    REVERSAL_LIMIT_MPS,
     PhysicsConfig,
     configure_batch,
     configure_consist,
@@ -343,6 +344,7 @@ def run_batches(
     physics: PhysicsConfig = LEGACY,
     diverged: Optional[List[str]] = None,
     parted: Optional[List[str]] = None,
+    reversed_: Optional[List[str]] = None,
 ) -> List[dict]:
     """Integrate the specs in batches and write one ``.npz`` per scenario.
 
@@ -351,7 +353,11 @@ def run_batches(
     coupler force exceeds the knuckle's ultimate strength are not written
     either, and their ids are appended to it: the real train would have parted
     there and the model has no coupler failure. Runs between yield and
-    ultimate are kept and flagged.
+    ultimate are kept and flagged. If ``reversed_`` is a list, scenarios in
+    which any vehicle runs backwards faster than ``REVERSAL_LIMIT_MPS`` are
+    not written either: the speed planner holds a stalled train, so such a run
+    is a planner failure, not driving (2026-10-16: a stalled 873 t train
+    rolled back 2 km at up to 20 m/s).
     """
     # Sort by (T, N): T sets the step count and therefore the real cost, while
     # throughput is flat in N, so grouping by T first keeps batches homogeneous
@@ -428,6 +434,11 @@ def run_batches(
                 print(f"  NOT WRITTEN (coupler force {meta['F_max'] / 1e6:.2f} MN above "
                       f"the knuckle ultimate): {meta['scenario_id']}", flush=True)
                 parted.append(meta["scenario_id"])
+                continue
+            if reversed_ is not None and meta["v_min_mps"] < REVERSAL_LIMIT_MPS:
+                print(f"  NOT WRITTEN (ran backwards at {meta['v_min_mps']:.1f} m/s): "
+                      f"{meta['scenario_id']}", flush=True)
+                reversed_.append(meta["scenario_id"])
                 continue
             route = routes[meta["route_id"]]
             meta.update(speed_limit_stats(
@@ -558,13 +569,17 @@ def main() -> None:
     diverged: List[str] = []
     # Legacy corpora keep their original contents, so the exclusion is v3 only.
     parted: Optional[List[str]] = None if physics.is_legacy else []
+    reversed_: Optional[List[str]] = None if physics.is_legacy else []
     records = run_batches(specs, routes, out_dir, args.batch_size, args.dt,
                           args.device, dtype, compress=not args.no_compress,
-                          physics=physics, diverged=diverged, parted=parted)
+                          physics=physics, diverged=diverged, parted=parted,
+                          reversed_=reversed_)
     if diverged:
         print(f"  {len(diverged)} scenario(s) diverged and were not written")
     if parted:
         print(f"  {len(parted)} scenario(s) exceeded the knuckle ultimate and were not written")
+    if reversed_:
+        print(f"  {len(reversed_)} scenario(s) ran backwards and were not written")
     integrate_s = time.perf_counter() - t0
 
     print("writing route fields")
@@ -609,6 +624,7 @@ def main() -> None:
         "sampling_failures": dict(failures),
         "diverged_scenarios": diverged,
         "over_knuckle_ultimate_scenarios": parted,
+        "reversed_scenarios": reversed_,
     }
     written = write_manifests(out_dir, records, norm_stats, build_config)
 
