@@ -26,6 +26,7 @@ from app.views.consist_view import ConsistView
 from app.views.control_view import ControlView
 from app.views.sim_view import SimView
 from app.views.results_view import ResultsView
+from app.views.build_view import BuildView
 
 # (label, view class) in nav order. Mirrors the four-stop workflow in the sketch.
 NAV = [
@@ -34,6 +35,7 @@ NAV = [
     ("CONTROLS", ControlView),
     ("SIMULATE", SimView),
     ("RESULTS", ResultsView),
+    ("BUILD", BuildView),
 ]
 _LAND_ON = 3  # open on the Simulate screen
 

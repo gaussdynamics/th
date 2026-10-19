@@ -1006,3 +1006,20 @@ works cited from memory: check edition and chapter when requesting them.
   - **Calibration figure** `paper/scripts/plot_air_brake.py`: defaults give
     rms 15.9 kPa over the 11 curves (head 2.3-5.3 kPa), Wei 116th car
     10.5 kPa, 4th car 26.7 kPa.
+- **2026-10-18 (the corpus build can be paused and resumed)** — The v3
+  regeneration runs for days on the 4090, which is not always free, so
+  `build_dataset.py` now stops at a batch boundary (Ctrl-C, `--pause-after-
+  batches`, or a pause request from the RailLab BUILD screen) and continues
+  with `--resume`. Each finished batch is appended to `progress.jsonl`; the
+  manifests are written from that journal at the end, whether or not the build
+  was interrupted. A resume re-samples the scenario list and is refused unless
+  a fingerprint of the arguments, `simulator2/` + `build_dataset.py`, the
+  route/consist/car files and the sampled scenario keys matches the start.
+  Scenario files are written under a temporary name and renamed, so a kill
+  cannot leave a truncated `.npz`.
+  - **Check** (`simulator2/tests/test_build_resume.py`): 8 v3 scenarios in two
+    batches, built straight through and paused after batch 1 then resumed, give
+    identical `index.parquet`, `splits.json` and `norm_stats.json`, and every
+    array of every scenario file bit-identical. A corpus built over several
+    sessions is therefore the same corpus; `build_config.json` records the
+    sessions and the fingerprint.

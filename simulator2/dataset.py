@@ -23,6 +23,7 @@ safety-critical quantity -- and flagged derived via ``edge_dynamic_is_derived``.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -346,47 +347,55 @@ def write_scenario_arrays(
     62 ms per scenario -- roughly a quarter of the build once the rollout is
     batched -- and buys about 2x on disk, so it is worth turning off when the
     target volume is cheap.
+
+    The file is written under a temporary name and renamed into place, so a
+    build killed mid-write leaves a ``*.tmp`` to delete, never a truncated
+    scenario under its real name. The temporary name is no longer than the
+    real one, so it cannot be the path that trips Windows' 260-character limit.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     f32 = lambda a: np.asarray(a, dtype=np.float32)  # noqa: E731
     save = np.savez_compressed if compress else np.savez
+    tmp = path.with_suffix(".tmp")
 
-    save(
-        path,
-        schema_version=SCHEMA_VERSION,
-        # A
-        t=f32(arrays.t),
-        dt=np.float32(np.diff(arrays.t).mean() if arrays.t.size > 1 else 0.0),
-        # B
-        state=f32(arrays.state),
-        # C
-        node_static=f32(arrays.node_static),
-        # D
-        edge_dynamic=f32(arrays.edge_dynamic),
-        edge_static=f32(arrays.edge_static),
-        edge_index=arrays.edge_index.astype(np.int32),
-        edge_dynamic_is_derived=True,
-        # E
-        u_trac=f32(arrays.u_trac),
-        u_brk=f32(arrays.u_brk),
-        # F is referenced, not duplicated: see routes/<route_id>.npz
-        route_id=str(metadata["route_id"]),
-        # Which curvature law k_curv_scale scales; a string, so it cannot
-        # ride along in the numeric constants block.
-        curvature_model=str(metadata.get("curvature_model", "proxy_v2")),
-        # G
-        **{k: np.float32(v) for k, v in arrays.summaries.items()},
-        # H
-        y0=f32(arrays.y0),
-        **{k: np.float32(v) for k, v in arrays.constants.items()},
-        # I
-        metadata_json=json.dumps(metadata, sort_keys=True),
-        # Non-legacy physics only (absent from legacy files)
-        **{k: (v if isinstance(v, str) else
-               np.float64(v) if np.ndim(v) == 0 else f32(v))
-           for k, v in arrays.extras.items()},
-    )
+    with open(tmp, "wb") as f:   # a file object: savez would append ".npz" to a name
+        save(
+            f,
+            schema_version=SCHEMA_VERSION,
+            # A
+            t=f32(arrays.t),
+            dt=np.float32(np.diff(arrays.t).mean() if arrays.t.size > 1 else 0.0),
+            # B
+            state=f32(arrays.state),
+            # C
+            node_static=f32(arrays.node_static),
+            # D
+            edge_dynamic=f32(arrays.edge_dynamic),
+            edge_static=f32(arrays.edge_static),
+            edge_index=arrays.edge_index.astype(np.int32),
+            edge_dynamic_is_derived=True,
+            # E
+            u_trac=f32(arrays.u_trac),
+            u_brk=f32(arrays.u_brk),
+            # F is referenced, not duplicated: see routes/<route_id>.npz
+            route_id=str(metadata["route_id"]),
+            # Which curvature law k_curv_scale scales; a string, so it cannot
+            # ride along in the numeric constants block.
+            curvature_model=str(metadata.get("curvature_model", "proxy_v2")),
+            # G
+            **{k: np.float32(v) for k, v in arrays.summaries.items()},
+            # H
+            y0=f32(arrays.y0),
+            **{k: np.float32(v) for k, v in arrays.constants.items()},
+            # I
+            metadata_json=json.dumps(metadata, sort_keys=True),
+            # Non-legacy physics only (absent from legacy files)
+            **{k: (v if isinstance(v, str) else
+                   np.float64(v) if np.ndim(v) == 0 else f32(v))
+               for k, v in arrays.extras.items()},
+        )
+    os.replace(tmp, path)
     return path
 
 

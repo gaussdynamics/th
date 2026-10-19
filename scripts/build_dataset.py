@@ -27,6 +27,18 @@ the failure mode at the source: cost is now ``ceil(duration/dt)`` steps
 regardless of regime. (Which is just as well -- the ``SIGALRM`` mechanism
 ``scripts/bench_scenarios.py`` used is Unix-only and this workstation is native
 Windows.)
+
+**A build can be paused and resumed.** It writes ``progress.jsonl`` as each
+batch finishes, so it can stop at a batch boundary and pick up there::
+
+    python scripts/build_dataset.py ... --out data/v3          # Ctrl-C pauses
+    python scripts/build_dataset.py --out data/v3 --resume     # same arguments
+
+A pause can also be asked for from outside (the RailLab BUILD screen, or
+``python -m simulator2.build_progress pause data/v3``). The resume rebuilds the
+same scenario list and refuses to continue if the code, the inputs or the
+sampled scenarios differ from the build's start. See
+``simulator2/build_progress.py``.
 """
 
 from __future__ import annotations
@@ -34,13 +46,15 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import random
+import signal
 import sys
 import time
 from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO_ROOT))
@@ -48,6 +62,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 import numpy as np
 import torch
 
+from simulator2 import build_progress as bp
 from simulator2.air_brake import AirBrakeParams, require_sourced, unsourced
 from simulator2.consist import Train
 from simulator2.dataset import (
@@ -345,6 +360,9 @@ def run_batches(
     diverged: Optional[List[str]] = None,
     parted: Optional[List[str]] = None,
     reversed_: Optional[List[str]] = None,
+    start_batch: int = 0,
+    on_batch: Optional[Callable[[int, List[dict], Dict[str, List[str]], float, int], None]] = None,
+    should_stop: Optional[Callable[[], bool]] = None,
 ) -> List[dict]:
     """Integrate the specs in batches and write one ``.npz`` per scenario.
 
@@ -358,6 +376,11 @@ def run_batches(
     not written either: the speed planner holds a stalled train, so such a run
     is a planner failure, not driving (2026-10-16: a stalled 873 t train
     rolled back 2 km at up to 20 m/s).
+
+    Batches run in a fixed order, so a build can stop between two and resume
+    later: ``start_batch`` skips those already done, ``on_batch`` is called as
+    each one finishes (its index, records, refused ids, seconds and size) and
+    ``should_stop`` is asked before each one starts.
     """
     # Sort by (T, N): T sets the step count and therefore the real cost, while
     # throughput is flat in N, so grouping by T first keeps batches homogeneous
@@ -369,7 +392,12 @@ def run_batches(
     n_batches = math.ceil(len(order) / batch_size)
     t_start = time.perf_counter()
 
-    for bi in range(n_batches):
+    for bi in range(start_batch, n_batches):
+        if should_stop is not None and should_stop():
+            break
+        t_batch = time.perf_counter()
+        n_records, n_refused = len(records), (
+            len(diverged), len(parted or []), len(reversed_ or []))
         chunk = [specs[k] for k in order[bi * batch_size:(bi + 1) * batch_size]]
         scenarios = [c["scenario"] for c in chunk]
 
@@ -450,9 +478,16 @@ def run_batches(
             write_scenario_arrays(arrays, path, meta, compress=compress)
             records.append(meta)
 
+        if on_batch is not None:
+            refused = {"diverged": diverged[n_refused[0]:],
+                       "over_knuckle_ultimate": (parted or [])[n_refused[1]:],
+                       "reversed": (reversed_ or [])[n_refused[2]:]}
+            on_batch(bi, records[n_records:], refused,
+                     time.perf_counter() - t_batch, len(chunk))
+
         if progress_every and (bi + 1) % progress_every == 0 or bi == n_batches - 1:
             done, el = len(records), time.perf_counter() - t_start
-            print(f"  batch {bi + 1}/{n_batches}  {done}/{len(specs)} scenarios  "
+            print(f"  batch {bi + 1}/{n_batches}  {done} scenarios this session  "
                   f"{el:.1f}s  ({el / max(done, 1) * 1000:.0f} ms/scenario)", flush=True)
 
     return records
@@ -510,10 +545,33 @@ def main() -> None:
     ap.add_argument("--allow-unsourced-brake", action="store_true",
                     help="DRY RUN ONLY: build v3 although the air brake's force "
                          "parameters are placeholders (recorded in the output)")
+    ap.add_argument("--resume", action="store_true",
+                    help="continue the paused or stopped build in --out, with the "
+                         "arguments it was started with (others are ignored)")
+    ap.add_argument("--pause-after-batches", type=int, default=None,
+                    help="pause after this many batches in this session (not part "
+                         "of the build: a resume runs to the end unless given again)")
     args = ap.parse_args()
+    session_only = ("out", "resume", "pause_after_batches")
+    out_dir = Path(args.out)
+    journal = bp.Journal(out_dir)
+    if args.resume:
+        if not journal.exists():
+            raise SystemExit(f"nothing to resume: no {bp.JOURNAL} in {out_dir}")
+        journal.load()
+        # The journal holds the build's arguments; the command line only says
+        # where the build is.
+        for k, v in journal.header["build_args"].items():
+            if k in session_only:
+                continue
+            setattr(args, k, Path(v) if k == "route_dir" else v)
+    elif journal.exists():
+        raise SystemExit(f"{out_dir} already holds a build ({bp.JOURNAL}); pass --resume "
+                         f"to continue it, or choose another --out")
     physics = PRESETS[args.physics]
     if args.dt is None:
         args.dt = physics.default_dt_s
+    build_args = {k: v for k, v in vars(args).items() if k not in session_only}
     unsourced_brake: list = []
     if physics.air_brake:
         unsourced_brake = unsourced(AirBrakeParams())
@@ -521,9 +579,25 @@ def main() -> None:
             require_sourced(AirBrakeParams())
 
     dtype = torch.float64 if args.dtype == "float64" else torch.float32
-    out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
+    running = bp.read_status(out_dir)
+    if running and running.get("state") in ("sampling", "running", "pausing", "finalizing"):
+        raise SystemExit(f"a builder (pid {running.get('pid')}) is already working in "
+                         f"{out_dir}; pause it first")
+    status = bp.StatusWriter(
+        out_dir, state="sampling", n_scenarios=args.n_scenarios, physics=args.physics,
+        seed=args.seed, batch_size=args.batch_size, device=args.device,
+        resumed=bool(args.resume)).start()
+    try:
+        _build(args, physics, dtype, out_dir, journal, build_args, unsourced_brake, status)
+    except BaseException as exc:
+        state = "stopped" if isinstance(exc, KeyboardInterrupt) else "failed"
+        status.close(state=state, error=f"{type(exc).__name__}: {exc}")
+        raise
 
+
+def _build(args, physics, dtype, out_dir: Path, journal: "bp.Journal",
+           build_args: dict, unsourced_brake: list, status: "bp.StatusWriter") -> None:
     print(f"loading routes from {args.route_dir}")
     routes = load_routes(args.route_dir)
     print(f"  {len(routes)} corridors: {', '.join(sorted(routes))}")
@@ -563,24 +637,107 @@ def main() -> None:
     if not specs:
         raise SystemExit("no scenarios could be built")
 
+    # --- journal: start it, or check that this is the build it records ------
+    n_batches = math.ceil(len(specs) / args.batch_size)
+    spec_keys = [(c["meta"]["scenario_id"], c["meta"]["split"], c["meta"]["T"],
+                  c["meta"]["N"]) for c in specs]
+    inputs = (sorted(Path(args.route_dir).glob("*.npz"))
+              + sorted(DEFAULT_TRAIN_DIR.rglob("*.json"))
+              + sorted((_REPO_ROOT / "car_library").glob("*.json")))
+    fp = bp.fingerprint(build_args, spec_keys, inputs)
+    if args.resume:
+        journal.check(fp)
+        removed = bp.remove_partial_files(out_dir)
+        print(f"resuming at batch {journal.next_batch + 1}/{n_batches}"
+              + (f" ({removed} partial file(s) from the last stop removed)" if removed else ""))
+    else:
+        journal.start(build_args, fp, n_batches, len(specs))
+    bp.clear_control(out_dir)
+    journal.add_session({"event": "start", "at": time.time(), "batch": journal.next_batch,
+                         "device": args.device, "pid": os.getpid()})
+
+    # --- integrate, stopping at a batch boundary if asked -------------------
+    stop = {"why": None}
+
+    def on_sigint(_signum, _frame):
+        if stop["why"]:
+            raise KeyboardInterrupt
+        stop["why"] = "Ctrl-C"
+        print("\n  pausing after this batch (Ctrl-C again to abort it)", flush=True)
+
+    first_batch = journal.next_batch
+
+    def should_stop() -> bool:
+        if stop["why"] is None and bp.pause_requested(out_dir):
+            stop["why"] = "pause requested"
+        if (stop["why"] is None and args.pause_after_batches is not None
+                and journal.next_batch - first_batch >= args.pause_after_batches):
+            stop["why"] = f"--pause-after-batches {args.pause_after_batches}"
+        return stop["why"] is not None
+
+    times = journal.batch_times()
+    totals = {"written": len(journal.records()),
+              "refused": {k: len(journal.refused(k))
+                          for k in ("diverged", "over_knuckle_ultimate", "reversed")}}
+
+    def progress_fields() -> dict:
+        recent = times[-20:]
+        n_recent = sum(n for _, n, _ in recent)
+        return {"batch_done": len(times), "n_batches": n_batches,
+                "scenarios_total": len(specs), "scenarios_written": totals["written"],
+                "refused": totals["refused"], "batch_times": times,
+                "ms_per_scenario": (1000 * sum(t for _, _, t in recent) / n_recent
+                                    if n_recent else None),
+                "eta_s": bp.eta_seconds(times, n_batches - len(times))}
+
+    def on_batch(bi, recs, refused, seconds, n):
+        journal.add_batch(bi, recs, refused, seconds, n)
+        times.append([bi, n, round(seconds, 3)])
+        totals["written"] += len(recs)
+        for k, v in refused.items():
+            totals["refused"][k] += len(v)
+        status.update(**progress_fields())
+
+    status.update(state="running", sampling_failures=dict(failures), **progress_fields())
     print(f"integrating on {args.device} in {args.dtype}, "
           f"batch={args.batch_size}, dt={args.dt}")
-    t0 = time.perf_counter()
-    diverged: List[str] = []
-    # Legacy corpora keep their original contents, so the exclusion is v3 only.
-    parted: Optional[List[str]] = None if physics.is_legacy else []
-    reversed_: Optional[List[str]] = None if physics.is_legacy else []
-    records = run_batches(specs, routes, out_dir, args.batch_size, args.dt,
-                          args.device, dtype, compress=not args.no_compress,
-                          physics=physics, diverged=diverged, parted=parted,
-                          reversed_=reversed_)
+    previous = signal.signal(signal.SIGINT, on_sigint)
+    try:
+        # Legacy corpora keep their original contents, so the exclusions
+        # are v3 only.
+        run_batches(specs, routes, out_dir, args.batch_size, args.dt,
+                    args.device, dtype, compress=not args.no_compress,
+                    physics=physics, diverged=[],
+                    parted=None if physics.is_legacy else [],
+                    reversed_=None if physics.is_legacy else [],
+                    start_batch=journal.next_batch, on_batch=on_batch,
+                    should_stop=should_stop)
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+    if journal.next_batch < n_batches:
+        journal.add_session({"event": "pause", "at": time.time(),
+                             "batch": journal.next_batch, "why": stop["why"]})
+        bp.clear_control(out_dir)
+        status.close(state="paused", paused_because=stop["why"], **progress_fields())
+        print(f"\npaused after batch {journal.next_batch}/{n_batches} ({stop['why']}); "
+              f"continue with:\n  python scripts/build_dataset.py --out {out_dir} --resume")
+        return
+
+    # --- finalize from the journal, so a resumed build and an uninterrupted
+    # one write their manifests from the same records ------------------------
+    status.update(state="finalizing")
+    records = journal.records()
+    diverged = journal.refused("diverged")
+    parted = None if physics.is_legacy else journal.refused("over_knuckle_ultimate")
+    reversed_ = None if physics.is_legacy else journal.refused("reversed")
     if diverged:
         print(f"  {len(diverged)} scenario(s) diverged and were not written")
     if parted:
         print(f"  {len(parted)} scenario(s) exceeded the knuckle ultimate and were not written")
     if reversed_:
         print(f"  {len(reversed_)} scenario(s) ran backwards and were not written")
-    integrate_s = time.perf_counter() - t0
+    integrate_s = sum(t for _, _, t in times)
 
     print("writing route fields")
     used = sorted({r["route_id"] for r in records})
@@ -625,6 +782,8 @@ def main() -> None:
         "diverged_scenarios": diverged,
         "over_knuckle_ultimate_scenarios": parted,
         "reversed_scenarios": reversed_,
+        "sessions": [{k: v for k, v in e.items() if k != "kind"} for e in journal.sessions],
+        "fingerprint": journal.header["fingerprint"],
     }
     written = write_manifests(out_dir, records, norm_stats, build_config)
 
@@ -635,6 +794,7 @@ def main() -> None:
         print(f"  {k:14s} {p.relative_to(out_dir)}")
     print(f"integration: {integrate_s:.1f}s "
           f"({integrate_s / len(records) * 1000:.0f} ms/scenario)")
+    status.close(state="done", **progress_fields())
 
 
 if __name__ == "__main__":
