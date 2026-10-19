@@ -224,3 +224,45 @@ def test_split_sizes_match_the_request(tmp_path):
     assert len(res["ood_grade_corridors"]) == 20
     assert len(res["ood_corridors"]) == 30
     assert len(res["control_eval_corridors"]) == 20
+
+
+# --------------------------------------------------------------------------- #
+# build_dataset --split-file
+# --------------------------------------------------------------------------- #
+def _split_file(tmp_path, **override):
+    import json
+    data = {"ood_grade_corridors": ["steep"], "ood_corridors": ["odd"],
+            "control_eval_corridors": ["ctrl"], "train_pool": ["a", "b"],
+            "buffer_band_excluded": ["buf"]}
+    data.update(override)
+    path = tmp_path / "split_corridors.json"
+    path.write_text(json.dumps(data))
+    return path
+
+
+_ROUTES = dict.fromkeys(["steep", "odd", "ctrl", "a", "b", "buf"])
+
+
+def test_split_file_reserves_and_excludes(tmp_path):
+    from build_dataset import load_split_file
+    split = load_split_file(_split_file(tmp_path), _ROUTES)
+    assert split["ood_grade_corridors"] == ["steep"]
+    assert split["ood_corridors"] == ["odd"]
+    assert split["control_eval_corridors"] == ["ctrl"]
+    assert split["excluded"] == ["buf"]
+
+
+def test_split_file_from_another_route_set_is_refused(tmp_path):
+    import pytest
+    from build_dataset import load_split_file
+    with pytest.raises(SystemExit, match="does not match"):
+        load_split_file(_split_file(tmp_path), {**_ROUTES, "extra": None})
+    with pytest.raises(SystemExit, match="does not match"):
+        load_split_file(_split_file(tmp_path), {k: None for k in _ROUTES if k != "a"})
+
+
+def test_split_file_with_a_corridor_in_two_lists_is_refused(tmp_path):
+    import pytest
+    from build_dataset import load_split_file
+    with pytest.raises(SystemExit, match="both"):
+        load_split_file(_split_file(tmp_path, train_pool=["a", "b", "buf"]), _ROUTES)

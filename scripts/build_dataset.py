@@ -203,6 +203,44 @@ def build_split_policy(
     }
 
 
+_SPLIT_LISTS = ("ood_grade_corridors", "ood_corridors", "control_eval_corridors")
+
+
+def load_split_file(path: Path, routes: Dict[str, RouteProfile]) -> Dict[str, List[str]]:
+    """Read the corridor assignment ``scripts/assign_split_corridors.py`` wrote.
+
+    Returns the three reserved lists and ``excluded``, the buffer band, which
+    the caller drops from ``routes``: a buffer corridor left in would be
+    sampled into training and close the grade gap the band holds open.
+
+    The file must describe exactly the corridors in ``routes``. A corridor it
+    names that is missing, or one it does not mention, means it was made from
+    a different route set, and the splits would be wrong without failing.
+    """
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    missing_keys = [k for k in (*_SPLIT_LISTS, "train_pool", "buffer_band_excluded")
+                    if k not in data]
+    if missing_keys:
+        raise SystemExit(f"{path} is not a split file: no {', '.join(missing_keys)}")
+    named: Dict[str, str] = {}
+    for key in (*_SPLIT_LISTS, "train_pool", "buffer_band_excluded"):
+        for rid in data[key]:
+            if rid in named:
+                raise SystemExit(f"{path}: {rid} is in both {named[rid]} and {key}")
+            named[rid] = key
+    not_built = sorted(set(named) - set(routes))
+    not_named = sorted(set(routes) - set(named))
+    if not_built or not_named:
+        raise SystemExit(
+            f"{path} does not match the route set ({len(named)} corridors named, "
+            f"{len(routes)} loaded). Not in the route dir: {not_built[:5]}"
+            f"{' ...' if len(not_built) > 5 else ''}; not in the split file: "
+            f"{not_named[:5]}{' ...' if len(not_named) > 5 else ''}. "
+            f"Re-run assign_split_corridors.py on this route set.")
+    return {**{k: list(data[k]) for k in _SPLIT_LISTS},
+            "excluded": list(data["buffer_band_excluded"])}
+
+
 # ---------------------------------------------------------------------------
 # sampling
 # ---------------------------------------------------------------------------
@@ -531,6 +569,11 @@ def main() -> None:
                     help="proxy_v2 is the original k*m*v^2*|kappa| law and the "
                          "default; roeckl and linear are speed-independent and "
                          "calibrated (see TORCH_PORT_REPORT.md)")
+    ap.add_argument("--split-file", type=Path, default=None,
+                    help="corridor assignment from assign_split_corridors.py "
+                         "(e.g. data/split_corridors.json): reserves its ood_grade, "
+                         "ood_corridor and control_eval corridors and leaves its buffer "
+                         "band out of the build. Replaces the three corridor lists")
     ap.add_argument("--ood-corridors", nargs="*", default=[])
     ap.add_argument("--control-eval-corridors", nargs="*", default=[])
     ap.add_argument("--ood-grade-corridors", nargs="*", default=[])
@@ -601,6 +644,22 @@ def _build(args, physics, dtype, out_dir: Path, journal: "bp.Journal",
     print(f"loading routes from {args.route_dir}")
     routes = load_routes(args.route_dir)
     print(f"  {len(routes)} corridors: {', '.join(sorted(routes))}")
+    excluded: List[str] = []
+    if args.split_file:
+        if args.ood_corridors or args.control_eval_corridors or args.ood_grade_corridors \
+                or args.auto_ood_grade:
+            raise SystemExit("--split-file replaces --ood-corridors, --control-eval-corridors, "
+                             "--ood-grade-corridors and --auto-ood-grade; give one or the other")
+        split = load_split_file(args.split_file, routes)
+        args.ood_grade_corridors = split["ood_grade_corridors"]
+        args.ood_corridors = split["ood_corridors"]
+        args.control_eval_corridors = split["control_eval_corridors"]
+        excluded = sorted(split["excluded"])
+        for rid in excluded:
+            del routes[rid]
+        print(f"  split file {args.split_file}: "
+              + ", ".join(f"{len(split[k])} {k.replace('_corridors', '')}" for k in _SPLIT_LISTS)
+              + f"; {len(excluded)} buffer-band corridors left out, {len(routes)} in use")
 
     print("loading consists")
     trains = load_trains(DEFAULT_TRAIN_MANIFEST, DEFAULT_TRAIN_DIR, args.max_trains,
@@ -641,7 +700,8 @@ def _build(args, physics, dtype, out_dir: Path, journal: "bp.Journal",
     n_batches = math.ceil(len(specs) / args.batch_size)
     spec_keys = [(c["meta"]["scenario_id"], c["meta"]["split"], c["meta"]["T"],
                   c["meta"]["N"]) for c in specs]
-    inputs = (sorted(Path(args.route_dir).glob("*.npz"))
+    inputs = ([Path(args.split_file)] if args.split_file else []) + (
+              sorted(Path(args.route_dir).glob("*.npz"))
               + sorted(DEFAULT_TRAIN_DIR.rglob("*.json"))
               + sorted((_REPO_ROOT / "car_library").glob("*.json")))
     fp = bp.fingerprint(build_args, spec_keys, inputs)
@@ -774,6 +834,8 @@ def _build(args, physics, dtype, out_dir: Path, journal: "bp.Journal",
         "randomization": asdict(cfg),
         "physics": asdict(physics),
         "unsourced_air_brake_fields": unsourced_brake,
+        "split_file": str(args.split_file) if args.split_file else None,
+        "excluded_corridors": excluded,
         "split_policy": {k: (sorted(v) if isinstance(v, set) else v)
                          for k, v in policy.items()},
         "routes": {rid: route_grade_stats(routes[rid]) for rid in used},

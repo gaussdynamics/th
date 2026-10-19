@@ -1023,3 +1023,13 @@ works cited from memory: check edition and chapter when requesting them.
     array of every scenario file bit-identical. A corpus built over several
     sessions is therefore the same corpus; `build_config.json` records the
     sessions and the fingerprint.
+  - **`--split-file`** (same day). `build_dataset.py` had no way to read
+    `data/split_corridors.json` or to leave out its buffer band, so the 30
+    buffer corridors would have been sampled into training and closed the
+    ood_grade gap. `--split-file` now reserves the file's three corridor lists
+    and drops the buffer band from the route set, and refuses a file that does
+    not name exactly the corridors in `--route-dir`. Checked on the real set
+    (600 v3 scenarios, 359 corridors in use): no buffer corridor used, every
+    reserved corridor only in its own split, train max rms 0.813 % against
+    ood_grade min 1.076 % (+0.26 pp). The split file is part of the resume
+    fingerprint.

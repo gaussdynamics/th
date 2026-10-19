@@ -36,6 +36,7 @@ class NewBuild:
     seed: int = 0
     batch_size: int = 128
     route_dir: Optional[Path] = None
+    split_file: Optional[Path] = None
     extra_args: str = ""
 
     def argv(self) -> List[str]:
@@ -44,6 +45,8 @@ class NewBuild:
                 "--batch-size", str(self.batch_size)]
         if self.route_dir:
             args += ["--route-dir", str(self.route_dir)]
+        if self.split_file:
+            args += ["--split-file", str(self.split_file)]
         return args + shlex.split(self.extra_args, posix=(os.name != "nt"))
 
 

@@ -49,6 +49,7 @@ _PLOT_BG = "#b0b0b0"
 _PLOT_FG = "#2b2b2b"
 _RATE_PEN = "#3a5e8c"
 _DEFAULT_ROUTES = DATA_DIR / "narn_routes_splits" / "routes"
+_DEFAULT_SPLITS = DATA_DIR / "split_corridors.json"
 
 _LED = {"sampling": "running", "running": "running", "finalizing": "running",
         "pausing": "idle", "paused": "idle", "done": "off",
@@ -69,7 +70,7 @@ def _duration(seconds) -> str:
 
 class NewBuildDialog(QDialog):
     """The arguments for a new build. Anything not on the form goes in
-    'Extra args' verbatim (e.g. the corridor reservations)."""
+    'Extra args' verbatim."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -96,8 +97,11 @@ class NewBuildDialog(QDialog):
         form.addRow("Batch size:", self.batch_spin)
         self.routes_edit = QLineEdit(str(_DEFAULT_ROUTES))
         form.addRow("Route dir:", self.routes_edit)
+        self.splits_edit = QLineEdit(str(_DEFAULT_SPLITS))
+        self.splits_edit.setPlaceholderText("empty: no corridors reserved")
+        form.addRow("Split file:", self.splits_edit)
         self.extra_edit = QLineEdit()
-        self.extra_edit.setPlaceholderText("e.g. --ood-corridors a b --control-eval-corridors c")
+        self.extra_edit.setPlaceholderText("e.g. --duration-range 180 600")
         form.addRow("Extra args:", self.extra_edit)
 
         self.preview = QLabel()
@@ -113,7 +117,7 @@ class NewBuildDialog(QDialog):
         buttons.rejected.connect(self.reject)
         form.addRow(buttons)
 
-        for w in (self.out_edit, self.routes_edit, self.extra_edit):
+        for w in (self.out_edit, self.routes_edit, self.splits_edit, self.extra_edit):
             w.textChanged.connect(self._update_preview)
         for w in (self.n_spin, self.seed_spin, self.batch_spin):
             w.valueChanged.connect(self._update_preview)
@@ -122,6 +126,7 @@ class NewBuildDialog(QDialog):
 
     def build(self) -> NewBuild:
         routes = self.routes_edit.text().strip()
+        splits = self.splits_edit.text().strip()
         return NewBuild(
             out=DATA_DIR / self.out_edit.text().strip(),
             n_scenarios=self.n_spin.value(),
@@ -129,6 +134,7 @@ class NewBuildDialog(QDialog):
             seed=self.seed_spin.value(),
             batch_size=self.batch_spin.value(),
             route_dir=Path(routes) if routes else None,
+            split_file=Path(splits) if splits else None,
             extra_args=self.extra_edit.text(),
         )
 
